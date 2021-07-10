@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{anyhow, bail, Context, Result};
+use argh::FromArgs;
 use cargo_metadata::{camino::Utf8PathBuf, Message};
 use fatfs::{FileSystem, FormatVolumeOptions, FsOptions, ReadWriteSeek};
 use fscommon::StreamSlice;
@@ -21,7 +22,17 @@ const LB_SIZE: u64 = 512;
 const EFI_PARTITION_SIZE: u64 = 10 * MB;
 const DISK_SIZE: u64 = EFI_PARTITION_SIZE + 64 * KB;
 
+#[derive(FromArgs)]
+/// Create a bootable UEFI image.
+struct Args {
+    #[argh(switch)]
+    /// compile in release mode
+    release: bool,
+}
+
 fn main() -> Result<()> {
+    let args: Args = argh::from_env();
+
     let mut cargo_cmd = Command::new(env!("CARGO"));
     cargo_cmd.args([
         "build",
@@ -32,6 +43,10 @@ fn main() -> Result<()> {
         "-Zbuild-std=core",
         "-Zbuild-std-features=compiler-builtins-mem",
     ]);
+
+    if args.release {
+        cargo_cmd.arg("--release");
+    }
 
     if !cargo_cmd.status()?.success() {
         bail!("failed to build");
