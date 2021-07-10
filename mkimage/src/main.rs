@@ -79,7 +79,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn get_binary_path(output: &[u8]) -> Result<Utf8PathBuf, anyhow::Error> {
+fn get_binary_path(output: &[u8]) -> Result<Utf8PathBuf> {
     for message in Message::parse_stream(output) {
         if let Message::CompilerArtifact(artifact) = message? {
             if let Some(path) = artifact.executable {
