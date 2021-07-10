@@ -1,2 +1,2 @@
 [alias]
-mkimage = "run --bin mkimage --release --"
+mkimage = "run --bin mkimage --"
