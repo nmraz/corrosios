@@ -1,2 +1,8 @@
 [alias]
-mkimage = "run --bin mkimage --"
+hosttools-raw = "run --bin hosttools"
+hosttools = "hosttools-raw --"
+kbuild = "hosttools build build --"
+hclippy = "clippy -p hosttools"
+kclippy = "hosttools build clippy --"
+kclippy-json = "hosttools-raw --message-format=json -- build clippy -- --message-format=json"
+image = "hosttools image"
