@@ -1,5 +1,6 @@
 use std::fs::OpenOptions;
 use std::path::PathBuf;
+use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use argh::FromArgs;
@@ -24,6 +25,7 @@ struct Args {
 enum Subcommand {
     Build(BuildSubcommand),
     Image(ImageSubcommand),
+    Qemu(QemuSubcommand),
 }
 
 #[derive(FromArgs)]
@@ -42,7 +44,19 @@ struct BuildSubcommand {
 #[argh(subcommand, name = "image")]
 struct ImageSubcommand {
     #[argh(positional)]
-    additional_args: Vec<String>,
+    additional_build_args: Vec<String>,
+}
+
+#[derive(FromArgs)]
+/// Run UEFI image in QEMU.
+#[argh(subcommand, name = "qemu")]
+struct QemuSubcommand {
+    #[argh(option)]
+    /// path to bios to give QEMU
+    firmware_path: String,
+
+    #[argh(positional)]
+    additional_build_args: Vec<String>,
 }
 
 fn main() -> Result<()> {
@@ -51,8 +65,20 @@ fn main() -> Result<()> {
     match &args.subcommand {
         Subcommand::Build(build) => build_efi_app(&build.subcommand, &build.additional_args),
         Subcommand::Image(image) => {
-            let image_path = create_uefi_image(&image.additional_args)?;
+            let image_path = create_uefi_image(&image.additional_build_args)?;
             println!("Created UEFI image: {}", image_path.display());
+            Ok(())
+        }
+        Subcommand::Qemu(qemu) => {
+            let image_path = create_uefi_image(&qemu.additional_build_args)?;
+            let mut cmd = Command::new("qemu-system-x86_64");
+            cmd.args([
+                "-bios",
+                &qemu.firmware_path,
+                "-drive",
+                &format!("file={},format=raw", image_path.display()),
+            ]);
+            cmd.spawn().context("failed to start QEMU")?.wait()?;
             Ok(())
         }
     }

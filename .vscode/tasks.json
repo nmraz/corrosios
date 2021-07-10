@@ -17,5 +17,17 @@
       "command": "cargo image -- --release",
       "problemMatcher": [],
     },
+    {
+      "label": "Run in QEMU",
+      "type": "shell",
+      "command": "cargo qemu --firmware-path ${workspaceFolder}/qemu/firmware/x64/OVMF-pure-efi.fd",
+      "problemMatcher": []
+    }
+    {
+      "label": "Run in QEMU (release)",
+      "type": "shell",
+      "command": "cargo qemu --firmware-path ${workspaceFolder}/qemu/firmware/x64/OVMF-pure-efi.fd -- --release",
+      "problemMatcher": []
+    }
   ]
 }
