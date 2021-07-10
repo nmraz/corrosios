@@ -1,4 +1,4 @@
-#![feature(lang_items, abi_efiapi, asm)]
+#![feature(abi_efiapi, asm)]
 #![no_std]
 #![no_main]
 
