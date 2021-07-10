@@ -91,9 +91,10 @@ pub struct SystemTable {
 }
 
 #[no_mangle]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "efiapi" fn efi_main(_image_handle: Handle, system_table: *const SystemTable) -> Status {
-    let system_table = unsafe { &*system_table };
+pub extern "efiapi" fn efi_main(
+    _image_handle: Handle,
+    system_table: &'static SystemTable,
+) -> Status {
     let console_out = unsafe { &mut *system_table.console_out_protocol };
 
     let mut msg = ArrayString::<30>::new();
