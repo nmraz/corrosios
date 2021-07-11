@@ -118,7 +118,7 @@ impl SimpleTextOutputProtocol {
 
         let mut status = STATUS_SUCCESS;
 
-        let res = ucs2::encode_with(string, |ch| {
+        let mut putchar = |ch| {
             if i == BUF_LEN {
                 status = unsafe { (self.output_string)(self, &buf[0]) };
 
@@ -134,6 +134,13 @@ impl SimpleTextOutputProtocol {
             i += 1;
 
             Ok(())
+        };
+
+        let res = ucs2::encode_with(string, |ch| {
+            if ch == b'\n' as u16 {
+                putchar(b'\r' as u16)?;
+            }
+            putchar(ch)
         });
 
         if res.is_err() {
