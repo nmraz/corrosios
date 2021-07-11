@@ -26,8 +26,6 @@ type Status = usize;
 const STATUS_SUCCESS: Status = 0;
 const STATUS_WARN_UNKNOWN_GLYPH: Status = 1;
 
-type Tpl = usize;
-type Boolean = u8;
 type Handle = *mut ();
 
 #[repr(transparent)]
@@ -72,8 +70,8 @@ pub struct TableHeader {
 pub struct BootServices {
     header: TableHeader,
 
-    raise_tpl: unsafe extern "efiapi" fn(Tpl) -> Tpl,
-    restore_tpl: unsafe extern "efiapi" fn(Tpl),
+    raise_tpl: *const (),
+    restore_tpl: *const (),
 
     // TODO:
     allocate_pages: *const (),
@@ -93,7 +91,7 @@ pub struct BootServices {
 
 #[repr(C)]
 struct SimpleTextOutputProtocol {
-    reset: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, Boolean) -> Status,
+    reset: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, bool) -> Status,
     output_string: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, *const u16) -> Status,
     test_string: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, *const u16) -> Status,
     query_mode: *const (),
@@ -101,13 +99,13 @@ struct SimpleTextOutputProtocol {
     set_attribute: *const (),
     clear_screen: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol) -> Status,
     set_cursor_pos: *const (),
-    enable_cursor: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, Boolean) -> Status,
+    enable_cursor: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, bool) -> Status,
     mode: *const (),
 }
 
 impl SimpleTextOutputProtocol {
     pub fn reset(&mut self) -> Status {
-        unsafe { (self.reset)(self, 0) }
+        unsafe { (self.reset)(self, false) }
     }
 
     pub fn output_string(&mut self, string: &str) -> Status {
