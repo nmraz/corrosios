@@ -192,7 +192,12 @@ pub extern "efiapi" fn efi_main(
     let stdout = unsafe { &mut *system_table.console_out_protocol };
 
     stdout.reset();
-    write!(stdout, "Firmware vendor: {}", firmware_vendor).unwrap();
+    write!(
+        stdout,
+        "Firmware vendor: {}\nFirmware revision: {}",
+        firmware_vendor, system_table.firmware_revision
+    )
+    .unwrap();
 
     halt();
 }
