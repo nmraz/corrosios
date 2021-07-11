@@ -2,10 +2,10 @@
 #![no_std]
 #![no_main]
 
-use core::fmt::Write;
+use core::convert::TryFrom;
+use core::fmt::{self, Write};
 use core::panic::PanicInfo;
-
-use arrayvec::ArrayString;
+use core::{mem, slice};
 
 fn halt() -> ! {
     unsafe {
@@ -23,9 +23,41 @@ fn handle_panic(_info: &PanicInfo) -> ! {
 
 type Status = usize;
 
+const STATUS_SUCCESS: Status = 0;
+const STATUS_WARN_UNKNOWN_GLYPH: Status = 1;
+
 type Tpl = usize;
 type Boolean = u8;
 type Handle = *mut ();
+
+#[repr(transparent)]
+struct CStr16([u16]);
+
+impl CStr16 {
+    pub unsafe fn from_ptr<'a>(ptr: *const u16) -> &'a Self {
+        let mut len = 0;
+        while *ptr.add(len) != 0 {
+            len += 1;
+        }
+
+        let data = slice::from_raw_parts(ptr, len);
+        mem::transmute(data)
+    }
+
+    pub fn as_slice(&self) -> &[u16] {
+        // SAFETY: transparent representation
+        unsafe { mem::transmute(self) }
+    }
+}
+
+impl fmt::Display for CStr16 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for &c in self.as_slice() {
+            char::try_from(c as u32).map_err(|_| fmt::Error)?.fmt(f)?;
+        }
+        Ok(())
+    }
+}
 
 #[repr(C)]
 pub struct TableHeader {
@@ -73,6 +105,60 @@ struct SimpleTextOutputProtocol {
     mode: *const (),
 }
 
+impl SimpleTextOutputProtocol {
+    pub fn reset(&mut self) -> Status {
+        unsafe { (self.reset)(self, 0) }
+    }
+
+    pub fn output_string(&mut self, string: &str) -> Status {
+        const BUF_LEN: usize = 64;
+
+        let mut buf = [0u16; BUF_LEN + 1];
+        let mut i = 0;
+
+        let mut status = STATUS_SUCCESS;
+
+        let res = ucs2::encode_with(string, |ch| {
+            if i == BUF_LEN {
+                status = unsafe { (self.output_string)(self, &buf[0]) };
+
+                buf.fill(0);
+                i = 0;
+
+                if status != STATUS_SUCCESS {
+                    return Err(ucs2::Error::MultiByte);
+                }
+            }
+
+            buf[i] = ch;
+            i += 1;
+
+            Ok(())
+        });
+
+        if res.is_err() {
+            return if status == STATUS_SUCCESS {
+                STATUS_WARN_UNKNOWN_GLYPH
+            } else {
+                status
+            };
+        }
+
+        unsafe { (self.output_string)(self, &buf[0]) }
+    }
+}
+
+impl fmt::Write for SimpleTextOutputProtocol {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let status = self.output_string(s);
+        if status != STATUS_SUCCESS {
+            Err(fmt::Error)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 #[repr(C)]
 pub struct SystemTable {
     header: TableHeader,
@@ -84,7 +170,7 @@ pub struct SystemTable {
     console_out_protocol: *mut SimpleTextOutputProtocol,
     stderr_handle: Handle,
     stderr_protocol: *mut SimpleTextOutputProtocol,
-    runtime_services: Handle, // TODO
+    runtime_services: *const (), // TODO
     boot_services: *const BootServices,
     num_entries: usize,
     configuration_table: Handle, // TODO
@@ -95,26 +181,11 @@ pub extern "efiapi" fn efi_main(
     _image_handle: Handle,
     system_table: &'static SystemTable,
 ) -> Status {
-    let console_out = unsafe { &mut *system_table.console_out_protocol };
+    let firmware_vendor = unsafe { CStr16::from_ptr(system_table.firmware_vendor) };
+    let stdout = unsafe { &mut *system_table.console_out_protocol };
 
-    let mut msg = ArrayString::<30>::new();
-    let mut str_buf = [0u16; 30];
-
-    write!(
-        &mut msg,
-        "Firmware revision: {}",
-        system_table.firmware_revision
-    )
-    .unwrap();
-
-    for (cp, pos) in msg.encode_utf16().zip(&mut str_buf) {
-        *pos = cp as u16;
-    }
-
-    unsafe {
-        (console_out.reset)(console_out, 0);
-        (console_out.output_string)(console_out, &str_buf[0]);
-    }
+    stdout.reset();
+    write!(stdout, "Firmware vendor: {}", firmware_vendor).unwrap();
 
     halt();
 }
