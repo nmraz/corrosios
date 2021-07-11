@@ -4,8 +4,9 @@
 
 use core::convert::TryFrom;
 use core::fmt::{self, Write};
+use core::mem::MaybeUninit;
 use core::panic::PanicInfo;
-use core::{mem, slice};
+use core::{mem, ptr, slice};
 
 fn halt() -> ! {
     unsafe {
@@ -23,8 +24,23 @@ fn handle_panic(_info: &PanicInfo) -> ! {
 
 type Status = usize;
 
+const ERROR_BIT: Status = 1 << (mem::size_of::<usize>() * 8 - 1);
+
 const STATUS_SUCCESS: Status = 0;
+const STATUS_BUFFER_TOO_SMALL: Status = 5 | ERROR_BIT;
 const STATUS_WARN_UNKNOWN_GLYPH: Status = 1;
+
+type MemoryType = u32;
+
+const MEMORY_TYPE_RESERVED: MemoryType = 0;
+const MEMORY_TYPE_LOADER_CODE: MemoryType = 1;
+const MEMORY_TYPE_LOADER_DATA: MemoryType = 2;
+const MEMORY_TYPE_BOOT_SERVICES_CODE: MemoryType = 3;
+const MEMORY_TYPE_BOOT_SERVICES_DATA: MemoryType = 4;
+const MEMORY_TYPE_RUNTIME_SERVICES_CODE: MemoryType = 5;
+const MEMORY_TYPE_RUNTIME_SERVICES_DATA: MemoryType = 6;
+const MEMORY_TYPE_CONVENTIONAL: MemoryType = 7;
+const MEMORY_TYPE_UNUSABLE: MemoryType = 8;
 
 type Handle = *mut ();
 
@@ -58,6 +74,15 @@ impl fmt::Display for CStr16 {
 }
 
 #[repr(C)]
+pub struct MemoryDescriptor {
+    mem_type: MemoryType,
+    phys_start: u64,
+    virt_start: u64,
+    page_count: u64,
+    attr: u64,
+}
+
+#[repr(C)]
 pub struct TableHeader {
     signature: u64,
     revision: u32,
@@ -76,9 +101,15 @@ pub struct BootServices {
     // TODO:
     allocate_pages: *const (),
     free_pages: *const (),
-    get_memory_map: *const (),
-    allocate_pool: *const (),
-    free_pool: *const (),
+    get_memory_map: unsafe extern "efiapi" fn(
+        *mut usize,
+        *mut MemoryDescriptor,
+        *mut usize,
+        *mut usize,
+        *mut u32,
+    ) -> Status,
+    allocate_pool: unsafe extern "efiapi" fn(MemoryType, usize, *mut *mut u8) -> Status,
+    free_pool: unsafe extern "efiapi" fn(*mut u8) -> Status,
 
     create_event: *const (),
     set_timer: *const (),
@@ -89,8 +120,71 @@ pub struct BootServices {
     // TODO...
 }
 
+impl BootServices {
+    pub fn memory_map_size(&self) -> usize {
+        let mut mmap_size = 0;
+        let mut key = 0;
+        let mut desc_size = 0;
+        let mut version = 0;
+
+        let status = unsafe {
+            (self.get_memory_map)(
+                &mut mmap_size,
+                ptr::null_mut(),
+                &mut key,
+                &mut desc_size,
+                &mut version,
+            )
+        };
+        assert_eq!(status, STATUS_BUFFER_TOO_SMALL);
+
+        mmap_size
+    }
+
+    /// # Safety
+    /// Alignment
+    pub unsafe fn memory_map<'a>(
+        &self,
+        buf: &'a mut [MaybeUninit<u8>],
+    ) -> impl Iterator<Item = &'a MemoryDescriptor> {
+        let mut size = buf.len();
+        let mut key = 0;
+        let mut desc_size = 0;
+        let mut version = 0;
+
+        let status = (self.get_memory_map)(
+            &mut size,
+            &mut buf[0] as *mut _ as *mut MemoryDescriptor,
+            &mut key,
+            &mut desc_size,
+            &mut version,
+        );
+        assert_eq!(status, STATUS_SUCCESS);
+
+        buf[..size].chunks(desc_size).map(move |chunk| {
+            assert_eq!(chunk.len(), desc_size);
+            // SAFETY: we trust the firmware
+            unsafe { &*(&chunk[0] as *const _ as *const MemoryDescriptor) }
+        })
+    }
+
+    pub fn alloc(&self, size: usize) -> *mut u8 {
+        let mut p = ptr::null_mut();
+        let status = unsafe { (self.allocate_pool)(MEMORY_TYPE_LOADER_DATA, size, &mut p) };
+        assert_eq!(status, STATUS_SUCCESS);
+
+        p
+    }
+
+    /// # Safety
+    /// TODO
+    pub unsafe fn free(&self, p: *mut u8) {
+        (self.free_pool)(p);
+    }
+}
+
 #[repr(C)]
-struct SimpleTextOutputProtocol {
+pub struct SimpleTextOutputProtocol {
     reset: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, bool) -> Status,
     output_string: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, *const u16) -> Status,
     test_string: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, *const u16) -> Status,
@@ -186,16 +280,34 @@ pub extern "efiapi" fn efi_main(
     _image_handle: Handle,
     system_table: &'static SystemTable,
 ) -> Status {
-    let firmware_vendor = unsafe { CStr16::from_ptr(system_table.firmware_vendor) };
+    let boot_services = unsafe { &*system_table.boot_services };
     let stdout = unsafe { &mut *system_table.console_out_protocol };
 
+    let firmware_vendor = unsafe { CStr16::from_ptr(system_table.firmware_vendor) };
+
     stdout.reset();
-    write!(
+    writeln!(
         stdout,
-        "Firmware vendor: {}\nFirmware revision: {}",
+        "Firmware vendor: {}\nFirmware revision: {}\n",
         firmware_vendor, system_table.firmware_revision
     )
     .unwrap();
+
+    let mmap_size = boot_services.memory_map_size() + 0x100;
+    writeln!(stdout, "Memory map size: {}", mmap_size).unwrap();
+    let mmap_buf = {
+        let buf = boot_services.alloc(mmap_size) as *mut _;
+        unsafe { slice::from_raw_parts_mut(buf, mmap_size) }
+    };
+
+    let mmap = unsafe { boot_services.memory_map(mmap_buf) };
+
+    writeln!(stdout, "Memory map:").unwrap();
+    for desc in mmap {
+        let base = desc.phys_start;
+        let end = base + desc.page_count * 0x1000;
+        writeln!(stdout, "{:x}-{:x}: {}", base, end, desc.mem_type).unwrap();
+    }
 
     halt();
 }
