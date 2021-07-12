@@ -154,7 +154,7 @@ impl BootServices {
 
         let status = (self.get_memory_map)(
             &mut size,
-            &mut buf[0] as *mut _ as *mut MemoryDescriptor,
+            buf.as_mut_ptr() as *mut MemoryDescriptor,
             &mut key,
             &mut desc_size,
             &mut version,
@@ -164,7 +164,7 @@ impl BootServices {
         buf[..size].chunks(desc_size).map(move |chunk| {
             assert_eq!(chunk.len(), desc_size);
             // SAFETY: aligned, we trust the firmware
-            unsafe { &*(&chunk[0] as *const _ as *const MemoryDescriptor) }
+            unsafe { &*(chunk.as_ptr() as *const MemoryDescriptor) }
         })
     }
 
@@ -212,7 +212,7 @@ impl SimpleTextOutputProtocol {
 
         let mut putchar = |ch| {
             if i == BUF_LEN {
-                status = unsafe { (self.output_string)(self, &buf[0]) };
+                status = unsafe { (self.output_string)(self, buf.as_ptr()) };
 
                 buf.fill(0);
                 i = 0;
@@ -243,7 +243,7 @@ impl SimpleTextOutputProtocol {
             };
         }
 
-        unsafe { (self.output_string)(self, &buf[0]) }
+        unsafe { (self.output_string)(self, buf.as_ptr()) }
     }
 }
 
