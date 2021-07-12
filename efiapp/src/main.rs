@@ -306,7 +306,13 @@ pub extern "efiapi" fn efi_main(
         .map(|desc| desc.page_count)
         .sum();
 
-    writeln!(stdout, "Free memory: {} pages", conventional_mem_pages).unwrap();
+    writeln!(
+        stdout,
+        "Free memory: {} pages (~{} MiB)",
+        conventional_mem_pages,
+        (conventional_mem_pages * 0x1000) / 0x100000
+    )
+    .unwrap();
 
     halt();
 }
