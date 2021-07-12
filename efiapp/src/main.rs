@@ -294,7 +294,6 @@ pub extern "efiapi" fn efi_main(
     .unwrap();
 
     let mmap_size = boot_services.memory_map_size() + 0x100;
-    writeln!(stdout, "Memory map size: {}", mmap_size).unwrap();
     let mmap_buf = {
         let buf = boot_services.alloc(mmap_size) as *mut _;
         unsafe { slice::from_raw_parts_mut(buf, mmap_size) }
@@ -302,12 +301,12 @@ pub extern "efiapi" fn efi_main(
 
     let mmap = unsafe { boot_services.memory_map(mmap_buf) };
 
-    writeln!(stdout, "Memory map:").unwrap();
-    for desc in mmap {
-        let base = desc.phys_start;
-        let end = base + desc.page_count * 0x1000;
-        writeln!(stdout, "{:x}-{:x}: {}", base, end, desc.mem_type).unwrap();
-    }
+    let conventional_mem_pages: u64 = mmap
+        .filter(|desc| desc.mem_type == MEMORY_TYPE_CONVENTIONAL)
+        .map(|desc| desc.page_count)
+        .sum();
+
+    writeln!(stdout, "Free memory: {} pages", conventional_mem_pages).unwrap();
 
     halt();
 }
