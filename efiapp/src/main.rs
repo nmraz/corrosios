@@ -163,7 +163,7 @@ impl BootServices {
 
         buf[..size].chunks(desc_size).map(move |chunk| {
             assert_eq!(chunk.len(), desc_size);
-            // SAFETY: we trust the firmware
+            // SAFETY: aligned, we trust the firmware
             unsafe { &*(&chunk[0] as *const _ as *const MemoryDescriptor) }
         })
     }
