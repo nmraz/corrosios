@@ -48,6 +48,10 @@ impl U16CStr {
         // Safety: transparent representation
         unsafe { mem::transmute(self) }
     }
+
+    pub fn as_ptr(&self) -> *const u16 {
+        self.as_slice().as_ptr()
+    }
 }
 
 impl fmt::Display for U16CStr {
@@ -149,7 +153,7 @@ impl BootServices {
 
         buf[..size].chunks(desc_size).map(move |chunk| {
             assert_eq!(chunk.len(), desc_size);
-            // SAFETY: aligned, we trust the firmware
+            // Safety: aligned, we trust the firmware
             unsafe { &*(chunk.as_ptr() as *const MemoryDescriptor) }
         })
     }
@@ -163,7 +167,8 @@ impl BootServices {
     }
 
     /// # Safety
-    /// TODO
+    ///
+    /// Must have been allocated with `alloc`.
     pub unsafe fn free(&self, p: *mut u8) {
         (self.free_pool)(p);
     }
@@ -188,7 +193,18 @@ impl SimpleTextOutputProtocol {
         unsafe { (self.reset)(self, false) }
     }
 
-    pub fn output_string(&mut self, string: &str) -> Status {
+    /// # Safety
+    ///
+    /// Must be null-terminated.
+    pub unsafe fn output_string_unchecked(&mut self, s: *const u16) -> Status {
+        (self.output_string)(self, s)
+    }
+
+    pub fn output_u16_str(&mut self, s: &U16CStr) -> Status {
+        unsafe { self.output_string_unchecked(s.as_ptr()) }
+    }
+
+    pub fn output_str(&mut self, s: &str) -> Status {
         const BUF_LEN: usize = 64;
 
         let mut buf = [0u16; BUF_LEN + 1];
@@ -198,7 +214,7 @@ impl SimpleTextOutputProtocol {
 
         let mut putchar = |ch| {
             if i == BUF_LEN {
-                status = unsafe { (self.output_string)(self, buf.as_ptr()) };
+                status = unsafe { self.output_string_unchecked(buf.as_ptr()) };
 
                 buf.fill(0);
                 i = 0;
@@ -214,7 +230,7 @@ impl SimpleTextOutputProtocol {
             Ok(())
         };
 
-        let res = ucs2::encode_with(string, |ch| {
+        let res = ucs2::encode_with(s, |ch| {
             if ch == b'\n' as u16 {
                 putchar(b'\r' as u16)?;
             }
@@ -229,13 +245,13 @@ impl SimpleTextOutputProtocol {
             };
         }
 
-        unsafe { (self.output_string)(self, buf.as_ptr()) }
+        unsafe { self.output_string_unchecked(buf.as_ptr()) }
     }
 }
 
 impl fmt::Write for SimpleTextOutputProtocol {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let status = self.output_string(s);
+        let status = self.output_str(s);
         if status != STATUS_SUCCESS {
             Err(fmt::Error)
         } else {
