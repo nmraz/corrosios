@@ -131,9 +131,7 @@ impl BootServices {
         mmap_size
     }
 
-    /// # Safety
-    /// Alignment
-    pub unsafe fn memory_map<'a>(
+    pub fn memory_map<'a>(
         &self,
         buf: &'a mut [MaybeUninit<u8>],
     ) -> impl Iterator<Item = &'a MemoryDescriptor> {
@@ -142,13 +140,21 @@ impl BootServices {
         let mut desc_size = 0;
         let mut version = 0;
 
-        let status = (self.get_memory_map)(
-            &mut size,
-            buf.as_mut_ptr() as *mut MemoryDescriptor,
-            &mut key,
-            &mut desc_size,
-            &mut version,
+        assert_eq!(
+            buf.as_ptr() as usize % mem::align_of::<MemoryDescriptor>(),
+            0
         );
+
+        // Safety: buffer is suitably aligned.
+        let status = unsafe {
+            (self.get_memory_map)(
+                &mut size,
+                buf.as_mut_ptr() as *mut MemoryDescriptor,
+                &mut key,
+                &mut desc_size,
+                &mut version,
+            )
+        };
         assert_eq!(status, STATUS_SUCCESS);
 
         buf[..size].chunks(desc_size).map(move |chunk| {

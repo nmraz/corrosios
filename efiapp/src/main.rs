@@ -45,7 +45,7 @@ pub extern "efiapi" fn efi_main(
         unsafe { slice::from_raw_parts_mut(buf, mmap_size) }
     };
 
-    let mmap = unsafe { boot_services.memory_map(mmap_buf) };
+    let mmap = boot_services.memory_map(mmap_buf);
 
     let conventional_mem_pages: u64 = mmap
         .filter(|desc| desc.mem_type == MEMORY_TYPE_CONVENTIONAL)
