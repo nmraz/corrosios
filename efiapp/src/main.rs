@@ -6,7 +6,7 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::slice;
 
-use uefi::{Handle, Status, SystemTable, MEMORY_TYPE_CONVENTIONAL};
+use uefi::{Handle, Result, Status, SystemTable, MEMORY_TYPE_CONVENTIONAL};
 
 fn halt() -> ! {
     unsafe {
@@ -22,15 +22,11 @@ fn handle_panic(_info: &PanicInfo) -> ! {
     halt()
 }
 
-#[no_mangle]
-pub extern "efiapi" fn efi_main(
-    _image_handle: Handle,
-    system_table: &'static SystemTable,
-) -> Status {
+fn run(_image_handle: Handle, system_table: &'static SystemTable) -> Result<()> {
     let boot_services = system_table.boot_services();
     let stdout = unsafe { &mut *system_table.stdout() };
 
-    stdout.reset();
+    stdout.reset()?;
     writeln!(
         stdout,
         "Firmware vendor: {}\nFirmware revision: {}\n",
@@ -39,13 +35,13 @@ pub extern "efiapi" fn efi_main(
     )
     .unwrap();
 
-    let mmap_size = boot_services.memory_map_size() + 0x100;
+    let mmap_size = boot_services.memory_map_size()? + 0x100;
     let mmap_buf = {
-        let buf = boot_services.alloc(mmap_size) as *mut _;
+        let buf = boot_services.alloc(mmap_size)? as *mut _;
         unsafe { slice::from_raw_parts_mut(buf, mmap_size) }
     };
 
-    let mmap = boot_services.memory_map(mmap_buf);
+    let mmap = boot_services.memory_map(mmap_buf)?;
 
     let conventional_mem_pages: u64 = mmap
         .filter(|desc| desc.mem_type == MEMORY_TYPE_CONVENTIONAL)
@@ -60,5 +56,14 @@ pub extern "efiapi" fn efi_main(
     )
     .unwrap();
 
+    Ok(())
+}
+
+#[no_mangle]
+pub extern "efiapi" fn efi_main(
+    image_handle: Handle,
+    system_table: &'static SystemTable,
+) -> Status {
+    let _ = run(image_handle, system_table);
     halt();
 }

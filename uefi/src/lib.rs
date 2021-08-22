@@ -5,13 +5,9 @@ use core::convert::TryFrom;
 use core::mem::MaybeUninit;
 use core::{fmt, mem, ptr, slice};
 
-pub type Status = usize;
+pub use status::{Result, Status};
 
-pub const ERROR_BIT: Status = 1 << (mem::size_of::<usize>() * 8 - 1);
-
-pub const STATUS_SUCCESS: Status = 0;
-pub const STATUS_BUFFER_TOO_SMALL: Status = 5 | ERROR_BIT;
-pub const STATUS_WARN_UNKNOWN_GLYPH: Status = 1;
+mod status;
 
 pub type MemoryType = u32;
 
@@ -111,7 +107,7 @@ pub struct BootServices {
 }
 
 impl BootServices {
-    pub fn memory_map_size(&self) -> usize {
+    pub fn memory_map_size(&self) -> Result<usize> {
         let mut mmap_size = 0;
         let mut key = 0;
         let mut desc_size = 0;
@@ -126,15 +122,18 @@ impl BootServices {
                 &mut version,
             )
         };
-        assert_eq!(status, STATUS_BUFFER_TOO_SMALL);
 
-        mmap_size
+        if status != Status::BUFFER_TOO_SMALL {
+            status.to_result()?;
+        }
+
+        Ok(mmap_size)
     }
 
     pub fn memory_map<'a>(
         &self,
         buf: &'a mut [MaybeUninit<u8>],
-    ) -> impl Iterator<Item = &'a MemoryDescriptor> {
+    ) -> Result<impl Iterator<Item = &'a MemoryDescriptor>> {
         let mut size = buf.len();
         let mut key = 0;
         let mut desc_size = 0;
@@ -146,7 +145,7 @@ impl BootServices {
         );
 
         // Safety: buffer is suitably aligned.
-        let status = unsafe {
+        unsafe {
             (self.get_memory_map)(
                 &mut size,
                 buf.as_mut_ptr() as *mut MemoryDescriptor,
@@ -154,29 +153,29 @@ impl BootServices {
                 &mut desc_size,
                 &mut version,
             )
-        };
-        assert_eq!(status, STATUS_SUCCESS);
+        }
+        .to_result()?;
 
-        buf[..size].chunks(desc_size).map(move |chunk| {
+        Ok(buf[..size].chunks(desc_size).map(move |chunk| {
             assert_eq!(chunk.len(), desc_size);
             // Safety: aligned, we trust the firmware
             unsafe { &*(chunk.as_ptr() as *const MemoryDescriptor) }
-        })
+        }))
     }
 
-    pub fn alloc(&self, size: usize) -> *mut u8 {
+    pub fn alloc(&self, size: usize) -> Result<*mut u8> {
         let mut p = ptr::null_mut();
-        let status = unsafe { (self.allocate_pool)(MEMORY_TYPE_LOADER_DATA, size, &mut p) };
-        assert_eq!(status, STATUS_SUCCESS);
+        unsafe { (self.allocate_pool)(MEMORY_TYPE_LOADER_DATA, size, &mut p) }.to_result()?;
 
-        p
+        assert_ne!(p, ptr::null_mut());
+        Ok(p)
     }
 
     /// # Safety
     ///
     /// Must have been allocated with `alloc`.
     pub unsafe fn free(&self, p: *mut u8) {
-        (self.free_pool)(p);
+        (self.free_pool)(p).to_result().expect("invalid pointer");
     }
 }
 
@@ -195,39 +194,36 @@ pub struct SimpleTextOutputProtocol {
 }
 
 impl SimpleTextOutputProtocol {
-    pub fn reset(&mut self) -> Status {
-        unsafe { (self.reset)(self, false) }
+    pub fn reset(&mut self) -> Result<()> {
+        unsafe { (self.reset)(self, false) }.to_result()
     }
 
     /// # Safety
     ///
     /// Must be null-terminated.
-    pub unsafe fn output_string_unchecked(&mut self, s: *const u16) -> Status {
-        (self.output_string)(self, s)
+    pub unsafe fn output_string_unchecked(&mut self, s: *const u16) -> Result<()> {
+        (self.output_string)(self, s).to_result()
     }
 
-    pub fn output_u16_str(&mut self, s: &U16CStr) -> Status {
+    pub fn output_u16_str(&mut self, s: &U16CStr) -> Result<()> {
         unsafe { self.output_string_unchecked(s.as_ptr()) }
     }
 
-    pub fn output_str(&mut self, s: &str) -> Status {
+    pub fn output_str(&mut self, s: &str) -> Result<()> {
         const BUF_LEN: usize = 64;
 
         let mut buf = [0u16; BUF_LEN + 1];
         let mut i = 0;
 
-        let mut status = STATUS_SUCCESS;
+        let mut status = Ok(());
 
         let mut putchar = |ch| {
             if i == BUF_LEN {
                 status = unsafe { self.output_string_unchecked(buf.as_ptr()) };
+                status.map_err(|_| ucs2::Error::BufferOverflow)?;
 
                 buf.fill(0);
                 i = 0;
-
-                if status != STATUS_SUCCESS {
-                    return Err(ucs2::Error::MultiByte);
-                }
             }
 
             buf[i] = ch;
@@ -243,13 +239,8 @@ impl SimpleTextOutputProtocol {
             putchar(ch)
         });
 
-        if res.is_err() {
-            return if status == STATUS_SUCCESS {
-                STATUS_WARN_UNKNOWN_GLYPH
-            } else {
-                status
-            };
-        }
+        status?;
+        res.map_err(|_| Status::WARN_UNKNOWN_GLYPH)?;
 
         unsafe { self.output_string_unchecked(buf.as_ptr()) }
     }
@@ -257,12 +248,7 @@ impl SimpleTextOutputProtocol {
 
 impl fmt::Write for SimpleTextOutputProtocol {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let status = self.output_str(s);
-        if status != STATUS_SUCCESS {
-            Err(fmt::Error)
-        } else {
-            Ok(())
-        }
+        self.output_str(s).map_err(|_| fmt::Error)
     }
 }
 
