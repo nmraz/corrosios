@@ -42,8 +42,7 @@ impl U16CStr {
     }
 
     pub fn as_slice(&self) -> &[u16] {
-        // Safety: transparent representation
-        unsafe { mem::transmute(self) }
+        &self.0
     }
 
     pub fn as_ptr(&self) -> *const u16 {
