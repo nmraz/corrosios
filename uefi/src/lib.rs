@@ -21,7 +21,8 @@ pub const MEMORY_TYPE_RUNTIME_SERVICES_DATA: MemoryType = 6;
 pub const MEMORY_TYPE_CONVENTIONAL: MemoryType = 7;
 pub const MEMORY_TYPE_UNUSABLE: MemoryType = 8;
 
-pub type Handle = *mut ();
+#[repr(transparent)]
+pub struct Handle(*const ());
 
 #[repr(transparent)]
 pub struct U16CStr([u16]);
