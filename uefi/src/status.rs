@@ -1,6 +1,6 @@
-use core::mem;
+use core::{mem, result};
 
-pub type Result<T> = core::result::Result<T, Status>;
+pub type Result<T> = result::Result<T, Status>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -11,7 +11,10 @@ const ERROR_BIT: usize = 1 << (mem::size_of::<usize>() * 8 - 1);
 
 impl Status {
     pub const SUCCESS: Self = Self(0);
+
+    pub const INVALID_PARAMETER: Self = Self(2 | ERROR_BIT);
     pub const BUFFER_TOO_SMALL: Self = Self(5 | ERROR_BIT);
+
     pub const WARN_UNKNOWN_GLYPH: Self = Self(1);
 
     pub fn is_err(self) -> bool {
