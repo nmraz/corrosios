@@ -2,24 +2,11 @@
 #![no_std]
 
 use core::convert::TryFrom;
-use core::mem::MaybeUninit;
 use core::{fmt, mem, ptr, slice};
 
 pub use status::{Result, Status};
 
 mod status;
-
-pub type MemoryType = u32;
-
-pub const MEMORY_TYPE_RESERVED: MemoryType = 0;
-pub const MEMORY_TYPE_LOADER_CODE: MemoryType = 1;
-pub const MEMORY_TYPE_LOADER_DATA: MemoryType = 2;
-pub const MEMORY_TYPE_BOOT_SERVICES_CODE: MemoryType = 3;
-pub const MEMORY_TYPE_BOOT_SERVICES_DATA: MemoryType = 4;
-pub const MEMORY_TYPE_RUNTIME_SERVICES_CODE: MemoryType = 5;
-pub const MEMORY_TYPE_RUNTIME_SERVICES_DATA: MemoryType = 6;
-pub const MEMORY_TYPE_CONVENTIONAL: MemoryType = 7;
-pub const MEMORY_TYPE_UNUSABLE: MemoryType = 8;
 
 #[repr(transparent)]
 pub struct Handle(*const ());
@@ -59,6 +46,22 @@ impl fmt::Display for U16CStr {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct MemoryMapKey(usize);
+
+pub type MemoryType = u32;
+
+pub const MEMORY_TYPE_RESERVED: MemoryType = 0;
+pub const MEMORY_TYPE_LOADER_CODE: MemoryType = 1;
+pub const MEMORY_TYPE_LOADER_DATA: MemoryType = 2;
+pub const MEMORY_TYPE_BOOT_SERVICES_CODE: MemoryType = 3;
+pub const MEMORY_TYPE_BOOT_SERVICES_DATA: MemoryType = 4;
+pub const MEMORY_TYPE_RUNTIME_SERVICES_CODE: MemoryType = 5;
+pub const MEMORY_TYPE_RUNTIME_SERVICES_DATA: MemoryType = 6;
+pub const MEMORY_TYPE_CONVENTIONAL: MemoryType = 7;
+pub const MEMORY_TYPE_UNUSABLE: MemoryType = 8;
+
 #[repr(C)]
 pub struct MemoryDescriptor {
     pub mem_type: MemoryType,
@@ -90,7 +93,7 @@ pub struct BootServices {
     get_memory_map: unsafe extern "efiapi" fn(
         *mut usize,
         *mut MemoryDescriptor,
-        *mut usize,
+        *mut MemoryMapKey,
         *mut usize,
         *mut u32,
     ) -> Status,
@@ -109,7 +112,7 @@ pub struct BootServices {
 impl BootServices {
     pub fn memory_map_size(&self) -> Result<usize> {
         let mut mmap_size = 0;
-        let mut key = 0;
+        let mut key = MemoryMapKey(0);
         let mut desc_size = 0;
         let mut version = 0;
 
@@ -132,10 +135,10 @@ impl BootServices {
 
     pub fn memory_map<'a>(
         &self,
-        buf: &'a mut [MaybeUninit<u8>],
-    ) -> Result<impl Iterator<Item = &'a MemoryDescriptor>> {
+        buf: &'a mut [u8],
+    ) -> Result<(MemoryMapKey, impl Iterator<Item = &'a MemoryDescriptor>)> {
         let mut size = buf.len();
-        let mut key = 0;
+        let mut key = MemoryMapKey(0);
         let mut desc_size = 0;
         let mut version = 0;
 
@@ -156,11 +159,13 @@ impl BootServices {
         }
         .to_result()?;
 
-        Ok(buf[..size].chunks(desc_size).map(move |chunk| {
+        let iter = buf[..size].chunks(desc_size).map(move |chunk| {
             assert_eq!(chunk.len(), desc_size);
             // Safety: aligned, we trust the firmware
             unsafe { &*(chunk.as_ptr() as *const MemoryDescriptor) }
-        }))
+        });
+
+        Ok((key, iter))
     }
 
     pub fn alloc(&self, size: usize) -> Result<*mut u8> {

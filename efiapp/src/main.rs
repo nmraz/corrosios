@@ -37,11 +37,11 @@ fn run(_image_handle: Handle, system_table: &'static SystemTable) -> Result<()> 
 
     let mmap_size = boot_services.memory_map_size()? + 0x100;
     let mmap_buf = {
-        let buf = boot_services.alloc(mmap_size)? as *mut _;
+        let buf = boot_services.alloc(mmap_size)?;
         unsafe { slice::from_raw_parts_mut(buf, mmap_size) }
     };
 
-    let mmap = boot_services.memory_map(mmap_buf)?;
+    let (_key, mmap) = boot_services.memory_map(mmap_buf)?;
 
     let conventional_mem_pages: u64 = mmap
         .filter(|desc| desc.mem_type == MEMORY_TYPE_CONVENTIONAL)
