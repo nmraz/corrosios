@@ -107,6 +107,22 @@ pub struct BootServices {
     signal_event: *const (),
     close_event: *const (),
     check_event: *const (),
+
+    install_protocol_interface: *const (),
+    reinstall_protocol_interface: *const (),
+    uninstall_protocol_interface: *const (),
+    handle_protocol: *const (),
+    reserved: *const (),
+    register_protocol_notify: *const (),
+    locate_handle: *const (),
+    locate_device_path: *const (),
+    install_configuration_table: *const (),
+
+    load_image: *const (),
+    start_image: *const (),
+    exit: *const (),
+    unload_image: *const (),
+    exit_boot_services: unsafe extern "efiapi" fn(Handle, MemoryMapKey) -> Status,
     // TODO...
 }
 
@@ -298,11 +314,40 @@ impl<S: TableState> SystemTableHandle<S> {
     pub fn firmware_revision(&self) -> u32 {
         self.0.firmware_revision
     }
+}
+
+pub enum ExitBootServicesError {
+    StaleMemoryMap(SystemTableHandle<BootState>),
+    Error(Status),
+}
 
 impl SystemTableHandle<BootState> {
     pub fn boot_services(&self) -> &BootServices {
         // Safety: we haven't exited boot services, so this pointer is valid.
         unsafe { &*self.0.boot_services }
+    }
+
+    /// # Safety
+    ///
+    /// If this function fails due to a stale memory map (and returns the existing table handle),
+    /// the only boot services that can be called are those related to memory allocation.
+    pub unsafe fn exit_boot_services(
+        self,
+        image_handle: Handle,
+        key: MemoryMapKey,
+    ) -> result::Result<SystemTableHandle<RuntimeState>, ExitBootServicesError> {
+        let ptr = self.0;
+        (self.boot_services().exit_boot_services)(image_handle, key)
+            .to_result()
+            .map_err(|status| {
+                if status == Status::INVALID_PARAMETER {
+                    ExitBootServicesError::StaleMemoryMap(SystemTableHandle::new(ptr))
+                } else {
+                    ExitBootServicesError::Error(status)
+                }
+            })?;
+
+        Ok(SystemTableHandle::new(ptr))
     }
 
     pub fn stdout(&self) -> *mut SimpleTextOutputProtocol {
