@@ -153,7 +153,10 @@ impl BootServices {
     pub fn memory_map<'a>(
         &self,
         buf: &'a mut [u8],
-    ) -> Result<(MemoryMapKey, impl Iterator<Item = &'a MemoryDescriptor>)> {
+    ) -> Result<(
+        MemoryMapKey,
+        impl ExactSizeIterator<Item = &'a MemoryDescriptor> + Clone,
+    )> {
         let mut size = buf.len();
         let mut key = MemoryMapKey(0);
         let mut desc_size = 0;
