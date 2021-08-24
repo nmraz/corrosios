@@ -2,7 +2,8 @@
 #![no_std]
 
 use core::convert::TryFrom;
-use core::{fmt, mem, ptr, slice};
+use core::marker::PhantomData;
+use core::{fmt, mem, ptr, result, slice};
 
 pub use status::{Result, Status};
 
@@ -258,7 +259,7 @@ impl fmt::Write for SimpleTextOutputProtocol {
 }
 
 #[repr(C)]
-pub struct SystemTable {
+struct SystemTable {
     header: TableHeader,
     firmware_vendor: *const u16,
     firmware_revision: u32,
@@ -274,20 +275,37 @@ pub struct SystemTable {
     configuration_table: Handle, // TODO
 }
 
-impl SystemTable {
+pub trait TableState {}
+
+pub struct BootState;
+impl TableState for BootState {}
+
+pub struct RuntimeState;
+impl TableState for RuntimeState {}
+
+#[repr(transparent)]
+pub struct SystemTableHandle<S: TableState>(&'static SystemTable, PhantomData<S>);
+
+impl<S: TableState> SystemTableHandle<S> {
+    fn new(ptr: &'static SystemTable) -> Self {
+        Self(ptr, PhantomData)
+    }
+
     pub fn firmware_vendor(&self) -> &U16CStr {
-        unsafe { U16CStr::from_ptr(self.firmware_vendor) }
+        unsafe { U16CStr::from_ptr(self.0.firmware_vendor) }
     }
 
     pub fn firmware_revision(&self) -> u32 {
-        self.firmware_revision
+        self.0.firmware_revision
     }
 
+impl SystemTableHandle<BootState> {
     pub fn boot_services(&self) -> &BootServices {
-        unsafe { &*self.boot_services }
+        // Safety: we haven't exited boot services, so this pointer is valid.
+        unsafe { &*self.0.boot_services }
     }
 
     pub fn stdout(&self) -> *mut SimpleTextOutputProtocol {
-        self.console_out_protocol
+        self.0.console_out_protocol
     }
 }
