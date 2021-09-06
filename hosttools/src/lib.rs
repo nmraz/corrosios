@@ -64,7 +64,7 @@ fn freestanding_build_cmd(
         package_name,
         "--target",
         target,
-        "-Zbuild-std=core",
+        "-Zbuild-std=core,alloc",
         "-Zbuild-std-features=compiler-builtins-mem",
     ]);
     cmd.args(additional_args);
