@@ -5,9 +5,9 @@
 
 extern crate alloc;
 
+use alloc::vec;
 use core::fmt::Write;
 use core::panic::PanicInfo;
-use core::slice;
 
 use uefi::{BootTableHandle, Handle, Result, Status, MEMORY_TYPE_CONVENTIONAL};
 
@@ -28,40 +28,39 @@ fn handle_panic(_info: &PanicInfo) -> ! {
 }
 
 fn run(_image_handle: Handle, boot_table: BootTableHandle) -> Result<()> {
-    let boot_services = boot_table.boot_services();
-    let stdout = unsafe { &mut *boot_table.stdout() };
+    allocator::with(&boot_table, || {
+        let boot_services = boot_table.boot_services();
+        let stdout = unsafe { &mut *boot_table.stdout() };
 
-    stdout.reset()?;
-    writeln!(
-        stdout,
-        "Firmware vendor: {}\nFirmware revision: {}\n",
-        boot_table.firmware_vendor(),
-        boot_table.firmware_revision()
-    )
-    .unwrap();
+        stdout.reset()?;
+        writeln!(
+            stdout,
+            "Firmware vendor: {}\nFirmware revision: {}\n",
+            boot_table.firmware_vendor(),
+            boot_table.firmware_revision()
+        )
+        .unwrap();
 
-    let mmap_size = boot_services.memory_map_size()? + 0x100;
-    let mmap_buf = {
-        let buf = boot_services.alloc(mmap_size)?;
-        unsafe { slice::from_raw_parts_mut(buf, mmap_size) }
-    };
+        let mmap_size = boot_services.memory_map_size()? + 0x100;
+        let mut mmap_buf = vec![0u8; mmap_size];
 
-    let (_key, mmap) = boot_services.memory_map(mmap_buf)?;
+        let (_key, mmap) = boot_services.memory_map(&mut mmap_buf)?;
 
-    let conventional_mem_pages: u64 = mmap
-        .filter(|desc| desc.mem_type == MEMORY_TYPE_CONVENTIONAL)
-        .map(|desc| desc.page_count)
-        .sum();
+        let conventional_mem_pages: u64 = mmap
+            .filter(|desc| desc.mem_type == MEMORY_TYPE_CONVENTIONAL)
+            .map(|desc| desc.page_count)
+            .sum();
 
-    writeln!(
-        stdout,
-        "Free memory: {} pages (~{} MiB)",
-        conventional_mem_pages,
-        (conventional_mem_pages * 0x1000) / 0x100000
-    )
-    .unwrap();
+        writeln!(
+            stdout,
+            "Free memory: {} pages (~{} MiB)",
+            conventional_mem_pages,
+            (conventional_mem_pages * 0x1000) / 0x100000
+        )
+        .unwrap();
 
-    Ok(())
+        Ok(())
+    })
 }
 
 #[no_mangle]
