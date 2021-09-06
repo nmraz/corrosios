@@ -6,7 +6,7 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::slice;
 
-use uefi::{BootState, Handle, Result, Status, SystemTableHandle, MEMORY_TYPE_CONVENTIONAL};
+use uefi::{BootTableHandle, Handle, Result, Status, MEMORY_TYPE_CONVENTIONAL};
 
 fn halt() -> ! {
     unsafe {
@@ -22,16 +22,16 @@ fn handle_panic(_info: &PanicInfo) -> ! {
     halt()
 }
 
-fn run(_image_handle: Handle, system_table: SystemTableHandle<BootState>) -> Result<()> {
-    let boot_services = system_table.boot_services();
-    let stdout = unsafe { &mut *system_table.stdout() };
+fn run(_image_handle: Handle, boot_table: BootTableHandle) -> Result<()> {
+    let boot_services = boot_table.boot_services();
+    let stdout = unsafe { &mut *boot_table.stdout() };
 
     stdout.reset()?;
     writeln!(
         stdout,
         "Firmware vendor: {}\nFirmware revision: {}\n",
-        system_table.firmware_vendor(),
-        system_table.firmware_revision()
+        boot_table.firmware_vendor(),
+        boot_table.firmware_revision()
     )
     .unwrap();
 
@@ -60,10 +60,7 @@ fn run(_image_handle: Handle, system_table: SystemTableHandle<BootState>) -> Res
 }
 
 #[no_mangle]
-pub extern "efiapi" fn efi_main(
-    image_handle: Handle,
-    system_table: SystemTableHandle<BootState>,
-) -> Status {
-    let _ = run(image_handle, system_table);
+pub extern "efiapi" fn efi_main(image_handle: Handle, boot_table: BootTableHandle) -> Status {
+    let _ = run(image_handle, boot_table);
     halt();
 }

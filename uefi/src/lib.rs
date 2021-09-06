@@ -305,6 +305,9 @@ impl TableState for RuntimeState {}
 #[repr(transparent)]
 pub struct SystemTableHandle<S: TableState>(&'static SystemTable, PhantomData<S>);
 
+pub type BootTableHandle = SystemTableHandle<BootState>;
+pub type RuntimeTableHandle = SystemTableHandle<RuntimeState>;
+
 impl<S: TableState> SystemTableHandle<S> {
     fn new(ptr: &'static SystemTable) -> Self {
         Self(ptr, PhantomData)
@@ -320,11 +323,11 @@ impl<S: TableState> SystemTableHandle<S> {
 }
 
 pub enum ExitBootServicesError {
-    StaleMemoryMap(SystemTableHandle<BootState>),
+    StaleMemoryMap(BootTableHandle),
     Error(Status),
 }
 
-impl SystemTableHandle<BootState> {
+impl BootTableHandle {
     pub fn boot_services(&self) -> &BootServices {
         // Safety: we haven't exited boot services, so this pointer is valid.
         unsafe { &*self.0.boot_services }
@@ -338,19 +341,19 @@ impl SystemTableHandle<BootState> {
         self,
         image_handle: Handle,
         key: MemoryMapKey,
-    ) -> result::Result<SystemTableHandle<RuntimeState>, ExitBootServicesError> {
+    ) -> result::Result<RuntimeTableHandle, ExitBootServicesError> {
         let ptr = self.0;
         (self.boot_services().exit_boot_services)(image_handle, key)
             .to_result()
             .map_err(|status| {
                 if status == Status::INVALID_PARAMETER {
-                    ExitBootServicesError::StaleMemoryMap(SystemTableHandle::new(ptr))
+                    ExitBootServicesError::StaleMemoryMap(BootTableHandle::new(ptr))
                 } else {
                     ExitBootServicesError::Error(status)
                 }
             })?;
 
-        Ok(SystemTableHandle::new(ptr))
+        Ok(RuntimeTableHandle::new(ptr))
     }
 
     pub fn stdout(&self) -> *mut SimpleTextOutputProtocol {
