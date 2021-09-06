@@ -1,12 +1,17 @@
 #![feature(abi_efiapi, asm)]
+#![feature(alloc_error_handler)]
 #![no_std]
 #![no_main]
+
+extern crate alloc;
 
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::slice;
 
 use uefi::{BootTableHandle, Handle, Result, Status, MEMORY_TYPE_CONVENTIONAL};
+
+mod allocator;
 
 fn halt() -> ! {
     unsafe {
