@@ -1,5 +1,5 @@
 use core::alloc::{GlobalAlloc, Layout};
-use core::ptr::{self, NonNull};
+use core::ptr;
 use core::sync::atomic::{AtomicPtr, Ordering};
 
 use uefi::{BootServices, BootTableHandle};
@@ -41,8 +41,10 @@ unsafe impl GlobalAlloc for Allocator {
 static BOOT_SERVICES: AtomicPtr<BootServices> = AtomicPtr::new(ptr::null_mut());
 
 unsafe fn get_boot_services<'a>() -> &'a BootServices {
-    let ptr = NonNull::new(BOOT_SERVICES.load(Ordering::Relaxed)).expect("allocator not available");
-    ptr.as_ref()
+    BOOT_SERVICES
+        .load(Ordering::Relaxed)
+        .as_ref()
+        .expect("allocator not available")
 }
 
 struct BootServicesGuard;
