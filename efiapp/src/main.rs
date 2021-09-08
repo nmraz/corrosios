@@ -9,7 +9,7 @@ use alloc::vec;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 
-use uefi::{BootTableHandle, Handle, Result, Status, MEMORY_TYPE_CONVENTIONAL};
+use uefi::{BootTableHandle, Handle, MemoryType, Result, Status};
 
 mod allocator;
 
@@ -47,7 +47,7 @@ fn run(_image_handle: Handle, boot_table: BootTableHandle) -> Result<()> {
         let (_key, mmap) = boot_services.memory_map(&mut mmap_buf)?;
 
         let conventional_mem_pages: u64 = mmap
-            .filter(|desc| desc.mem_type == MEMORY_TYPE_CONVENTIONAL)
+            .filter(|desc| desc.mem_type == MemoryType::CONVENTIONAL)
             .map(|desc| desc.page_count)
             .sum();
 

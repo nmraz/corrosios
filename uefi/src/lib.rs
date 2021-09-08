@@ -51,17 +51,21 @@ impl fmt::Display for U16CStr {
 #[repr(transparent)]
 pub struct MemoryMapKey(usize);
 
-pub type MemoryType = u32;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct MemoryType(pub u32);
 
-pub const MEMORY_TYPE_RESERVED: MemoryType = 0;
-pub const MEMORY_TYPE_LOADER_CODE: MemoryType = 1;
-pub const MEMORY_TYPE_LOADER_DATA: MemoryType = 2;
-pub const MEMORY_TYPE_BOOT_SERVICES_CODE: MemoryType = 3;
-pub const MEMORY_TYPE_BOOT_SERVICES_DATA: MemoryType = 4;
-pub const MEMORY_TYPE_RUNTIME_SERVICES_CODE: MemoryType = 5;
-pub const MEMORY_TYPE_RUNTIME_SERVICES_DATA: MemoryType = 6;
-pub const MEMORY_TYPE_CONVENTIONAL: MemoryType = 7;
-pub const MEMORY_TYPE_UNUSABLE: MemoryType = 8;
+impl MemoryType {
+    pub const RESERVED: Self = Self(0);
+    pub const LOADER_CODE: Self = Self(1);
+    pub const LOADER_DATA: Self = Self(2);
+    pub const BOOT_SERVICES_CODE: Self = Self(3);
+    pub const BOOT_SERVICES_DATA: Self = Self(4);
+    pub const RUNTIME_SERVICES_CODE: Self = Self(5);
+    pub const RUNTIME_SERVICES_DATA: Self = Self(6);
+    pub const CONVENTIONAL: Self = Self(7);
+    pub const UNUSABLE: Self = Self(8);
+}
 
 #[repr(C)]
 pub struct MemoryDescriptor {
@@ -190,7 +194,7 @@ impl BootServices {
 
     pub fn alloc(&self, size: usize) -> Result<*mut u8> {
         let mut p = ptr::null_mut();
-        unsafe { (self.allocate_pool)(MEMORY_TYPE_LOADER_DATA, size, &mut p) }.to_result()?;
+        unsafe { (self.allocate_pool)(MemoryType::LOADER_DATA, size, &mut p) }.to_result()?;
 
         assert_ne!(p, ptr::null_mut());
         Ok(p)
