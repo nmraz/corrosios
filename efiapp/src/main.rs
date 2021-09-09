@@ -9,7 +9,8 @@ use alloc::vec;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 
-use uefi::{BootTableHandle, Handle, MemoryType, Result, Status};
+use uefi::types::{Handle, MemoryType};
+use uefi::{BootTableHandle, Result, Status};
 
 mod allocator;
 
