@@ -4,6 +4,9 @@ use core::{fmt, mem, slice};
 #[repr(transparent)]
 pub struct Handle(*const ());
 
+#[repr(C)]
+pub struct Guid(pub u32, pub u16, pub u16, pub [u8; 8]);
+
 #[repr(transparent)]
 pub struct U16CStr([u16]);
 
