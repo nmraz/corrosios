@@ -49,9 +49,11 @@ fn run(image_handle: Handle, boot_table: BootTableHandle) -> Result<()> {
 
         writeln!(
             stdout,
-            "Loaded image: base {:?}, size {}",
+            "Loaded image: base {:?}, size {}, code type: {:?}, data type: {:?}",
             loaded_image.image_base(),
-            loaded_image.image_size()
+            loaded_image.image_size(),
+            loaded_image.code_type(),
+            loaded_image.data_type()
         )
         .unwrap();
 

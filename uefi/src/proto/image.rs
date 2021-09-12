@@ -33,4 +33,12 @@ impl LoadedImage {
     pub fn image_size(&self) -> u64 {
         unsafe { (*self.abi()).image_size }
     }
+
+    pub fn code_type(&self) -> MemoryType {
+        unsafe { (*self.abi()).code_type }
+    }
+
+    pub fn data_type(&self) -> MemoryType {
+        unsafe { (*self.abi()).data_type }
+    }
 }
