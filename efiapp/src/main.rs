@@ -1,5 +1,5 @@
 #![feature(abi_efiapi, asm)]
-#![feature(alloc_error_handler)]
+#![feature(alloc_error_handler, allocator_api)]
 #![no_std]
 #![no_main]
 
