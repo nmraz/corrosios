@@ -77,16 +77,25 @@ unsafe impl Protocol for SimpleTextOutput {
     }
 }
 
+macro_rules! abi_call {
+    ($p:ident, $name:ident($($args:expr),*)) => {
+        {
+            let abi = $p.abi();
+            ((*abi).$name)(abi, $($args),*)
+        }
+    };
+}
+
 impl SimpleTextOutput {
     pub fn reset(&mut self) -> Result<()> {
-        unsafe { ((*self.0).reset)(self.0, false) }.to_result()
+        unsafe { abi_call!(self, reset(false)) }.to_result()
     }
 
     /// # Safety
     ///
     /// Must be null-terminated.
     pub unsafe fn output_string_unchecked(&mut self, s: *const u16) -> Result<()> {
-        ((*self.0).output_string)(self.0, s).to_result()
+        abi_call!(self, output_string(s)).to_result()
     }
 
     pub fn output_u16_str(&mut self, s: &U16CStr) -> Result<()> {
