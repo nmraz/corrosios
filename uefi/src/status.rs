@@ -14,6 +14,7 @@ impl Status {
 
     pub const INVALID_PARAMETER: Self = Self(2 | ERROR_BIT);
     pub const BUFFER_TOO_SMALL: Self = Self(5 | ERROR_BIT);
+    pub const OUT_OF_RESOURCES: Self = Self(9 | ERROR_BIT);
 
     pub const WARN_UNKNOWN_GLYPH: Self = Self(1);
 
