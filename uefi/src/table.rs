@@ -278,7 +278,7 @@ struct SystemTable {
     firmware_vendor: *const u16,
     firmware_revision: u32,
     console_in_handle: Handle,
-    console_in_protocol: Handle, // TODO
+    console_in_protocol: *const (), // TODO
     console_out_handle: Handle,
     console_out_protocol: *mut SimpleTextOutputAbi,
     stderr_handle: Handle,
@@ -286,7 +286,7 @@ struct SystemTable {
     runtime_services: *const (), // TODO
     boot_services: *const BootServices,
     num_entries: usize,
-    configuration_table: Handle, // TODO
+    configuration_table: *const (), // TODO
 }
 
 pub trait TableState {}
