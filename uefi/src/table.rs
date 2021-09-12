@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 use core::{mem, ptr, result};
 
 use crate::proto::io::{SimpleTextOutput, SimpleTextOutputAbi};
-use crate::proto::ProtocolHandle;
+use crate::proto::{Protocol, ProtocolHandle};
 use crate::types::{Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, U16CStr};
 use crate::{Result, Status};
 
@@ -150,6 +150,18 @@ impl BootServices {
     /// Must have been allocated with `alloc`.
     pub unsafe fn free(&self, p: *mut u8) {
         (self.free_pool)(p).to_result().expect("invalid pointer");
+    }
+
+    pub fn locate_protocol<P: Protocol>(&self) -> Result<ProtocolHandle<'_, P>> {
+        let mut abi = ptr::null_mut();
+
+        unsafe { (self.locate_protocol)(&P::GUID, ptr::null(), &mut abi as *mut _ as *mut *mut _) }
+            .to_result()?;
+
+        // Safety: if we get here, the pointer is guaranteed to be valid and of the correct type
+        // as `P::GUID` can be trusted. The protocol instance lives at least as long as `self`,
+        // meaning that the lifetime is correct as well.
+        Ok(unsafe { ProtocolHandle::from_abi(abi) })
     }
 }
 
