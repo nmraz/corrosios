@@ -1,9 +1,11 @@
 use core::convert::TryFrom;
 use core::{fmt, mem, slice};
 
+#[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
-pub struct Handle(*const ());
+pub struct Handle(pub(crate) *const ());
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub struct Guid(pub u32, pub u16, pub u16, pub [u8; 8]);
 
@@ -62,6 +64,7 @@ impl MemoryType {
     pub const UNUSABLE: Self = Self(8);
 }
 
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct MemoryDescriptor {
     pub mem_type: MemoryType,
