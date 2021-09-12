@@ -4,9 +4,11 @@
 use core::marker::PhantomData;
 use core::{mem, ptr, result};
 
-use proto::{ProtocolHandle, SimpleTextOutput, SimpleTextOutputAbi};
-pub use status::{Result, Status};
+use proto::io::{SimpleTextOutput, SimpleTextOutputAbi};
+use proto::ProtocolHandle;
 use types::{Handle, MemoryDescriptor, MemoryMapKey, MemoryType, U16CStr};
+
+pub use status::{Result, Status};
 
 pub mod proto;
 pub mod types;
