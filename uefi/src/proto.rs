@@ -44,15 +44,15 @@ impl<'a, P: Protocol> DerefMut for ProtocolHandle<'a, P> {
 
 #[repr(C)]
 pub struct SimpleTextOutputAbi {
-    reset: unsafe extern "efiapi" fn(*mut SimpleTextOutputAbi, bool) -> Status,
-    output_string: unsafe extern "efiapi" fn(*mut SimpleTextOutputAbi, *const u16) -> Status,
-    test_string: unsafe extern "efiapi" fn(*mut SimpleTextOutputAbi, *const u16) -> Status,
+    reset: unsafe extern "efiapi" fn(*mut Self, bool) -> Status,
+    output_string: unsafe extern "efiapi" fn(*mut Self, *const u16) -> Status,
+    test_string: unsafe extern "efiapi" fn(*mut Self, *const u16) -> Status,
     query_mode: *const (),
     set_mode: *const (),
     set_attribute: *const (),
-    clear_screen: unsafe extern "efiapi" fn(*mut SimpleTextOutputAbi) -> Status,
+    clear_screen: unsafe extern "efiapi" fn(*mut Self) -> Status,
     set_cursor_pos: *const (),
-    enable_cursor: unsafe extern "efiapi" fn(*mut SimpleTextOutputAbi, bool) -> Status,
+    enable_cursor: unsafe extern "efiapi" fn(*mut Self, bool) -> Status,
     mode: *const (),
 }
 
