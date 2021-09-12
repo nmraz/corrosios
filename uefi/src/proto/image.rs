@@ -1,7 +1,8 @@
 use crate::types::{Handle, MemoryType};
 use crate::Status;
 
-use super::{unsafe_protocol, Protocol};
+use super::path::{DevicePath, DevicePathAbi};
+use super::{unsafe_protocol, Protocol, ProtocolHandle};
 
 #[repr(C)]
 pub struct LoadedImageAbi {
@@ -9,7 +10,7 @@ pub struct LoadedImageAbi {
     parent_handle: Handle,
     system_table: *const (),
     device_handle: Handle,
-    file_path: *const (), // TODO
+    file_path: *mut DevicePathAbi,
     reserved: *const (),
     load_options_size: u32,
     load_options: *const (),
@@ -26,6 +27,10 @@ unsafe_protocol! {
 }
 
 impl LoadedImage {
+    pub fn file_path(&self) -> ProtocolHandle<'_, DevicePath> {
+        unsafe { ProtocolHandle::from_abi((*self.abi()).file_path) }
+    }
+
     pub fn image_base(&self) -> *const () {
         unsafe { (*self.abi()).image_base }
     }
