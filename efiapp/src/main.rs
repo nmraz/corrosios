@@ -31,7 +31,7 @@ fn handle_panic(_info: &PanicInfo) -> ! {
 fn run(_image_handle: Handle, boot_table: BootTableHandle) -> Result<()> {
     allocator::with(&boot_table, || {
         let boot_services = boot_table.boot_services();
-        let stdout = unsafe { &mut *boot_table.stdout() };
+        let mut stdout = boot_table.stdout();
 
         stdout.reset()?;
         writeln!(

@@ -2,11 +2,13 @@
 #![no_std]
 
 use core::marker::PhantomData;
-use core::{fmt, mem, ptr, result};
+use core::{mem, ptr, result};
 
+use proto::{ProtocolHandle, SimpleTextOutput, SimpleTextOutputAbi};
 pub use status::{Result, Status};
-use types::{Handle, MemoryDescriptor, MemoryMapKey, U16CStr, MemoryType};
+use types::{Handle, MemoryDescriptor, MemoryMapKey, MemoryType, U16CStr};
 
+pub mod proto;
 pub mod types;
 
 mod status;
@@ -144,79 +146,6 @@ impl BootServices {
 }
 
 #[repr(C)]
-pub struct SimpleTextOutputProtocol {
-    reset: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, bool) -> Status,
-    output_string: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, *const u16) -> Status,
-    test_string: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, *const u16) -> Status,
-    query_mode: *const (),
-    set_mode: *const (),
-    set_attribute: *const (),
-    clear_screen: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol) -> Status,
-    set_cursor_pos: *const (),
-    enable_cursor: unsafe extern "efiapi" fn(*mut SimpleTextOutputProtocol, bool) -> Status,
-    mode: *const (),
-}
-
-impl SimpleTextOutputProtocol {
-    pub fn reset(&mut self) -> Result<()> {
-        unsafe { (self.reset)(self, false) }.to_result()
-    }
-
-    /// # Safety
-    ///
-    /// Must be null-terminated.
-    pub unsafe fn output_string_unchecked(&mut self, s: *const u16) -> Result<()> {
-        (self.output_string)(self, s).to_result()
-    }
-
-    pub fn output_u16_str(&mut self, s: &U16CStr) -> Result<()> {
-        unsafe { self.output_string_unchecked(s.as_ptr()) }
-    }
-
-    pub fn output_str(&mut self, s: &str) -> Result<()> {
-        const BUF_LEN: usize = 64;
-
-        let mut buf = [0u16; BUF_LEN + 1];
-        let mut i = 0;
-
-        let mut status = Ok(());
-
-        let mut putchar = |ch| {
-            if i == BUF_LEN {
-                status = unsafe { self.output_string_unchecked(buf.as_ptr()) };
-                status.map_err(|_| ucs2::Error::BufferOverflow)?;
-
-                buf.fill(0);
-                i = 0;
-            }
-
-            buf[i] = ch;
-            i += 1;
-
-            Ok(())
-        };
-
-        let res = ucs2::encode_with(s, |ch| {
-            if ch == b'\n' as u16 {
-                putchar(b'\r' as u16)?;
-            }
-            putchar(ch)
-        });
-
-        status?;
-        res.map_err(|_| Status::WARN_UNKNOWN_GLYPH)?;
-
-        unsafe { self.output_string_unchecked(buf.as_ptr()) }
-    }
-}
-
-impl fmt::Write for SimpleTextOutputProtocol {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.output_str(s).map_err(|_| fmt::Error)
-    }
-}
-
-#[repr(C)]
 struct SystemTable {
     header: TableHeader,
     firmware_vendor: *const u16,
@@ -224,9 +153,9 @@ struct SystemTable {
     console_in_handle: Handle,
     console_in_protocol: Handle, // TODO
     console_out_handle: Handle,
-    console_out_protocol: *mut SimpleTextOutputProtocol,
+    console_out_protocol: *mut SimpleTextOutputAbi,
     stderr_handle: Handle,
-    stderr_protocol: *mut SimpleTextOutputProtocol,
+    stderr_protocol: *mut SimpleTextOutputAbi,
     runtime_services: *const (), // TODO
     boot_services: *const BootServices,
     num_entries: usize,
@@ -295,7 +224,7 @@ impl BootTableHandle {
         Ok(RuntimeTableHandle::new(ptr))
     }
 
-    pub fn stdout(&self) -> *mut SimpleTextOutputProtocol {
-        self.0.console_out_protocol
+    pub fn stdout(&self) -> ProtocolHandle<'_, SimpleTextOutput> {
+        unsafe { ProtocolHandle::from_abi(self.0.console_out_protocol) }
     }
 }
