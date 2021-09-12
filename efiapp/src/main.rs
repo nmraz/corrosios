@@ -8,6 +8,7 @@ extern crate alloc;
 use alloc::vec;
 use core::fmt::Write;
 use core::panic::PanicInfo;
+use uefi::proto::image::LoadedImage;
 
 use uefi::table::BootTableHandle;
 use uefi::types::{Handle, MemoryType};
@@ -29,7 +30,7 @@ fn handle_panic(_info: &PanicInfo) -> ! {
     halt()
 }
 
-fn run(_image_handle: Handle, boot_table: BootTableHandle) -> Result<()> {
+fn run(image_handle: Handle, boot_table: BootTableHandle) -> Result<()> {
     allocator::with(&boot_table, || {
         let boot_services = boot_table.boot_services();
         let mut stdout = boot_table.stdout();
@@ -40,6 +41,17 @@ fn run(_image_handle: Handle, boot_table: BootTableHandle) -> Result<()> {
             "Firmware vendor: {}\nFirmware revision: {}\n",
             boot_table.firmware_vendor(),
             boot_table.firmware_revision()
+        )
+        .unwrap();
+
+        let loaded_image =
+            boot_services.open_protocol::<LoadedImage>(image_handle, image_handle)?;
+
+        writeln!(
+            stdout,
+            "Loaded image: base {:?}, size {}",
+            loaded_image.image_base(),
+            loaded_image.image_size()
         )
         .unwrap();
 

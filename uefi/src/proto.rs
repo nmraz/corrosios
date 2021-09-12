@@ -1,5 +1,6 @@
 use crate::types::Guid;
 
+pub mod image;
 pub mod io;
 
 pub unsafe trait Protocol {
