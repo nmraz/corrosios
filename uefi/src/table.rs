@@ -3,7 +3,7 @@ use core::{mem, ptr, result};
 
 use crate::proto::io::{SimpleTextOutput, SimpleTextOutputAbi};
 use crate::proto::ProtocolHandle;
-use crate::types::{Handle, MemoryDescriptor, MemoryMapKey, MemoryType, U16CStr};
+use crate::types::{Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, U16CStr};
 use crate::{Result, Status};
 
 #[repr(C)]
@@ -57,6 +57,21 @@ pub struct BootServices {
     exit: *const (),
     unload_image: *const (),
     exit_boot_services: unsafe extern "efiapi" fn(Handle, MemoryMapKey) -> Status,
+
+    get_next_monotonic_count: *const (),
+    stall: *const (),
+    set_watchdog_timer: *const (),
+
+    connect_controller: *const (),
+    disconnect_controller: *const (),
+
+    open_protocol: *const (),
+    close_protocol: *const (),
+    open_protocol_information: *const (),
+
+    protocols_per_handle: *const (),
+    locate_handle_buffer: *const (),
+    locate_protocol: unsafe extern "efiapi" fn(*const Guid, *const (), *mut *mut ()) -> Status,
     // TODO...
 }
 
