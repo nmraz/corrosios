@@ -7,18 +7,18 @@ use crate::proto::Protocol;
 use crate::types::{Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, U16CStr};
 use crate::{Result, Status};
 
-pub struct ProtocolHandle<'a, P: Protocol>(P, PhantomData<&'a ()>);
+pub struct ProtocolHandle<'a, P>(P, PhantomData<&'a ()>);
 
 impl<'a, P: Protocol> ProtocolHandle<'a, P> {
     /// # Safety
     ///
     /// ABI pointer must be valid and outlive `'a`.
-    pub(crate) unsafe fn from_abi(abi: *mut P::Abi) -> Self {
+    unsafe fn from_abi(abi: *mut P::Abi) -> Self {
         Self(P::from_abi(abi), PhantomData)
     }
 }
 
-impl<'a, P: Protocol> Deref for ProtocolHandle<'a, P> {
+impl<'a, P> Deref for ProtocolHandle<'a, P> {
     type Target = P;
 
     fn deref(&self) -> &P {
@@ -26,9 +26,65 @@ impl<'a, P: Protocol> Deref for ProtocolHandle<'a, P> {
     }
 }
 
-impl<'a, P: Protocol> DerefMut for ProtocolHandle<'a, P> {
+impl<'a, P> DerefMut for ProtocolHandle<'a, P> {
     fn deref_mut(&mut self) -> &mut P {
         &mut self.0
+    }
+}
+
+pub struct OpenProtocolHandle<'a, P: Protocol> {
+    proto: P,
+    handle: Handle,
+    boot_services: &'a BootServices,
+    image_handle: Handle,
+}
+
+impl<'a, P: Protocol> OpenProtocolHandle<'a, P> {
+    /// # Safety
+    ///
+    /// ABI pointer must be valid and outlive `'a`. The protocol must have been opened via a call
+    /// to `open_protocol` on `handle`, with `image_handle` passed as the agent.
+    unsafe fn from_abi(
+        abi: *mut P::Abi,
+        handle: Handle,
+        boot_services: &'a BootServices,
+        image_handle: Handle,
+    ) -> Self {
+        Self {
+            proto: P::from_abi(abi),
+            handle,
+            boot_services,
+            image_handle,
+        }
+    }
+}
+
+impl<'a, P: Protocol> Deref for OpenProtocolHandle<'a, P> {
+    type Target = P;
+
+    fn deref(&self) -> &P {
+        &self.proto
+    }
+}
+
+impl<'a, P: Protocol> DerefMut for OpenProtocolHandle<'a, P> {
+    fn deref_mut(&mut self) -> &mut P {
+        &mut self.proto
+    }
+}
+
+impl<'a, P: Protocol> Drop for OpenProtocolHandle<'a, P> {
+    fn drop(&mut self) {
+        unsafe {
+            (self.boot_services.close_protocol)(
+                self.handle,
+                &P::GUID,
+                self.image_handle,
+                Handle(ptr::null()),
+            )
+        }
+        .to_result()
+        .expect("failed to close existing protocol handle");
     }
 }
 
@@ -91,13 +147,14 @@ pub struct BootServices {
     connect_controller: *const (),
     disconnect_controller: *const (),
 
-    open_protocol: *const (),
-    close_protocol: *const (),
+    open_protocol:
+        unsafe extern "efiapi" fn(Handle, *const Guid, *mut *mut u8, Handle, Handle, u32) -> Status,
+    close_protocol: unsafe extern "efiapi" fn(Handle, *const Guid, Handle, Handle) -> Status,
     open_protocol_information: *const (),
 
     protocols_per_handle: *const (),
     locate_handle_buffer: *const (),
-    locate_protocol: unsafe extern "efiapi" fn(*const Guid, *const (), *mut *mut ()) -> Status,
+    locate_protocol: unsafe extern "efiapi" fn(*const Guid, *const u8, *mut *mut u8) -> Status,
     // TODO...
 }
 
@@ -176,6 +233,30 @@ impl BootServices {
     /// Must have been allocated with `alloc`.
     pub unsafe fn free(&self, p: *mut u8) {
         (self.free_pool)(p).to_result().expect("invalid pointer");
+    }
+
+    pub fn open_protocol<P: Protocol>(
+        &self,
+        handle: Handle,
+        image_handle: Handle,
+    ) -> Result<OpenProtocolHandle<'_, P>> {
+        const OPEN_BY_HANDLE_PROTOCOL: u32 = 1;
+
+        let mut abi = ptr::null_mut();
+
+        unsafe {
+            (self.open_protocol)(
+                handle,
+                &P::GUID,
+                &mut abi as *mut _ as *mut *mut _,
+                image_handle,
+                Handle(ptr::null()),
+                OPEN_BY_HANDLE_PROTOCOL,
+            )
+        }
+        .to_result()?;
+
+        Ok(unsafe { OpenProtocolHandle::from_abi(abi, handle, self, image_handle) })
     }
 
     pub fn locate_protocol<P: Protocol>(&self) -> Result<ProtocolHandle<'_, P>> {
