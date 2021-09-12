@@ -5,11 +5,13 @@
 
 extern crate alloc;
 
+use alloc::boxed::Box;
 use alloc::vec;
 use core::fmt::Write;
 use core::panic::PanicInfo;
-use uefi::proto::image::LoadedImage;
 
+use uefi::proto::image::LoadedImage;
+use uefi::proto::path::DevicePathToText;
 use uefi::table::BootTableHandle;
 use uefi::types::{Handle, MemoryType};
 use uefi::{Result, Status};
@@ -56,6 +58,14 @@ fn run(image_handle: Handle, boot_table: BootTableHandle) -> Result<()> {
             loaded_image.data_type()
         )
         .unwrap();
+
+        let path = {
+            let path_to_text = boot_services.locate_protocol::<DevicePathToText>()?;
+            let raw = path_to_text.device_path_to_text(&loaded_image.file_path(), true, true)?;
+            unsafe { Box::from_raw(raw.as_ptr()) }
+        };
+
+        writeln!(stdout, "Image path: {}\n", path).unwrap();
 
         let mmap_size = boot_services.memory_map_size()? + 0x100;
         let mut mmap_buf = vec![0u8; mmap_size];
