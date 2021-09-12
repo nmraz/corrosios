@@ -17,6 +17,35 @@ pub unsafe trait Protocol {
     fn abi(&self) -> *mut Self::Abi;
 }
 
+macro_rules! unsafe_protocol {
+    ($name:ident($abi:ty, $guid:tt);) => {
+        pub struct $name(*mut $abi);
+
+        unsafe impl crate::proto::Protocol for $name {
+            type Abi = $abi;
+
+            const GUID: Guid = Guid $guid;
+
+            unsafe fn from_abi(abi: *mut Self::Abi) -> Self {
+                Self(abi)
+            }
+
+            fn abi(&self) -> *mut Self::Abi {
+                self.0
+            }
+        }
+    };
+}
+
+macro_rules! abi_call {
+    ($p:ident, $name:ident($($args:expr),*)) => {
+        {
+            let abi = $p.abi();
+            ((*abi).$name)(abi, $($args),*)
+        }
+    };
+}
+
 pub struct ProtocolHandle<'a, P: Protocol>(P, PhantomData<&'a ()>);
 
 impl<'a, P: Protocol> ProtocolHandle<'a, P> {
@@ -56,34 +85,9 @@ pub struct SimpleTextOutputAbi {
     mode: *const (),
 }
 
-pub struct SimpleTextOutput(*mut SimpleTextOutputAbi);
-
-unsafe impl Protocol for SimpleTextOutput {
-    type Abi = SimpleTextOutputAbi;
-
-    const GUID: Guid = Guid(
-        0x387477c2,
-        0x69c7,
-        0x11d2,
-        [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b],
-    );
-
-    unsafe fn from_abi(abi: *mut Self::Abi) -> Self {
-        Self(abi)
-    }
-
-    fn abi(&self) -> *mut Self::Abi {
-        self.0
-    }
-}
-
-macro_rules! abi_call {
-    ($p:ident, $name:ident($($args:expr),*)) => {
-        {
-            let abi = $p.abi();
-            ((*abi).$name)(abi, $($args),*)
-        }
-    };
+unsafe_protocol! {
+    SimpleTextOutput(SimpleTextOutputAbi,
+        (0x387477c2, 0x69c7, 0x11d2, [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]));
 }
 
 impl SimpleTextOutput {
