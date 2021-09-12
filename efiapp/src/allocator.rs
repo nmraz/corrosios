@@ -2,7 +2,7 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::ptr;
 use core::sync::atomic::{AtomicPtr, Ordering};
 
-use uefi::{BootServices, BootTableHandle};
+use uefi::table::{BootServices, BootTableHandle};
 
 pub fn with<R>(boot_table: &BootTableHandle, f: impl FnOnce() -> R) -> R {
     let _guard = BootServicesGuard::new(boot_table.boot_services());
