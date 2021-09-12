@@ -1,6 +1,3 @@
-use core::marker::PhantomData;
-use core::ops::{Deref, DerefMut};
-
 use crate::types::Guid;
 
 pub mod io;
@@ -15,31 +12,6 @@ pub unsafe trait Protocol {
     unsafe fn from_abi(abi: *mut Self::Abi) -> Self;
 
     fn abi(&self) -> *mut Self::Abi;
-}
-
-pub struct ProtocolHandle<'a, P: Protocol>(P, PhantomData<&'a ()>);
-
-impl<'a, P: Protocol> ProtocolHandle<'a, P> {
-    /// # Safety
-    ///
-    /// ABI pointer must be valid and outlive `'a`.
-    pub(crate) unsafe fn from_abi(abi: *mut P::Abi) -> Self {
-        Self(P::from_abi(abi), PhantomData)
-    }
-}
-
-impl<'a, P: Protocol> Deref for ProtocolHandle<'a, P> {
-    type Target = P;
-
-    fn deref(&self) -> &P {
-        &self.0
-    }
-}
-
-impl<'a, P: Protocol> DerefMut for ProtocolHandle<'a, P> {
-    fn deref_mut(&mut self) -> &mut P {
-        &mut self.0
-    }
 }
 
 macro_rules! unsafe_protocol {

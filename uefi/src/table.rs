@@ -1,10 +1,36 @@
 use core::marker::PhantomData;
+use core::ops::{Deref, DerefMut};
 use core::{mem, ptr, result};
 
 use crate::proto::io::{SimpleTextOutput, SimpleTextOutputAbi};
-use crate::proto::{Protocol, ProtocolHandle};
+use crate::proto::Protocol;
 use crate::types::{Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, U16CStr};
 use crate::{Result, Status};
+
+pub struct ProtocolHandle<'a, P: Protocol>(P, PhantomData<&'a ()>);
+
+impl<'a, P: Protocol> ProtocolHandle<'a, P> {
+    /// # Safety
+    ///
+    /// ABI pointer must be valid and outlive `'a`.
+    pub(crate) unsafe fn from_abi(abi: *mut P::Abi) -> Self {
+        Self(P::from_abi(abi), PhantomData)
+    }
+}
+
+impl<'a, P: Protocol> Deref for ProtocolHandle<'a, P> {
+    type Target = P;
+
+    fn deref(&self) -> &P {
+        &self.0
+    }
+}
+
+impl<'a, P: Protocol> DerefMut for ProtocolHandle<'a, P> {
+    fn deref_mut(&mut self) -> &mut P {
+        &mut self.0
+    }
+}
 
 #[repr(C)]
 struct TableHeader {
