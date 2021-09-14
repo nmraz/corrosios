@@ -11,8 +11,10 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 
 use uefi::proto::image::LoadedImage;
+use uefi::proto::io::SimpleTextOutput;
 use uefi::proto::path::DevicePathToText;
-use uefi::table::BootTableHandle;
+use uefi::proto::ProtocolHandle;
+use uefi::table::{BootServices, BootTableHandle, OpenProtocolHandle};
 use uefi::{Handle, MemoryType, Result, Status};
 
 mod allocator;
@@ -46,6 +48,17 @@ fn run(image_handle: Handle, boot_table: &BootTableHandle) -> Result<()> {
 
     let loaded_image = boot_services.open_protocol::<LoadedImage>(image_handle, image_handle)?;
 
+    print_image_info(boot_services, &mut stdout, &loaded_image)?;
+    print_mem_map(boot_services, &mut stdout)?;
+
+    Ok(())
+}
+
+fn print_image_info(
+    boot_services: &BootServices,
+    stdout: &mut ProtocolHandle<'_, SimpleTextOutput>,
+    loaded_image: &OpenProtocolHandle<'_, LoadedImage>,
+) -> Result<()> {
     writeln!(
         stdout,
         "Loaded image: base {:?}, size {}",
@@ -78,6 +91,13 @@ fn run(image_handle: Handle, boot_table: &BootTableHandle) -> Result<()> {
     }
     writeln!(stdout).unwrap();
 
+    Ok(())
+}
+
+fn print_mem_map(
+    boot_services: &BootServices,
+    stdout: &mut ProtocolHandle<'_, SimpleTextOutput>,
+) -> Result<()> {
     let mmap_size = boot_services.memory_map_size()? + 0x100;
     let mut mmap_buf = vec![0u8; mmap_size];
 
