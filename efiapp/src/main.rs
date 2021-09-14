@@ -57,13 +57,25 @@ fn run(image_handle: Handle, boot_table: BootTableHandle) -> Result<()> {
         )
         .unwrap();
 
+        let device_path = loaded_image.file_path();
+        let path_to_text = boot_services.locate_protocol::<DevicePathToText>()?;
+
         let path = {
-            let path_to_text = boot_services.locate_protocol::<DevicePathToText>()?;
-            let raw = path_to_text.device_path_to_text(&loaded_image.file_path(), true, true)?;
+            let raw = path_to_text.device_path_to_text(&device_path, true, true)?;
             unsafe { Box::from_raw(raw.as_ptr()) }
         };
 
         writeln!(stdout, "Image path: {}\n", path).unwrap();
+
+        writeln!(stdout, "Path nodes:").unwrap();
+        for device_node in device_path.nodes() {
+            let node = unsafe {
+                Box::from_raw(path_to_text.device_node_to_text(device_node, true, true)?.as_ptr())
+            };
+
+            writeln!(stdout, "{}", node).unwrap();
+        }
+        writeln!(stdout).unwrap();
 
         let mmap_size = boot_services.memory_map_size()? + 0x100;
         let mut mmap_buf = vec![0u8; mmap_size];
