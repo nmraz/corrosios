@@ -121,6 +121,11 @@ fn print_mem_map(
 
 #[no_mangle]
 pub extern "efiapi" fn efi_main(image_handle: Handle, boot_table: BootTableHandle) -> Status {
-    let _ = allocator::with(&boot_table, || run(image_handle, &boot_table));
+    let res = allocator::with(&boot_table, || run(image_handle, &boot_table));
+
+    if let Err(status) = res {
+        writeln!(boot_table.stdout(), "Error: {:#x}", status.0).unwrap();
+    }
+
     halt();
 }
