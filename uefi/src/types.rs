@@ -22,8 +22,14 @@ impl U16CStr {
             len += 1;
         }
 
-        let data = slice::from_raw_parts(ptr, len);
-        mem::transmute(data)
+        Self::from_slice_unchecked(slice::from_raw_parts(ptr, len))
+    }
+
+    /// # Safety
+    /// 
+    /// Must be null-terminated and not contain any embedded nulls.
+    pub unsafe fn from_slice_unchecked(slice: &[u16]) -> &Self {
+        mem::transmute(slice)
     }
 
     pub fn as_slice(&self) -> &[u16] {
