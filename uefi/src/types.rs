@@ -44,6 +44,21 @@ impl fmt::Display for U16CStr {
     }
 }
 
+#[repr(C)]
+pub struct Timestamp {
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
+    pub pad1: u8,
+    pub nanosecond: u32,
+    pub timezone: i16,
+    pub daylight: u8,
+    pub pad2: u8,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct MemoryMapKey(pub(crate) usize);
