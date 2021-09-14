@@ -3,6 +3,7 @@ use core::ops::{Deref, DerefMut};
 
 use crate::types::Guid;
 
+pub mod fs;
 pub mod image;
 pub mod io;
 pub mod path;
