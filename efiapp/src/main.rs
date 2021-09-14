@@ -92,7 +92,7 @@ fn run(image_handle: Handle, boot_table: BootTableHandle) -> Result<()> {
 
         writeln!(
             stdout,
-            "Free memory: {} pages (~{} MiB)",
+            "Free memory: {} pages (~{}MB)",
             conventional_mem_pages,
             (conventional_mem_pages * 0x1000) / 0x100000
         )
