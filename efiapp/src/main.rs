@@ -13,8 +13,7 @@ use core::panic::PanicInfo;
 use uefi::proto::image::LoadedImage;
 use uefi::proto::path::DevicePathToText;
 use uefi::table::BootTableHandle;
-use uefi::types::{Handle, MemoryType};
-use uefi::{Result, Status};
+use uefi::{Handle, MemoryType, Result, Status};
 
 mod allocator;
 
@@ -70,7 +69,11 @@ fn run(image_handle: Handle, boot_table: BootTableHandle) -> Result<()> {
         writeln!(stdout, "Path nodes:").unwrap();
         for device_node in device_path.nodes() {
             let node = unsafe {
-                Box::from_raw(path_to_text.device_node_to_text(device_node, true, true)?.as_ptr())
+                Box::from_raw(
+                    path_to_text
+                        .device_node_to_text(device_node, true, true)?
+                        .as_ptr(),
+                )
             };
 
             writeln!(stdout, "{}", node).unwrap();

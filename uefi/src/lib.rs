@@ -4,10 +4,11 @@
 
 pub use bootalloc::BootAlloc;
 pub use status::{Result, Status};
+pub use types::*;
 
 pub mod proto;
 pub mod table;
-pub mod types;
 
 mod bootalloc;
 mod status;
+mod types;
