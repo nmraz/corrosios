@@ -6,16 +6,18 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::vec;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 
+use uefi::proto::fs::{File, SimpleFileSystem};
 use uefi::proto::image::LoadedImage;
 use uefi::proto::io::SimpleTextOutput;
 use uefi::proto::path::DevicePathToText;
 use uefi::proto::ProtocolHandle;
 use uefi::table::{BootServices, BootTableHandle, OpenProtocolHandle};
-use uefi::{Handle, MemoryType, Result, Status};
+use uefi::{Handle, MemoryType, Result, Status, U16CStr};
 
 mod allocator;
 
@@ -49,6 +51,7 @@ fn run(image_handle: Handle, boot_table: &BootTableHandle) -> Result<()> {
     let loaded_image = boot_services.open_protocol::<LoadedImage>(image_handle, image_handle)?;
 
     print_image_info(boot_services, &mut stdout, &loaded_image)?;
+    load_aux_file(boot_services, &mut stdout, image_handle, &loaded_image)?;
     print_mem_map(boot_services, &mut stdout)?;
 
     Ok(())
@@ -94,12 +97,57 @@ fn print_image_info(
     Ok(())
 }
 
+fn load_aux_file(
+    boot_services: &BootServices,
+    stdout: &mut ProtocolHandle<'_, SimpleTextOutput>,
+    image_handle: Handle,
+    loaded_image: &OpenProtocolHandle<'_, LoadedImage>,
+) -> Result<()> {
+    let boot_fs = boot_services
+        .open_protocol::<SimpleFileSystem>(loaded_image.device_handle(), image_handle)?;
+
+    let root_dir = boot_fs.open_volume()?;
+
+    let name = unsafe {
+        U16CStr::from_slice_unchecked(&[
+            b't' as u16,
+            b'e' as u16,
+            b's' as u16,
+            b't' as u16,
+            b'.' as u16,
+            b't' as u16,
+            b'x' as u16,
+            b't' as u16,
+            0,
+        ])
+    };
+
+    let mut file = root_dir.open(name, File::MODE_READ)?;
+
+    let mut info_buf = vec![0; file.info_size()?];
+    let info = file.info(&mut info_buf)?;
+
+    writeln!(stdout, "File: name {}, size {}", info.name(), info.size()).unwrap();
+
+    let mut file_buf = vec![0; info.size() as usize];
+    let len = file.read(&mut file_buf)?;
+
+    writeln!(
+        stdout,
+        "File contents: {}\n",
+        String::from_utf8_lossy(&file_buf[..len])
+    )
+    .unwrap();
+
+    Ok(())
+}
+
 fn print_mem_map(
     boot_services: &BootServices,
     stdout: &mut ProtocolHandle<'_, SimpleTextOutput>,
 ) -> Result<()> {
     let mmap_size = boot_services.memory_map_size()? + 0x100;
-    let mut mmap_buf = vec![0u8; mmap_size];
+    let mut mmap_buf = vec![0; mmap_size];
 
     let (_key, mmap) = boot_services.memory_map(&mut mmap_buf)?;
 
