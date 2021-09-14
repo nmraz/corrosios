@@ -3,7 +3,7 @@ use core::fmt;
 use crate::types::U16CStr;
 use crate::{Result, Status};
 
-use super::{abi_call, unsafe_protocol};
+use super::{abi_call, unsafe_protocol, Protocol};
 
 #[repr(C)]
 pub struct SimpleTextOutputAbi {

@@ -70,8 +70,6 @@ use unsafe_protocol;
 macro_rules! abi_call {
     ($p:ident, $name:ident($($args:expr),*)) => {
         {
-            use crate::proto::Protocol;
-
             let abi = $p.abi();
             ((*abi).$name)(abi, $($args),*)
         }
