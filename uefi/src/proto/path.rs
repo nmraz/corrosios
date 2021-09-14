@@ -1,5 +1,4 @@
-use core::marker::PhantomData;
-use core::ptr::{self, NonNull};
+use core::ptr::NonNull;
 use core::{iter, mem, slice};
 
 use crate::types::U16CStr;
@@ -24,7 +23,8 @@ unsafe_protocol! {
 
 impl DevicePath {
     pub fn nodes(&self) -> impl Iterator<Item = DeviceNode<'_>> + Clone {
-        let init = unsafe { DeviceNode::new(self.abi() as *const DeviceNodeHeaderAbi) };
+        // Safety: ABI pointer is valid.
+        let init = DeviceNode(unsafe { &*(self.abi() as *const DeviceNodeHeaderAbi) });
 
         iter::successors(Some(init), |cur| {
             if cur.node_type() == DeviceNode::TYPE_END
@@ -32,17 +32,17 @@ impl DevicePath {
             {
                 None
             } else {
-                Some(unsafe { DeviceNode::new(cur.ptr.add(cur.header().length as usize)) })
+                // Safety: `length` bytes ahead there should be another device node header.
+                let next =
+                    unsafe { cur.ptr().add(cur.0.length as usize) } as *const DeviceNodeHeaderAbi;
+                Some(DeviceNode(unsafe { &*next }))
             }
         })
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct DeviceNode<'a> {
-    ptr: *const DeviceNodeHeaderAbi,
-    marker: PhantomData<&'a DevicePath>,
-}
+#[derive(Clone, Copy)]
+pub struct DeviceNode<'a>(&'a DeviceNodeHeaderAbi);
 
 impl<'a> DeviceNode<'a> {
     pub const TYPE_HARDWARE: u8 = 0x1;
@@ -55,38 +55,26 @@ impl<'a> DeviceNode<'a> {
     pub const SUB_TYPE_END_ENTIRE: u8 = 0xff;
     pub const SUB_TYPE_END_DEVICE: u8 = 0x1;
 
-    /// # Safety
-    ///
-    /// ABI pointer must be valid and live long enough.
-    unsafe fn new(abi: *const DeviceNodeHeaderAbi) -> Self {
-        Self {
-            ptr: abi,
-            marker: PhantomData,
-        }
-    }
-
-    fn header(&self) -> DeviceNodeHeaderAbi {
-        unsafe { ptr::read_unaligned(self.ptr) }
+    fn ptr(&self) -> *const u8 {
+        self.0 as *const _ as *const u8
     }
 
     pub fn node_type(&self) -> u8 {
-        self.header().node_type
+        self.0.node_type
     }
 
     pub fn sub_type(&self) -> u8 {
-        self.header().sub_type
+        self.0.sub_type
     }
 
     pub fn data(&self) -> &'a [u8] {
-        let full_length = self.header().length as usize;
+        let full_length = self.0.length as usize;
         assert!(full_length >= mem::size_of::<DeviceNodeHeaderAbi>());
 
         let length = full_length - mem::size_of::<DeviceNodeHeaderAbi>();
         unsafe {
             slice::from_raw_parts(
-                self.ptr
-                    .cast::<u8>()
-                    .add(mem::size_of::<DeviceNodeHeaderAbi>()),
+                self.ptr().add(mem::size_of::<DeviceNodeHeaderAbi>()),
                 length,
             )
         }
@@ -113,7 +101,7 @@ impl DevicePathToText {
         allow_shortcuts: bool,
     ) -> Result<NonNull<U16CStr>> {
         let p = unsafe {
-            ((*self.abi()).device_node_to_text)(device_node.ptr, display_only, allow_shortcuts)
+            ((*self.abi()).device_node_to_text)(device_node.0, display_only, allow_shortcuts)
         };
 
         if p.is_null() {
