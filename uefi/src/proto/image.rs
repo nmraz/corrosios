@@ -27,6 +27,10 @@ unsafe_protocol! {
 }
 
 impl LoadedImage {
+    pub fn device_handle(&self) -> Handle {
+        unsafe { (*self.abi()).device_handle }
+    }
+
     pub fn file_path(&self) -> ProtocolHandle<'_, DevicePath> {
         unsafe { ProtocolHandle::from_abi((*self.abi()).file_path) }
     }
