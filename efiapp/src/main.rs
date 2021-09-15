@@ -108,19 +108,18 @@ fn load_aux_file(
 
     let root_dir = boot_fs.open_volume()?;
 
-    let name = unsafe {
-        U16CStr::from_slice_unchecked(&[
-            b't' as u16,
-            b'e' as u16,
-            b's' as u16,
-            b't' as u16,
-            b'.' as u16,
-            b't' as u16,
-            b'x' as u16,
-            b't' as u16,
-            0,
-        ])
-    };
+    let name = U16CStr::from_chars_with_nul(&[
+        b't' as u16,
+        b'e' as u16,
+        b's' as u16,
+        b't' as u16,
+        b'.' as u16,
+        b't' as u16,
+        b'x' as u16,
+        b't' as u16,
+        0,
+    ])
+    .unwrap();
 
     let mut file = root_dir.open(name, File::MODE_READ)?;
 
