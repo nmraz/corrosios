@@ -15,7 +15,7 @@ impl<'a> BootAlloc<'a> {
     }
 }
 
-unsafe impl<'a> Allocator for BootAlloc<'a> {
+unsafe impl Allocator for BootAlloc<'_> {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         assert!(
             layout.align() <= MAX_ALIGN,

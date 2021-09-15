@@ -34,7 +34,7 @@ impl<'a, P: Protocol> OpenProtocolHandle<'a, P> {
     }
 }
 
-impl<'a, P: Protocol> Deref for OpenProtocolHandle<'a, P> {
+impl<P: Protocol> Deref for OpenProtocolHandle<'_, P> {
     type Target = P;
 
     fn deref(&self) -> &P {
@@ -42,13 +42,13 @@ impl<'a, P: Protocol> Deref for OpenProtocolHandle<'a, P> {
     }
 }
 
-impl<'a, P: Protocol> DerefMut for OpenProtocolHandle<'a, P> {
+impl<P: Protocol> DerefMut for OpenProtocolHandle<'_, P> {
     fn deref_mut(&mut self) -> &mut P {
         &mut self.proto
     }
 }
 
-impl<'a, P: Protocol> Drop for OpenProtocolHandle<'a, P> {
+impl<P: Protocol> Drop for OpenProtocolHandle<'_, P> {
     fn drop(&mut self) {
         unsafe {
             (self.boot_services.close_protocol)(

@@ -22,7 +22,7 @@ pub unsafe trait Protocol {
 
 pub struct ProtocolHandle<'a, P>(P, PhantomData<&'a ()>);
 
-impl<'a, P: Protocol> ProtocolHandle<'a, P> {
+impl<P: Protocol> ProtocolHandle<'_, P> {
     /// # Safety
     ///
     /// ABI pointer must be valid and outlive `'a`.
@@ -31,7 +31,7 @@ impl<'a, P: Protocol> ProtocolHandle<'a, P> {
     }
 }
 
-impl<'a, P> Deref for ProtocolHandle<'a, P> {
+impl<P> Deref for ProtocolHandle<'_, P> {
     type Target = P;
 
     fn deref(&self) -> &P {
@@ -39,7 +39,7 @@ impl<'a, P> Deref for ProtocolHandle<'a, P> {
     }
 }
 
-impl<'a, P> DerefMut for ProtocolHandle<'a, P> {
+impl<P> DerefMut for ProtocolHandle<'_, P> {
     fn deref_mut(&mut self) -> &mut P {
         &mut self.0
     }
