@@ -20,13 +20,13 @@ const LB_SIZE: u64 = 512;
 const EFI_PARTITION_SIZE: u64 = 10 * MB;
 pub const DISK_SIZE: u64 = EFI_PARTITION_SIZE + 64 * KB;
 
-pub fn cargo_build_freestanding(
+pub fn cargo_cross_freestanding(
     subcommand: &str,
     package_name: &str,
     target: &str,
     additional_args: &[String],
 ) -> Result<ExitStatus> {
-    let mut cmd = freestanding_build_cmd(subcommand, package_name, target, additional_args);
+    let mut cmd = freestanding_cross_cmd(subcommand, package_name, target, additional_args);
     Ok(cmd.status()?)
 }
 
@@ -35,7 +35,7 @@ pub fn built_binary_path(
     target: &str,
     additional_args: &[String],
 ) -> Result<PathBuf> {
-    let mut cmd = freestanding_build_cmd("build", package_name, target, additional_args);
+    let mut cmd = freestanding_cross_cmd("build", package_name, target, additional_args);
     cmd.arg("--message-format=json");
 
     let output = cmd.output()?.stdout;
@@ -51,7 +51,7 @@ pub fn built_binary_path(
     bail!("failed to extract binary path")
 }
 
-fn freestanding_build_cmd(
+fn freestanding_cross_cmd(
     subcommand: &str,
     package_name: &str,
     target: &str,

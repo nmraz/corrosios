@@ -6,7 +6,7 @@ use anyhow::{bail, Context, Result};
 use argh::FromArgs;
 use fscommon::StreamSlice;
 use hosttools::{
-    add_efi_partition, built_binary_path, cargo_build_freestanding, format_efi_partition,
+    add_efi_partition, built_binary_path, cargo_cross_freestanding, format_efi_partition,
     format_gpt, DISK_SIZE,
 };
 
@@ -23,15 +23,15 @@ struct Args {
 #[derive(FromArgs)]
 #[argh(subcommand)]
 enum Subcommand {
-    Build(BuildSubcommand),
+    Cross(CrossSubcommand),
     Image(ImageSubcommand),
     Qemu(QemuSubcommand),
 }
 
 #[derive(FromArgs)]
-/// Build binary with appropriate cargo flags.
-#[argh(subcommand, name = "build")]
-struct BuildSubcommand {
+/// Run cargo subcommand with appropriate cross-compilation flags.
+#[argh(subcommand, name = "cross")]
+struct CrossSubcommand {
     #[argh(positional)]
     subcommand: String,
 
@@ -63,7 +63,7 @@ fn main() -> Result<()> {
     let args: Args = argh::from_env();
 
     match &args.subcommand {
-        Subcommand::Build(build) => build_efi_app(&build.subcommand, &build.additional_args),
+        Subcommand::Cross(build) => cross_efi_app(&build.subcommand, &build.additional_args),
         Subcommand::Image(image) => {
             let image_path = create_uefi_image(&image.additional_build_args)?;
             println!("Created UEFI image: {}", image_path.display());
@@ -85,7 +85,7 @@ fn main() -> Result<()> {
 }
 
 fn create_uefi_image(additional_args: &[String]) -> Result<PathBuf> {
-    build_efi_app("build", additional_args)?;
+    cross_efi_app("build", additional_args)?;
     let binary = efi_binary_path(additional_args)?;
 
     let image_path = binary.with_extension("img");
@@ -108,8 +108,8 @@ fn create_uefi_image(additional_args: &[String]) -> Result<PathBuf> {
     Ok(image_path)
 }
 
-fn build_efi_app(subcommand: &str, additional_args: &[String]) -> Result<()> {
-    let status = cargo_build_freestanding(
+fn cross_efi_app(subcommand: &str, additional_args: &[String]) -> Result<()> {
+    let status = cargo_cross_freestanding(
         subcommand,
         EFI_PACKAGE_NAME,
         EFI_PACKAGE_TARGET,

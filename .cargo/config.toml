@@ -1,9 +1,10 @@
 [alias]
 hosttools-raw = "run --bin hosttools"
 hosttools = "hosttools-raw --"
-kbuild = "hosttools build build --"
 hclippy = "clippy -p hosttools"
-kclippy = "hosttools build clippy --"
-kclippy-json = "hosttools-raw --message-format=json -- build clippy -- --message-format=json"
+cross = "hosttools cross"
+xbuild = "cross build --"
+xclippy = "cross clippy --"
+xclippy-json = "hosttools-raw --message-format=json -- cross clippy -- --message-format=json"
 image = "hosttools image"
 qemu = "hosttools qemu"
