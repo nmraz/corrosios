@@ -1,7 +1,6 @@
 use core::fmt;
 
-use crate::types::U16CStr;
-use crate::{Result, Status};
+use crate::{Result, Status, U16CStr};
 
 use super::{abi_call, unsafe_protocol, Protocol};
 

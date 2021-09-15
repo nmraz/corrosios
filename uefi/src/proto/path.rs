@@ -1,8 +1,7 @@
 use core::ptr::NonNull;
 use core::{iter, mem, slice};
 
-use crate::types::U16CStr;
-use crate::{Result, Status};
+use crate::{Result, Status, U16CStr};
 
 use super::{unsafe_protocol, Protocol};
 

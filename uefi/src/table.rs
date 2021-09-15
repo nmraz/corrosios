@@ -4,8 +4,7 @@ use core::{mem, ptr, result};
 
 use crate::proto::io::{SimpleTextOutput, SimpleTextOutputAbi};
 use crate::proto::{Protocol, ProtocolHandle};
-use crate::types::{Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, U16CStr};
-use crate::{Result, Status};
+use crate::{Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, Result, Status, U16CStr};
 
 pub struct OpenProtocolHandle<'a, P: Protocol> {
     proto: P,

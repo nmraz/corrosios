@@ -1,6 +1,3 @@
-use core::convert::TryFrom;
-use core::{fmt, mem, slice};
-
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
 pub struct Handle(pub(crate) *const ());
@@ -8,47 +5,6 @@ pub struct Handle(pub(crate) *const ());
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub struct Guid(pub u32, pub u16, pub u16, pub [u8; 8]);
-
-#[repr(transparent)]
-pub struct U16CStr([u16]);
-
-impl U16CStr {
-    /// # Safety
-    ///
-    /// Must be null-terminated.
-    pub unsafe fn from_ptr<'a>(ptr: *const u16) -> &'a Self {
-        let mut len = 0;
-        while *ptr.add(len) != 0 {
-            len += 1;
-        }
-
-        Self::from_slice_unchecked(slice::from_raw_parts(ptr, len))
-    }
-
-    /// # Safety
-    /// 
-    /// Must be null-terminated and not contain any embedded nulls.
-    pub unsafe fn from_slice_unchecked(slice: &[u16]) -> &Self {
-        mem::transmute(slice)
-    }
-
-    pub fn as_slice(&self) -> &[u16] {
-        &self.0
-    }
-
-    pub fn as_ptr(&self) -> *const u16 {
-        self.as_slice().as_ptr()
-    }
-}
-
-impl fmt::Display for U16CStr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for &c in self.as_slice() {
-            char::try_from(c as u32).map_err(|_| fmt::Error)?.fmt(f)?;
-        }
-        Ok(())
-    }
-}
 
 #[repr(C)]
 pub struct Timestamp {
