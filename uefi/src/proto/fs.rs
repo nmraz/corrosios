@@ -1,3 +1,4 @@
+use core::marker::PhantomData;
 use core::{mem, ptr};
 
 use crate::{Guid, Result, Status, Timestamp, U16CStr};
@@ -31,14 +32,16 @@ unsafe_protocol! {
 }
 
 impl SimpleFileSystem {
-    pub fn open_volume(&self) -> Result<File> {
+    pub fn open_volume(&self) -> Result<File<'_>> {
         let mut abi = ptr::null_mut();
-        unsafe { abi_call!(self, open_volume(&mut abi)) }.to_result()?;
-        Ok(File(abi))
+        unsafe {
+            abi_call!(self, open_volume(&mut abi)).to_result()?;
+            Ok(File::new(abi))
+        }
     }
 }
 
-pub struct File(*mut FileAbi);
+pub struct File<'a>(*mut FileAbi, PhantomData<&'a ()>);
 
 const GUID_FILE_INFO: Guid = Guid(
     0x09576e92,
@@ -47,18 +50,24 @@ const GUID_FILE_INFO: Guid = Guid(
     [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b],
 );
 
-impl File {
+impl File<'_> {
     pub const MODE_READ: u64 = 1;
     pub const MODE_WRITE: u64 = 2;
+
+    unsafe fn new(abi: *mut FileAbi) -> Self {
+        Self(abi, PhantomData)
+    }
 
     fn abi(&self) -> *mut FileAbi {
         self.0
     }
 
-    pub fn open(&self, name: &U16CStr, mode: u64) -> Result<File> {
+    pub fn open(&self, name: &U16CStr, mode: u64) -> Result<File<'_>> {
         let mut abi = ptr::null_mut();
-        unsafe { abi_call!(self, open(&mut abi, name.as_ptr(), mode, 0)) }.to_result()?;
-        Ok(File(abi))
+        unsafe {
+            abi_call!(self, open(&mut abi, name.as_ptr(), mode, 0)).to_result()?;
+            Ok(File::new(abi))
+        }
     }
 
     pub fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
@@ -106,7 +115,7 @@ impl File {
     }
 }
 
-impl Drop for File {
+impl Drop for File<'_> {
     fn drop(&mut self) {
         let _ = unsafe { abi_call!(self, close()) };
     }
