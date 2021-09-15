@@ -16,14 +16,14 @@ impl From<FromCharsWithNulError> for Status {
 pub struct U16CStr([u16]);
 
 impl U16CStr {
-    pub fn from_chars_with_nul(slice: &[u16]) -> Result<&Self, FromCharsWithNulError> {
+    pub fn from_u16s_with_nul(slice: &[u16]) -> Result<&Self, FromCharsWithNulError> {
         let nul_pos = slice.iter().position(|&c| c == 0);
 
         if nul_pos.filter(|pos| pos + 1 == slice.len()).is_none() {
             return Err(FromCharsWithNulError);
         }
 
-        Ok(unsafe { Self::from_chars_with_nul_unchecked(slice) })
+        Ok(unsafe { Self::from_u16s_with_nul_unchecked(slice) })
     }
 
     /// # Safety
@@ -35,28 +35,33 @@ impl U16CStr {
             len += 1;
         }
 
-        Self::from_chars_with_nul_unchecked(slice::from_raw_parts(ptr, len))
+        Self::from_u16s_with_nul_unchecked(slice::from_raw_parts(ptr, len + 1))
     }
 
     /// # Safety
     ///
     /// Must be nul-terminated and not contain any embedded nuls.
-    pub unsafe fn from_chars_with_nul_unchecked(slice: &[u16]) -> &Self {
+    pub unsafe fn from_u16s_with_nul_unchecked(slice: &[u16]) -> &Self {
         mem::transmute(slice)
     }
 
-    pub fn as_slice(&self) -> &[u16] {
+    pub fn to_u16s_with_nul(&self) -> &[u16] {
         &self.0
     }
 
+    pub fn to_u16s(&self) -> &[u16] {
+        let u16s = self.to_u16s_with_nul();
+        &u16s[..u16s.len() - 1]
+    }
+
     pub fn as_ptr(&self) -> *const u16 {
-        self.as_slice().as_ptr()
+        self.to_u16s_with_nul().as_ptr()
     }
 }
 
 impl fmt::Display for U16CStr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for &c in self.as_slice() {
+        for &c in self.to_u16s() {
             char::try_from(c as u32).map_err(|_| fmt::Error)?.fmt(f)?;
         }
         Ok(())

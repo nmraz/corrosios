@@ -108,7 +108,7 @@ fn load_aux_file(
 
     let root_dir = boot_fs.open_volume()?;
 
-    let name = U16CStr::from_chars_with_nul(&[
+    let name = U16CStr::from_u16s_with_nul(&[
         b't' as u16,
         b'e' as u16,
         b's' as u16,
