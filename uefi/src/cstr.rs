@@ -4,10 +4,10 @@ use core::{fmt, mem, slice};
 use crate::Status;
 
 #[derive(Debug, Clone, Copy)]
-pub struct FromCharsWithNulError;
+pub struct FromU16sWithNulError;
 
-impl From<FromCharsWithNulError> for Status {
-    fn from(_: FromCharsWithNulError) -> Self {
+impl From<FromU16sWithNulError> for Status {
+    fn from(_: FromU16sWithNulError) -> Self {
         Self::INVALID_PARAMETER
     }
 }
@@ -16,11 +16,11 @@ impl From<FromCharsWithNulError> for Status {
 pub struct U16CStr([u16]);
 
 impl U16CStr {
-    pub fn from_u16s_with_nul(slice: &[u16]) -> Result<&Self, FromCharsWithNulError> {
+    pub fn from_u16s_with_nul(slice: &[u16]) -> Result<&Self, FromU16sWithNulError> {
         let nul_pos = slice.iter().position(|&c| c == 0);
 
         if nul_pos.filter(|pos| pos + 1 == slice.len()).is_none() {
-            return Err(FromCharsWithNulError);
+            return Err(FromU16sWithNulError);
         }
 
         Ok(unsafe { Self::from_u16s_with_nul_unchecked(slice) })
