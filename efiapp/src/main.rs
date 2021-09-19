@@ -151,17 +151,45 @@ fn print_mem_map(
     let (_key, mmap) = boot_services.memory_map(&mut mmap_buf)?;
 
     let conventional_mem_pages: u64 = mmap
+        .clone()
         .filter(|desc| desc.mem_type == MemoryType::CONVENTIONAL)
         .map(|desc| desc.page_count)
         .sum();
 
     writeln!(
         stdout,
-        "Free memory: {} pages (~{}MB)",
+        "Free memory: {} pages (~{}MB)\n",
         conventional_mem_pages,
         (conventional_mem_pages * 0x1000) / 0x100000
     )
     .unwrap();
+
+    let low_mem = mmap.filter(|desc| desc.phys_start < 0x1000000);
+
+    writeln!(stdout, "Low memory map:").unwrap();
+    for desc in low_mem {
+        let mem_type = match desc.mem_type {
+            MemoryType::BOOT_SERVICES_CODE => "boot services code",
+            MemoryType::BOOT_SERVICES_DATA => "boot services data",
+            MemoryType::RUNTIME_SERVICES_CODE => "runtime services code",
+            MemoryType::RUNTIME_SERVICES_DATA => "runtime services data",
+            MemoryType::LOADER_CODE => "loader code",
+            MemoryType::LOADER_DATA => "loader data",
+            MemoryType::CONVENTIONAL => "usable",
+            MemoryType::RESERVED => "reserved",
+            MemoryType::UNUSABLE => "unusable",
+            _ => "other",
+        };
+
+        writeln!(
+            stdout,
+            "{:#x}-{:#x}: {}",
+            desc.phys_start,
+            desc.phys_start + desc.page_count * 0x1000,
+            mem_type
+        )
+        .unwrap();
+    }
 
     Ok(())
 }
