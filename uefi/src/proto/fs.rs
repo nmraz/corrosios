@@ -147,9 +147,7 @@ impl FileInfo {
 
     pub fn name(&self) -> &U16CStr {
         unsafe {
-            let name_start = (self as *const _ as *const u8)
-                .add(mem::size_of::<Self>())
-                .cast();
+            let name_start = (self as *const Self).add(1).cast();
             U16CStr::from_ptr(name_start)
         }
     }
