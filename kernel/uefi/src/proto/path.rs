@@ -16,8 +16,7 @@ struct DeviceNodeHeaderAbi {
 pub struct DevicePathAbi(DeviceNodeHeaderAbi);
 
 unsafe_protocol! {
-    DevicePath(DevicePathAbi,
-        (0x09576e91, 0x6d3f, 0x11d2, [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]));
+    DevicePath(DevicePathAbi, "09576e91-6d3f-11d2-8e39-00a0c969723b");
 }
 
 impl DevicePath {
@@ -88,8 +87,7 @@ pub struct DevicePathToTextAbi {
 }
 
 unsafe_protocol! {
-    DevicePathToText(DevicePathToTextAbi,
-        (0x8b843e20, 0x8132, 0x4852, [0x90, 0xcc, 0x55, 0x1a, 0x4e, 0x4a, 0x7f, 0x1c]));
+    DevicePathToText(DevicePathToTextAbi, "8b843e20-8132-4852-90cc-551a4e4a7f1c");
 }
 
 impl DevicePathToText {

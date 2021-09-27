@@ -46,13 +46,13 @@ impl<P> DerefMut for ProtocolHandle<'_, P> {
 }
 
 macro_rules! unsafe_protocol {
-    ($name:ident($abi:ty, $guid:tt);) => {
+    ($name:ident($abi:ty, $guid:literal);) => {
         pub struct $name(*mut $abi);
 
         unsafe impl crate::proto::Protocol for $name {
             type Abi = $abi;
 
-            const GUID: crate::types::Guid = crate::types::Guid $guid;
+            const GUID: crate::types::Guid = crate::guid!($guid);
 
             unsafe fn from_abi(abi: *mut Self::Abi) -> Self {
                 Self(abi)

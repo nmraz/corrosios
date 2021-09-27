@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 use core::{mem, ptr};
 
-use crate::{Guid, Result, Status, Timestamp, U16CStr};
+use crate::{guid, Guid, Result, Status, Timestamp, U16CStr};
 
 use super::{abi_call, unsafe_protocol, Protocol};
 
@@ -27,8 +27,7 @@ pub struct SimpleFileSystemAbi {
 }
 
 unsafe_protocol! {
-    SimpleFileSystem(SimpleFileSystemAbi,
-        (0x0964e5b22, 0x6459, 0x11d2, [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]));
+    SimpleFileSystem(SimpleFileSystemAbi, "964e5b22-6459-11d2-8e39-00a0c969723b");
 }
 
 impl SimpleFileSystem {
@@ -43,12 +42,7 @@ impl SimpleFileSystem {
 
 pub struct File<'a>(*mut FileAbi, PhantomData<&'a ()>);
 
-const GUID_FILE_INFO: Guid = Guid(
-    0x09576e92,
-    0x6d3f,
-    0x11d2,
-    [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b],
-);
+const GUID_FILE_INFO: Guid = guid!("09576e92-6d3f-11d2-8e39-00a0c969723b");
 
 impl File<'_> {
     pub const MODE_READ: u64 = 1;

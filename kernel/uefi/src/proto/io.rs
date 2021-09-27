@@ -19,8 +19,7 @@ pub struct SimpleTextOutputAbi {
 }
 
 unsafe_protocol! {
-    SimpleTextOutput(SimpleTextOutputAbi,
-        (0x387477c2, 0x69c7, 0x11d2, [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]));
+    SimpleTextOutput(SimpleTextOutputAbi, "387477c2-69c7-11d2-8e39-00a0c969723b");
 }
 
 impl SimpleTextOutput {
