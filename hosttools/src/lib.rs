@@ -23,8 +23,8 @@ const DISK_SIZE: u64 = EFI_PARTITION_SIZE + 64 * KB;
 
 const IMAGE_NAME: &str = "regasos.img";
 
-const EFI_PACKAGE_NAME: &str = "efiapp";
-const EFI_PACKAGE_TARGET: &str = "x86_64-unknown-uefi";
+const BOOTLOADER_PACKAGE_NAME: &str = "efiboot";
+const BOOTLOADER_PACKAGE_TARGET: &str = "x86_64-unknown-uefi";
 
 const KERNEL_PACKAGE_NAME: &str = "kernel";
 const KERNEL_PACKAGE_TARGET: &str = "kernel/x86_64-regasos-kernel.json";
@@ -32,10 +32,14 @@ const KERNEL_PACKAGE_TARGET: &str = "kernel/x86_64-regasos-kernel.json";
 pub fn create_disk_image(build_args: &[String]) -> Result<PathBuf> {
     cross_run_all("build", build_args)?;
 
-    let kernel = built_binary_path(KERNEL_PACKAGE_NAME, KERNEL_PACKAGE_TARGET, build_args)?;
-    let binary = built_binary_path(EFI_PACKAGE_NAME, EFI_PACKAGE_TARGET, build_args)?;
+    let kernel_path = built_binary_path(KERNEL_PACKAGE_NAME, KERNEL_PACKAGE_TARGET, build_args)?;
+    let bootloader_path = built_binary_path(
+        BOOTLOADER_PACKAGE_NAME,
+        BOOTLOADER_PACKAGE_TARGET,
+        build_args,
+    )?;
 
-    let image_path = binary.with_file_name(IMAGE_NAME);
+    let image_path = bootloader_path.with_file_name(IMAGE_NAME);
 
     let mut disk = OpenOptions::new()
         .read(true)
@@ -50,7 +54,7 @@ pub fn create_disk_image(build_args: &[String]) -> Result<PathBuf> {
     gdisk.write().context("failed to flush partition table")?;
 
     let efi_part_data = StreamSlice::new(disk, start, end)?;
-    format_efi_partition(efi_part_data, &kernel, &binary)
+    format_efi_partition(efi_part_data, &kernel_path, &bootloader_path)
         .context("failed to write EFI system partition")?;
 
     Ok(image_path)
@@ -65,8 +69,8 @@ pub fn cross_run_all(subcommand: &str, additional_args: &[String]) -> Result<()>
     )?;
     cross_run(
         subcommand,
-        EFI_PACKAGE_NAME,
-        EFI_PACKAGE_TARGET,
+        BOOTLOADER_PACKAGE_NAME,
+        BOOTLOADER_PACKAGE_TARGET,
         additional_args,
     )
 }
@@ -167,21 +171,21 @@ fn add_efi_partition(gdisk: &mut GptDisk<'_>) -> Result<(u64, u64)> {
 
 fn format_efi_partition(
     mut partition: impl ReadWriteSeek,
-    kernel: &Path,
-    efi_binary: &Path,
+    kernel_path: &Path,
+    bootloader_path: &Path,
 ) -> Result<()> {
     fatfs::format_volume(&mut partition, FormatVolumeOptions::new())?;
     let fs = FileSystem::new(partition, FsOptions::new())?;
     let root = fs.root_dir();
 
     let mut kernel_file = root.create_dir("regasos")?.create_file("kernel")?;
-    io::copy(&mut File::open(kernel)?, &mut kernel_file)?;
+    io::copy(&mut File::open(kernel_path)?, &mut kernel_file)?;
 
     let mut boot_file = root
         .create_dir("efi")?
         .create_dir("boot")?
         .create_file("bootx64.efi")?;
-    io::copy(&mut File::open(efi_binary)?, &mut boot_file)?;
+    io::copy(&mut File::open(bootloader_path)?, &mut boot_file)?;
 
     Ok(())
 }
