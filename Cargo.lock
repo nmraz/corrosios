@@ -341,6 +341,7 @@ name = "uefi"
 version = "0.1.0"
 dependencies = [
  "ucs2",
+ "uefi-macros",
 ]
 
 [[package]]
