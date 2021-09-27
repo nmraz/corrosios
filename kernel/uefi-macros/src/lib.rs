@@ -7,7 +7,7 @@ use syn::{parse_macro_input, LitStr};
 #[proc_macro]
 pub fn u16cstr(input: TokenStream) -> TokenStream {
     let lit = parse_macro_input!(input as LitStr).value();
-    let mut encoded = Vec::with_capacity(lit.len() + 1);
+    let mut encoded = Vec::with_capacity(lit.len());
 
     ucs2::encode_with(&lit, |c| {
         if c == 0 {
