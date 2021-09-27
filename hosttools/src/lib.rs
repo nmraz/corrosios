@@ -24,6 +24,9 @@ const DISK_SIZE: u64 = EFI_PARTITION_SIZE + 64 * KB;
 const EFI_PACKAGE_NAME: &str = "efiapp";
 const EFI_PACKAGE_TARGET: &str = "x86_64-unknown-uefi";
 
+const KERNEL_PACKAGE_NAME: &str = "kernel";
+const KERNEL_PACKAGE_TARGET: &str = "kernel/x86_64-regasos-kernel.json";
+
 pub fn create_disk_image(additional_args: &[String]) -> Result<PathBuf> {
     cross_run_all("build", additional_args)?;
     let binary = efi_binary_path(additional_args)?;
@@ -49,6 +52,12 @@ pub fn create_disk_image(additional_args: &[String]) -> Result<PathBuf> {
 }
 
 pub fn cross_run_all(subcommand: &str, additional_args: &[String]) -> Result<()> {
+    cross_run(
+        subcommand,
+        KERNEL_PACKAGE_NAME,
+        KERNEL_PACKAGE_TARGET,
+        additional_args,
+    )?;
     cross_run(
         subcommand,
         EFI_PACKAGE_NAME,
