@@ -1,2 +1,2 @@
 [workspace]
-members = ["efiapp", "hosttools", "uefi"]
+members = ["efiapp", "hosttools", "kernel", "uefi"]
