@@ -14,7 +14,7 @@
     "pre-link-args": {
         "ld.lld": [
             "-T",
-            "kernel/x86_64.ld"
+            "kernel/kernel/x86_64.ld"
         ]
     }
 }

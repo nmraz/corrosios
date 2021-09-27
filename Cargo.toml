@@ -1,2 +1,2 @@
 [workspace]
-members = ["efiboot", "hosttools", "kernel", "uefi"]
+members = ["hosttools", "kernel/*"]

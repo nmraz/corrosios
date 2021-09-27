@@ -27,7 +27,7 @@ const BOOTLOADER_PACKAGE_NAME: &str = "efiboot";
 const BOOTLOADER_PACKAGE_TARGET: &str = "x86_64-unknown-uefi";
 
 const KERNEL_PACKAGE_NAME: &str = "kernel";
-const KERNEL_PACKAGE_TARGET: &str = "kernel/x86_64-regasos-kernel.json";
+const KERNEL_PACKAGE_TARGET: &str = "kernel/kernel/x86_64-regasos-kernel.json";
 
 pub fn create_disk_image(build_args: &[String]) -> Result<PathBuf> {
     cross_run_all("build", build_args)?;
