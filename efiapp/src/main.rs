@@ -6,7 +6,6 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use alloc::string::String;
 use alloc::vec;
 use core::fmt::Write;
 use core::panic::PanicInfo;
@@ -109,34 +108,30 @@ fn load_aux_file(
     let root_dir = boot_fs.open_volume()?;
 
     let name = U16CStr::from_u16s_with_nul(&[
-        b't' as u16,
+        b'r' as u16,
         b'e' as u16,
+        b'g' as u16,
+        b'a' as u16,
         b's' as u16,
-        b't' as u16,
-        b'.' as u16,
-        b't' as u16,
-        b'x' as u16,
-        b't' as u16,
+        b'o' as u16,
+        b's' as u16,
+        b'\\' as u16,
+        b'k' as u16,
+        b'e' as u16,
+        b'r' as u16,
+        b'n' as u16,
+        b'e' as u16,
+        b'l' as u16,
         0,
     ])
     .unwrap();
 
-    let mut file = root_dir.open(name, File::MODE_READ)?;
+    let file = root_dir.open(name, File::MODE_READ)?;
 
     let mut info_buf = vec![0; file.info_size()?];
     let info = file.info(&mut info_buf)?;
 
     writeln!(stdout, "File: name {}, size {}", info.name(), info.size()).unwrap();
-
-    let mut file_buf = vec![0; info.size() as usize];
-    let len = file.read(&mut file_buf)?;
-
-    writeln!(
-        stdout,
-        "File contents: {}\n",
-        String::from_utf8_lossy(&file_buf[..len])
-    )
-    .unwrap();
 
     Ok(())
 }

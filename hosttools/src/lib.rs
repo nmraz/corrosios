@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fs::{File, OpenOptions};
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -182,9 +182,6 @@ fn format_efi_partition(
         .create_dir("boot")?
         .create_file("bootx64.efi")?;
     io::copy(&mut File::open(efi_binary)?, &mut boot_file)?;
-
-    let mut test_file = fs.root_dir().create_file("test.txt")?;
-    write!(test_file, "Hello, world!")?;
 
     Ok(())
 }
