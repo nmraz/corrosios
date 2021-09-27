@@ -16,7 +16,7 @@ use uefi::proto::io::SimpleTextOutput;
 use uefi::proto::path::DevicePathToText;
 use uefi::proto::ProtocolHandle;
 use uefi::table::{BootServices, BootTableHandle, OpenProtocolHandle};
-use uefi::{Handle, MemoryType, Result, Status, U16CStr};
+use uefi::{u16cstr, Handle, MemoryType, Result, Status};
 
 mod allocator;
 
@@ -106,27 +106,7 @@ fn load_aux_file(
         .open_protocol::<SimpleFileSystem>(loaded_image.device_handle(), image_handle)?;
 
     let root_dir = boot_fs.open_volume()?;
-
-    let name = U16CStr::from_u16s_with_nul(&[
-        b'r' as u16,
-        b'e' as u16,
-        b'g' as u16,
-        b'a' as u16,
-        b's' as u16,
-        b'o' as u16,
-        b's' as u16,
-        b'\\' as u16,
-        b'k' as u16,
-        b'e' as u16,
-        b'r' as u16,
-        b'n' as u16,
-        b'e' as u16,
-        b'l' as u16,
-        0,
-    ])
-    .unwrap();
-
-    let file = root_dir.open(name, File::MODE_READ)?;
+    let file = root_dir.open(u16cstr!("regasos\\kernel"), File::MODE_READ)?;
 
     let mut info_buf = vec![0; file.info_size()?];
     let info = file.info(&mut info_buf)?;
