@@ -2,7 +2,10 @@
 #![feature(allocator_api)]
 #![no_std]
 
-pub use uefi_macros::u16cstr;
+// Allow proc macros referencing `::uefi` to work within this crate
+extern crate self as uefi;
+
+pub use uefi_macros::{guid, u16cstr};
 
 pub use bootalloc::BootAlloc;
 pub use cstr::*;
