@@ -340,6 +340,7 @@ dependencies = [
 name = "uefi"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "ucs2",
  "uefi-macros",
 ]

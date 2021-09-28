@@ -10,7 +10,7 @@ use alloc::vec;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 
-use uefi::proto::fs::{File, SimpleFileSystem};
+use uefi::proto::fs::{OpenMode, SimpleFileSystem};
 use uefi::proto::image::LoadedImage;
 use uefi::proto::io::SimpleTextOutput;
 use uefi::proto::path::DevicePathToText;
@@ -106,7 +106,7 @@ fn load_aux_file(
         .open_protocol::<SimpleFileSystem>(loaded_image.device_handle(), image_handle)?;
 
     let root_dir = boot_fs.open_volume()?;
-    let file = root_dir.open(u16cstr!("regasos\\kernel"), File::MODE_READ)?;
+    let file = root_dir.open(u16cstr!("regasos\\kernel"), OpenMode::READ)?;
 
     let mut info_buf = vec![0; file.info_size()?];
     let info = file.info(&mut info_buf)?;

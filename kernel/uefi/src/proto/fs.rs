@@ -1,6 +1,8 @@
 use core::marker::PhantomData;
 use core::{mem, ptr};
 
+use bitflags::bitflags;
+
 use crate::{guid, Guid, Result, Status, Timestamp, U16CStr};
 
 use super::{abi_call, unsafe_protocol, Protocol};
@@ -42,12 +44,16 @@ impl SimpleFileSystem {
 
 pub struct File<'a>(*mut FileAbi, PhantomData<&'a ()>);
 
+bitflags! {
+    pub struct OpenMode: u64 {
+        const READ = 1;
+        const WRITE = 2;
+    }
+}
+
 const GUID_FILE_INFO: Guid = guid!("09576e92-6d3f-11d2-8e39-00a0c969723b");
 
 impl File<'_> {
-    pub const MODE_READ: u64 = 1;
-    pub const MODE_WRITE: u64 = 2;
-
     unsafe fn new(abi: *mut FileAbi) -> Self {
         Self(abi, PhantomData)
     }
@@ -56,10 +62,10 @@ impl File<'_> {
         self.0
     }
 
-    pub fn open(&self, name: &U16CStr, mode: u64) -> Result<File<'_>> {
+    pub fn open(&self, name: &U16CStr, mode: OpenMode) -> Result<File<'_>> {
         let mut abi = ptr::null_mut();
         unsafe {
-            abi_call!(self, open(&mut abi, name.as_ptr(), mode, 0)).to_result()?;
+            abi_call!(self, open(&mut abi, name.as_ptr(), mode.bits(), 0)).to_result()?;
             Ok(File::new(abi))
         }
     }
