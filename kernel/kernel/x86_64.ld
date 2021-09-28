@@ -16,21 +16,21 @@ SECTIONS {
 
   __code_start = .;
   .text : AT(ADDR(.text) - __virt_start + __bootseg_end) {
-    *(.text)
+    *(.text*)
   }
   . = ALIGN(4K);
   __code_end = .;
 
   __rodata_start = .;
   .rodata : AT(ADDR(.rodata) - __virt_start + __bootseg_end) {
-    *(.rodata)
+    *(.rodata*)
   }
   . = ALIGN(4K);
   __rodata_end = .;
 
   __data_start = .;
   .data : AT(ADDR(.data) - __virt_start + __bootseg_end) {
-    *(.data)
+    *(.data*)
   }
   . = ALIGN(4K);
   __data_end = .;
@@ -38,13 +38,13 @@ SECTIONS {
   __bss_start = .;
   .bss : AT(ADDR(.bss) - __virt_start + __bootseg_end) {
     *(COMMON)
-    *(.bss)
+    *(.bss*)
   }
   . = ALIGN(4K);
   __bss_end = .;
 
   __virt_end = .;
-  __phys_end = . - __virt_end + __bootseg_end;
+  __phys_end = . - __virt_start + __bootseg_end;
 
   ASSERT(__phys_end < 8M, "Kernel too large")
 }
