@@ -78,7 +78,6 @@ pub struct BootServices {
     raise_tpl: *const (),
     restore_tpl: *const (),
 
-    // TODO:
     allocate_pages: *const (),
     free_pages: *const (),
     get_memory_map: unsafe extern "efiapi" fn(
