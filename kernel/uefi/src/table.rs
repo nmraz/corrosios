@@ -62,6 +62,12 @@ impl<P: Protocol> Drop for OpenProtocolHandle<'_, P> {
     }
 }
 
+pub enum AllocMode {
+    Any,
+    Below(u64),
+    At(u64),
+}
+
 #[repr(C)]
 struct TableHeader {
     signature: u64,
@@ -72,14 +78,21 @@ struct TableHeader {
 }
 
 #[repr(C)]
+enum AllocModeAbi {
+    AnyPages,
+    MaxAddress,
+    Address,
+}
+
+#[repr(C)]
 pub struct BootServices {
     header: TableHeader,
 
     raise_tpl: *const (),
     restore_tpl: *const (),
 
-    allocate_pages: *const (),
-    free_pages: *const (),
+    allocate_pages: unsafe extern "efiapi" fn(AllocModeAbi, MemoryType, usize, *mut u64) -> Status,
+    free_pages: unsafe extern "efiapi" fn(u64, usize) -> Status,
     get_memory_map: unsafe extern "efiapi" fn(
         *mut usize,
         *mut MemoryDescriptor,
@@ -203,9 +216,33 @@ impl BootServices {
 
     /// # Safety
     ///
-    /// Must have been allocated with `alloc`.
+    /// Must have been allocated with `alloc`. The memory should not be used after this function
+    /// returns.
     pub unsafe fn free(&self, p: *mut u8) {
         (self.free_pool)(p).to_result().expect("invalid pointer");
+    }
+
+    pub fn alloc_pages(&self, mode: AllocMode, pages: usize) -> Result<u64> {
+        let (mode, mut addr) = match mode {
+            AllocMode::Any => (AllocModeAbi::AnyPages, 0),
+            AllocMode::Below(addr) => (AllocModeAbi::MaxAddress, addr),
+            AllocMode::At(addr) => (AllocModeAbi::Address, addr),
+        };
+
+        unsafe { (self.allocate_pages)(mode, MemoryType::LOADER_DATA, pages, &mut addr) }
+            .to_result()?;
+
+        Ok(addr)
+    }
+
+    /// # Safety
+    ///
+    /// Must have been previously allocated with `alloc_pages`. The pages should not be used after
+    /// this function returns.
+    pub unsafe fn free_pages(&self, addr: u64, pages: usize) {
+        (self.free_pages)(addr, pages)
+            .to_result()
+            .expect("invalid page allocation")
     }
 
     pub fn open_protocol<P: Protocol>(
