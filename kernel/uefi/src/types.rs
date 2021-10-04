@@ -6,6 +6,7 @@ pub struct Handle(pub(crate) *const ());
 #[repr(C)]
 pub struct Guid(pub u32, pub u16, pub u16, pub [u8; 8]);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub struct Timestamp {
     pub year: u16,
