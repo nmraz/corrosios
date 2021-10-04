@@ -76,6 +76,14 @@ impl File<'_> {
         Ok(size)
     }
 
+    pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
+        if self.read(buf)? != buf.len() {
+            Err(Status::END_OF_FILE)
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn write(&mut self, buf: &[u8]) -> Result<usize> {
         let mut size = buf.len();
         unsafe { abi_call!(self, write(&mut size, buf.as_ptr())) }.to_result()?;
