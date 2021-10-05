@@ -23,26 +23,31 @@ impl U16CStr {
             return Err(FromU16sWithNulError);
         }
 
+        // Safety: nul terminator requirements enforced.
         Ok(unsafe { Self::from_u16s_with_nul_unchecked(slice) })
     }
 
     /// # Safety
     ///
-    /// Must be nul-terminated.
+    /// Pointer must be valid and point to a nul-terminated buffer.
     pub unsafe fn from_ptr<'a>(ptr: *const u16) -> &'a Self {
         let mut len = 0;
-        while *ptr.add(len) != 0 {
+
+        // Safety: pointer is valid, buffer is nul-terminated.
+        while unsafe { *ptr.add(len) } != 0 {
             len += 1;
         }
 
-        Self::from_u16s_with_nul_unchecked(slice::from_raw_parts(ptr, len + 1))
+        // Safety: function preconditions, terminator found above.
+        unsafe { Self::from_u16s_with_nul_unchecked(slice::from_raw_parts(ptr, len + 1)) }
     }
 
     /// # Safety
     ///
     /// Must be nul-terminated and not contain any embedded nuls.
     pub unsafe fn from_u16s_with_nul_unchecked(slice: &[u16]) -> &Self {
-        mem::transmute(slice)
+        // Safety: function preconditions.
+        unsafe { mem::transmute(slice) }
     }
 
     pub fn to_u16s_with_nul(&self) -> &[u16] {

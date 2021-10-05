@@ -27,7 +27,8 @@ impl<P: Protocol> ProtocolHandle<'_, P> {
     ///
     /// ABI pointer must be valid and outlive `'a`.
     pub(crate) unsafe fn from_abi(abi: *mut P::Abi) -> Self {
-        Self(P::from_abi(abi), PhantomData)
+        // Safety: function preconditions.
+        Self(unsafe { P::from_abi(abi) }, PhantomData)
     }
 }
 

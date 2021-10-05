@@ -31,6 +31,8 @@ unsafe impl Allocator for BootAlloc<'_> {
     }
 
     unsafe fn deallocate(&self, p: NonNull<u8>, _layout: Layout) {
-        self.boot_services.free(p.as_ptr());
+        unsafe {
+            self.boot_services.free(p.as_ptr());
+        }
     }
 }

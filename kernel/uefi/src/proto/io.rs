@@ -29,9 +29,9 @@ impl SimpleTextOutput {
 
     /// # Safety
     ///
-    /// Must be null-terminated.
+    /// Pointer must be valid and point to a nul-terminated buffer.
     pub unsafe fn output_string_unchecked(&mut self, s: *const u16) -> Result<()> {
-        abi_call!(self, output_string(s)).to_result()
+        unsafe { abi_call!(self, output_string(s)) }.to_result()
     }
 
     pub fn output_u16_str(&mut self, s: &U16CStr) -> Result<()> {

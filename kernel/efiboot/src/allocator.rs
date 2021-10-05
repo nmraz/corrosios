@@ -22,23 +22,21 @@ struct GlobalBootAlloc;
 
 unsafe impl GlobalAlloc for GlobalBootAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        BootAlloc::new(get_boot_services())
+        BootAlloc::new(unsafe { get_boot_services() })
             .allocate(layout)
             .map_or(ptr::null_mut(), |block| block.as_ptr().cast())
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-        get_boot_services().free(ptr)
+        unsafe { get_boot_services().free(ptr) }
     }
 }
 
 static BOOT_SERVICES: AtomicPtr<BootServices> = AtomicPtr::new(ptr::null_mut());
 
 unsafe fn get_boot_services<'a>() -> &'a BootServices {
-    BOOT_SERVICES
-        .load(Ordering::Relaxed)
-        .as_ref()
-        .expect("allocator not available")
+    let p = BOOT_SERVICES.load(Ordering::Relaxed);
+    unsafe { p.as_ref() }.expect("allocator not available")
 }
 
 struct BootServicesGuard;

@@ -24,8 +24,11 @@ impl<'a, P: Protocol> OpenProtocolHandle<'a, P> {
         boot_services: &'a BootServices,
         image_handle: Handle,
     ) -> Self {
+        // Safety: function preconditions.
+        let proto = unsafe { P::from_abi(abi) };
+
         Self {
-            proto: P::from_abi(abi),
+            proto,
             handle,
             boot_services,
             image_handle,
@@ -199,7 +202,7 @@ impl BootServices {
 
         let iter = buf[..size].chunks(desc_size).map(move |chunk| {
             assert_eq!(chunk.len(), desc_size);
-            // Safety: aligned, we trust the firmware
+            // Safety: aligned, we trust the firmware.
             unsafe { &*(chunk.as_ptr() as *const MemoryDescriptor) }
         });
 
@@ -219,7 +222,9 @@ impl BootServices {
     /// Must have been allocated with `alloc`. The memory should not be used after this function
     /// returns.
     pub unsafe fn free(&self, p: *mut u8) {
-        (self.free_pool)(p).to_result().expect("invalid pointer");
+        unsafe { (self.free_pool)(p) }
+            .to_result()
+            .expect("invalid pointer");
     }
 
     pub fn alloc_pages(&self, mode: AllocMode, pages: usize) -> Result<u64> {
@@ -240,7 +245,7 @@ impl BootServices {
     /// Must have been previously allocated with `alloc_pages`. The pages should not be used after
     /// this function returns.
     pub unsafe fn free_pages(&self, addr: u64, pages: usize) {
-        (self.free_pages)(addr, pages)
+        unsafe { (self.free_pages)(addr, pages) }
             .to_result()
             .expect("invalid page allocation")
     }
@@ -348,7 +353,7 @@ impl BootTableHandle {
         key: MemoryMapKey,
     ) -> result::Result<RuntimeTableHandle, ExitBootServicesError> {
         let ptr = self.0;
-        (self.boot_services().exit_boot_services)(image_handle, key)
+        unsafe { (self.boot_services().exit_boot_services)(image_handle, key) }
             .to_result()
             .map_err(|status| {
                 if status == Status::INVALID_PARAMETER {
