@@ -11,6 +11,13 @@ pub const VERSION_CURRENT: u32 = 1;
 pub const ELF_TYPE_EXEC: u16 = 2;
 pub const ELF_TYPE_DYN: u16 = 3;
 
+pub const SEGMENT_TYPE_NULL: u32 = 0;
+pub const SEGMENT_TYPE_LOAD: u32 = 1;
+
+pub const SEGMENT_FLAG_READ: u32 = 4;
+pub const SEGMENT_FLAG_WRITE: u32 = 2;
+pub const SEGMENT_FLAG_EXEC: u32 = 1;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub struct Header {
@@ -46,4 +53,17 @@ impl Header {
             && self.abi_version == ABI_VERSION_CURRENT
             && self.version == VERSION_CURRENT
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(C)]
+pub struct ProgramHeader {
+    pub ty: u32,
+    pub flags: u32,
+    pub off: u64,
+    pub virt_addr: u64,
+    pub phys_addr: u64,
+    pub file_size: u64,
+    pub mem_size: u64,
+    pub align: u64,
 }
