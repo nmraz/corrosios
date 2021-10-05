@@ -12,6 +12,7 @@ const ERROR_BIT: usize = 1 << (mem::size_of::<usize>() * 8 - 1);
 impl Status {
     pub const SUCCESS: Self = Self(0);
 
+    pub const LOAD_ERROR: Self = Self(1 | ERROR_BIT);
     pub const INVALID_PARAMETER: Self = Self(2 | ERROR_BIT);
     pub const BUFFER_TOO_SMALL: Self = Self(5 | ERROR_BIT);
     pub const OUT_OF_RESOURCES: Self = Self(9 | ERROR_BIT);
