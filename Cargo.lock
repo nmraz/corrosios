@@ -130,6 +130,7 @@ dependencies = [
 name = "efiboot"
 version = "0.1.0"
 dependencies = [
+ "minielf",
  "uefi",
 ]
 
