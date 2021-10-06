@@ -20,6 +20,7 @@ use uefi::table::{BootServices, BootTableHandle, OpenProtocolHandle};
 use uefi::{u16cstr, Handle, MemoryType, Result, Status};
 
 mod allocator;
+mod elfload;
 
 fn halt() -> ! {
     unsafe {
