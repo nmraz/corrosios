@@ -37,11 +37,11 @@ fn load_segment(
     pheader: &ProgramHeader,
     file: &mut File<'_>,
 ) -> Result<()> {
-    if pheader.phys_addr % PAGE_SIZE != 0 || pheader.mem_size % PAGE_SIZE != 0 {
+    if pheader.phys_addr % PAGE_SIZE != 0 {
         return Err(Status::LOAD_ERROR);
     }
 
-    let pages = pheader.mem_size / PAGE_SIZE;
+    let pages = (pheader.mem_size + PAGE_SIZE - 1) / PAGE_SIZE;
     boot_services.alloc_pages(AllocMode::At(pheader.phys_addr), pages as usize)?;
 
     // Safety: memory range has been reserved via call to `alloc_pages` above.
