@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
-use core::{mem, ptr, result};
+use core::{mem, ptr};
 
 use crate::proto::io::{SimpleTextOutput, SimpleTextOutputAbi};
 use crate::proto::{Protocol, ProtocolHandle};
@@ -332,38 +332,34 @@ impl<S: TableState> SystemTableHandle<S> {
     }
 }
 
-pub enum ExitBootServicesError {
-    StaleMemoryMap(BootTableHandle),
-    Error(Status),
-}
-
 impl BootTableHandle {
     pub fn boot_services(&self) -> &BootServices {
         // Safety: we haven't exited boot services, so this pointer is valid.
         unsafe { &*self.0.boot_services }
     }
 
-    /// # Safety
-    ///
-    /// If this function fails due to a stale memory map (and returns the existing table handle),
-    /// the only boot services that can be called are those related to memory allocation.
-    pub unsafe fn exit_boot_services(
+    pub fn exit_boot_services(
         self,
         image_handle: Handle,
-        key: MemoryMapKey,
-    ) -> result::Result<RuntimeTableHandle, ExitBootServicesError> {
-        let ptr = self.0;
-        unsafe { (self.boot_services().exit_boot_services)(image_handle, key) }
-            .to_result()
-            .map_err(|status| {
-                if status == Status::INVALID_PARAMETER {
-                    ExitBootServicesError::StaleMemoryMap(BootTableHandle::new(ptr))
-                } else {
-                    ExitBootServicesError::Error(status)
-                }
-            })?;
+        mmap_buf: &mut [u8],
+    ) -> Result<(
+        RuntimeTableHandle,
+        impl ExactSizeIterator<Item = &MemoryDescriptor> + Clone,
+    )> {
+        loop {
+            // Work around rust-lang/rust#51526.
+            let mmap_buf = unsafe { &mut *(mmap_buf as *mut _) };
+            let (key, mmap) = self.boot_services().memory_map(mmap_buf)?;
 
-        Ok(RuntimeTableHandle::new(ptr))
+            let status = unsafe { (self.boot_services().exit_boot_services)(image_handle, key) };
+            if status == Status::INVALID_PARAMETER {
+                // Memory map invalidated, try again.
+                continue;
+            }
+            status.to_result()?;
+
+            break Ok((RuntimeTableHandle::new(self.0), mmap));
+        }
     }
 
     pub fn stdout(&self) -> ProtocolHandle<'_, SimpleTextOutput> {
