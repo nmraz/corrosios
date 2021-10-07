@@ -36,6 +36,17 @@ fn handle_panic(_info: &PanicInfo) -> ! {
     halt()
 }
 
+#[no_mangle]
+pub extern "efiapi" fn efi_main(image_handle: Handle, boot_table: BootTableHandle) -> Status {
+    let res = allocator::with(&boot_table, || run(image_handle, &boot_table));
+
+    if let Err(status) = res {
+        writeln!(boot_table.stdout(), "Error: {:#x}", status.0).unwrap();
+    }
+
+    halt();
+}
+
 fn run(image_handle: Handle, boot_table: &BootTableHandle) -> Result<()> {
     let boot_services = boot_table.boot_services();
     let mut stdout = boot_table.stdout();
@@ -51,26 +62,21 @@ fn run(image_handle: Handle, boot_table: &BootTableHandle) -> Result<()> {
 
     let loaded_image = boot_services.open_protocol::<LoadedImage>(image_handle, image_handle)?;
 
-    print_image_info(boot_services, &mut stdout, &loaded_image)?;
-    load_aux_file(boot_services, &mut stdout, image_handle, &loaded_image)?;
+    print_bootloader_info(boot_services, &mut stdout, &loaded_image)?;
+
+    let kentry = load_kernel(boot_services, image_handle, &loaded_image)?;
+    writeln!(stdout, "Loaded kernel, entry point: {:#x}\n", kentry).unwrap();
+
     print_mem_map(boot_services, &mut stdout)?;
 
     Ok(())
 }
 
-fn print_image_info(
+fn print_bootloader_info(
     boot_services: &BootServices,
     stdout: &mut ProtocolHandle<'_, SimpleTextOutput>,
     loaded_image: &OpenProtocolHandle<'_, LoadedImage>,
 ) -> Result<()> {
-    writeln!(
-        stdout,
-        "Loaded image: base {:?}, size {}",
-        loaded_image.image_base(),
-        loaded_image.image_size(),
-    )
-    .unwrap();
-
     let device_path = loaded_image.file_path();
     let path_to_text = boot_services.locate_protocol::<DevicePathToText>()?;
 
@@ -79,43 +85,23 @@ fn print_image_info(
         unsafe { Box::from_raw(raw.as_ptr()) }
     };
 
-    writeln!(stdout, "Image path: {}\n", path).unwrap();
-
-    writeln!(stdout, "Path nodes:").unwrap();
-    for device_node in device_path.nodes() {
-        let node = unsafe {
-            Box::from_raw(
-                path_to_text
-                    .device_node_to_text(device_node, true, true)?
-                    .as_ptr(),
-            )
-        };
-
-        writeln!(stdout, "{}", node).unwrap();
-    }
-    writeln!(stdout).unwrap();
+    writeln!(stdout, "Bootloader path: {}\n", path).unwrap();
 
     Ok(())
 }
 
-fn load_aux_file(
+fn load_kernel(
     boot_services: &BootServices,
-    stdout: &mut ProtocolHandle<'_, SimpleTextOutput>,
     image_handle: Handle,
     loaded_image: &OpenProtocolHandle<'_, LoadedImage>,
-) -> Result<()> {
+) -> Result<u64> {
     let boot_fs = boot_services
         .open_protocol::<SimpleFileSystem>(loaded_image.device_handle(), image_handle)?;
 
     let root_dir = boot_fs.open_volume()?;
-    let file = root_dir.open(u16cstr!("regasos\\kernel"), OpenMode::READ)?;
+    let mut file = root_dir.open(u16cstr!("regasos\\kernel"), OpenMode::READ)?;
 
-    let mut info_buf = vec![0; file.info_size()?];
-    let info = file.info(&mut info_buf)?;
-
-    writeln!(stdout, "File: name {}, size {}", info.name(), info.size()).unwrap();
-
-    Ok(())
+    elfload::load_elf(boot_services, &mut file)
 }
 
 fn print_mem_map(
@@ -169,15 +155,4 @@ fn print_mem_map(
     }
 
     Ok(())
-}
-
-#[no_mangle]
-pub extern "efiapi" fn efi_main(image_handle: Handle, boot_table: BootTableHandle) -> Status {
-    let res = allocator::with(&boot_table, || run(image_handle, &boot_table));
-
-    if let Err(status) = res {
-        writeln!(boot_table.stdout(), "Error: {:#x}", status.0).unwrap();
-    }
-
-    halt();
 }
