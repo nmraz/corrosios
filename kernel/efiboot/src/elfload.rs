@@ -37,7 +37,7 @@ fn load_segment(
     pheader: &ProgramHeader,
     file: &mut File<'_>,
 ) -> Result<()> {
-    if pheader.phys_addr % PAGE_SIZE != 0 {
+    if pheader.phys_addr % PAGE_SIZE != 0 || pheader.file_size > pheader.mem_size {
         return Err(Status::LOAD_ERROR);
     }
 
@@ -52,7 +52,7 @@ fn load_segment(
     let file_size = pheader.file_size as usize;
 
     file.set_position(pheader.off)?;
-    file.read_exact(buf.get_mut(..file_size).ok_or(Status::LOAD_ERROR)?)?;
+    file.read_exact(&mut buf[..file_size])?;
     buf[file_size..].fill(0);
 
     Ok(())
