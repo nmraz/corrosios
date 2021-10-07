@@ -16,7 +16,7 @@ use uefi::proto::image::LoadedImage;
 use uefi::proto::io::SimpleTextOutput;
 use uefi::proto::path::DevicePathToText;
 use uefi::proto::ProtocolHandle;
-use uefi::table::{BootServices, BootTableHandle, OpenProtocolHandle};
+use uefi::table::{BootServices, BootTable, OpenProtocolHandle};
 use uefi::{u16cstr, Handle, MemoryType, Result, Status};
 
 mod allocator;
@@ -37,7 +37,7 @@ fn handle_panic(_info: &PanicInfo) -> ! {
 }
 
 #[no_mangle]
-pub extern "efiapi" fn efi_main(image_handle: Handle, boot_table: BootTableHandle) -> Status {
+pub extern "efiapi" fn efi_main(image_handle: Handle, boot_table: BootTable) -> Status {
     let res = allocator::with(&boot_table, || run(image_handle, &boot_table));
 
     if let Err(status) = res {
@@ -47,7 +47,7 @@ pub extern "efiapi" fn efi_main(image_handle: Handle, boot_table: BootTableHandl
     halt();
 }
 
-fn run(image_handle: Handle, boot_table: &BootTableHandle) -> Result<()> {
+fn run(image_handle: Handle, boot_table: &BootTable) -> Result<()> {
     let boot_services = boot_table.boot_services();
     let mut stdout = boot_table.stdout();
 

@@ -288,7 +288,7 @@ impl BootServices {
 }
 
 #[repr(C)]
-struct SystemTable {
+pub struct SystemTableAbi {
     header: TableHeader,
     firmware_vendor: *const u16,
     firmware_revision: u32,
@@ -313,14 +313,21 @@ pub struct RuntimeState;
 impl TableState for RuntimeState {}
 
 #[repr(transparent)]
-pub struct SystemTableHandle<S: TableState>(&'static SystemTable, PhantomData<S>);
+pub struct SystemTable<S: TableState>(&'static SystemTableAbi, PhantomData<S>);
 
-pub type BootTableHandle = SystemTableHandle<BootState>;
-pub type RuntimeTableHandle = SystemTableHandle<RuntimeState>;
+pub type BootTable = SystemTable<BootState>;
+pub type RuntimeTable = SystemTable<RuntimeState>;
 
-impl<S: TableState> SystemTableHandle<S> {
-    fn new(ptr: &'static SystemTable) -> Self {
-        Self(ptr, PhantomData)
+impl<S: TableState> SystemTable<S> {
+    /// # Safety
+    ///
+    /// ABI pointer must be valid for the lifetime of the `SystemTable` instance.
+    pub unsafe fn from_abi(abi: *const SystemTableAbi) -> Self {
+        Self(unsafe { &*abi }, PhantomData)
+    }
+
+    pub fn abi(&self) -> *const SystemTableAbi {
+        self.0
     }
 
     pub fn firmware_vendor(&self) -> &U16CStr {
@@ -332,7 +339,7 @@ impl<S: TableState> SystemTableHandle<S> {
     }
 }
 
-impl BootTableHandle {
+impl BootTable {
     pub fn boot_services(&self) -> &BootServices {
         // Safety: we haven't exited boot services, so this pointer is valid.
         unsafe { &*self.0.boot_services }
@@ -343,7 +350,7 @@ impl BootTableHandle {
         image_handle: Handle,
         mmap_buf: &mut [u8],
     ) -> Result<(
-        RuntimeTableHandle,
+        RuntimeTable,
         impl ExactSizeIterator<Item = &MemoryDescriptor> + Clone,
     )> {
         loop {
@@ -358,7 +365,7 @@ impl BootTableHandle {
             }
             status.to_result()?;
 
-            break Ok((RuntimeTableHandle::new(self.0), mmap));
+            break Ok((unsafe { RuntimeTable::from_abi(self.abi()) }, mmap));
         }
     }
 
