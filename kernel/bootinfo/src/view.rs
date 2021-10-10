@@ -2,7 +2,10 @@ use core::{iter, mem, ptr, slice};
 
 use crate::{ItemHeader, ItemKind};
 
+#[derive(Debug, Clone, Copy)]
 pub struct BadMagic;
+
+#[derive(Debug, Clone, Copy)]
 pub struct InvalidPayload;
 
 #[derive(Debug, Clone, Copy)]
