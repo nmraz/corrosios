@@ -16,6 +16,8 @@ pub struct ItemKind(pub u32);
 
 impl ItemKind {
     pub const CONTAINER: Self = Self(0xb007b081);
+    pub const EFI_SYSTEM_TABLE: Self = Self(1);
+    pub const MEMORY_MAP: Self = Self(2);
 }
 
 #[derive(Debug, Clone, Copy)]
