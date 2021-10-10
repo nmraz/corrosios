@@ -1,6 +1,7 @@
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
 
+pub mod builder;
 pub mod view;
 
 pub const ITEM_ALIGN: usize = 8;
