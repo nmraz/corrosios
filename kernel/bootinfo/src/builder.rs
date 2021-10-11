@@ -75,7 +75,7 @@ impl<'a> Builder<'a> {
         Ok(())
     }
 
-    pub fn finish(self) -> &'a ItemHeader {
+    pub fn finish(mut self) -> &'a ItemHeader {
         // Safety: buffer size, alignment checked in `new`.
         let header = unsafe { &mut *(self.buf.as_mut_ptr() as *mut MaybeUninit<ItemHeader>) };
         header.write(ItemHeader {
