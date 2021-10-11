@@ -2,6 +2,7 @@ use core::marker::PhantomData;
 use core::{mem, ptr};
 
 use bitflags::bitflags;
+use uninit::out_ref::Out;
 
 use crate::{guid, Guid, Result, Status, Timestamp, U16CStr};
 
@@ -70,17 +71,22 @@ impl File<'_> {
         }
     }
 
-    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+    pub fn read<'a>(&mut self, mut buf: Out<'a, [u8]>) -> Result<&'a [u8]> {
         let mut size = buf.len();
         unsafe { abi_call!(self, read(&mut size, buf.as_mut_ptr())) }.to_result()?;
-        Ok(size)
+
+        // Safety: this portion of the buffer has beein initialized by the call to `read` above.
+        Ok(unsafe { buf.get_out(..size).unwrap().assume_all_init() })
     }
 
-    pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
-        if self.read(buf)? != buf.len() {
+    pub fn read_exact<'a>(&mut self, buf: Out<'a, [u8]>) -> Result<&'a [u8]> {
+        let len = buf.len();
+        let res = self.read(buf)?;
+
+        if res.len() != len {
             Err(Status::END_OF_FILE)
         } else {
-            Ok(())
+            Ok(res)
         }
     }
 

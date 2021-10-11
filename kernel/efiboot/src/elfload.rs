@@ -70,10 +70,10 @@ fn read_pheaders(header: &Header, file: &mut File<'_>) -> Result<Vec<ProgramHead
 
     unsafe {
         let buf = slice::from_raw_parts_mut(
-            headers.as_mut_ptr() as *mut _,
+            headers.as_mut_ptr() as *mut MaybeUninit<u8>,
             count * mem::size_of::<ProgramHeader>(),
         );
-        file.read_exact(buf)?;
+        file.read_exact(buf.into())?;
         headers.set_len(count);
     }
 
@@ -93,9 +93,14 @@ fn read_header(file: &mut File<'_>) -> Result<Header> {
 
 unsafe fn read<T>(file: &mut File<'_>) -> Result<T> {
     let mut val = MaybeUninit::uninit();
-    let buf = unsafe { slice::from_raw_parts_mut(val.as_mut_ptr() as *mut _, mem::size_of::<T>()) };
+    let buf = unsafe {
+        slice::from_raw_parts_mut(
+            val.as_mut_ptr() as *mut MaybeUninit<u8>,
+            mem::size_of::<T>(),
+        )
+    };
 
-    file.read_exact(buf)?;
+    file.read_exact(buf.into())?;
 
     Ok(unsafe { val.assume_init() })
 }
