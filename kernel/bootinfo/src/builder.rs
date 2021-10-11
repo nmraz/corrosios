@@ -1,6 +1,8 @@
 use core::mem::{self, MaybeUninit};
 use core::ptr;
 
+use uninit::out_ref::Out;
+
 use crate::{align_item_offset, ItemHeader, ItemKind, ITEM_ALIGN};
 
 #[derive(Debug, Clone, Copy)]
@@ -10,12 +12,12 @@ pub enum BuildError {
 }
 
 pub struct Builder<'a> {
-    buf: &'a mut [u8],
+    buf: Out<'a, [u8]>,
     off: usize,
 }
 
 impl<'a> Builder<'a> {
-    pub fn new(buf: &'a mut [u8]) -> Result<Self, BuildError> {
+    pub fn new(buf: Out<'a, [u8]>) -> Result<Self, BuildError> {
         if buf.as_ptr() as usize % ITEM_ALIGN != 0 {
             return Err(BuildError::BadAlign);
         }
