@@ -75,7 +75,7 @@ impl File<'_> {
         let mut size = buf.len();
         unsafe { abi_call!(self, read(&mut size, buf.as_mut_ptr())) }.to_result()?;
 
-        // Safety: this portion of the buffer has beein initialized by the call to `read` above.
+        // Safety: this portion of the buffer has been initialized by the call to `read` above.
         Ok(unsafe { buf.get_out(..size).unwrap().assume_all_init() })
     }
 
