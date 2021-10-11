@@ -8,5 +8,6 @@ edition = "2021"
 [dependencies]
 bitflags = "1.2.1"
 ucs2 = "0.3.2"
+uninit = { version = "0.4.0", default-features = false }
 
 uefi-macros = { path = "../uefi-macros" }
