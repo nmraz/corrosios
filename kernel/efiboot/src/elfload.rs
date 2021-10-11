@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 use core::mem::{self, MaybeUninit};
-use core::slice;
+use core::{iter, slice};
+use uninit::out_ref::Out;
 
 use minielf::{Header, ProgramHeader, SEGMENT_TYPE_LOAD};
 use uefi::proto::fs::File;
@@ -46,14 +47,19 @@ fn load_segment(
 
     // Safety: memory range has been reserved via call to `alloc_pages` above.
     let buf = unsafe {
-        slice::from_raw_parts_mut(pheader.phys_addr as *mut u8, pheader.mem_size as usize)
+        slice::from_raw_parts_mut(
+            pheader.phys_addr as *mut MaybeUninit<u8>,
+            pheader.mem_size as usize,
+        )
     };
 
     let file_size = pheader.file_size as usize;
+    let (file_part, bss_part) = Out::<'_, [u8]>::from(buf).split_at_out(file_size);
 
     file.set_position(pheader.off)?;
-    file.read_exact(&mut buf[..file_size])?;
-    buf[file_size..].fill(0);
+    file.read_exact(file_part)?;
+
+    bss_part.init_with(iter::repeat(0));
 
     Ok(())
 }
