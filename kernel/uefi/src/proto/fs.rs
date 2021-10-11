@@ -118,7 +118,7 @@ impl File<'_> {
         Ok(size)
     }
 
-    pub fn info<'a>(&self, buf: &'a mut [u8]) -> Result<&'a FileInfo> {
+    pub fn info<'a>(&self, mut buf: Out<'a, [u8]>) -> Result<&'a FileInfo> {
         assert_eq!(buf.as_ptr() as usize % mem::align_of::<FileInfo>(), 0);
 
         let mut size = buf.len();
