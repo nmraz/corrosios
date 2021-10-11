@@ -350,19 +350,17 @@ impl BootTable {
     pub fn exit_boot_services(
         self,
         image_handle: Handle,
-        mmap_buf: Out<'_, [u8]>,
+        mut mmap_buf: Out<'_, [u8]>,
     ) -> Result<(
         RuntimeTable,
         impl ExactSizeIterator<Item = &MemoryDescriptor> + Clone,
     )> {
-        // Safety: we just have to trust the firmware not to de-initialize things. In practice, this
-        // should be fine since LLVM can't see into the firmware anyway.
-        let mmap_buf = unsafe { mmap_buf.as_mut_uninit() };
-
         loop {
             // Work around rust-lang/rust#51526.
-            let mmap_buf = unsafe { &mut *(mmap_buf as *mut [_]) };
-            let (key, mmap) = self.boot_services().memory_map(mmap_buf.into())?;
+            // Safety: We never actually create overlapping mutable references, as each reborrow
+            // lasts only for the current iteration.
+            let mmap_buf = unsafe { mem::transmute(mmap_buf.reborrow()) };
+            let (key, mmap) = self.boot_services().memory_map(mmap_buf)?;
 
             let status = unsafe { (self.boot_services().exit_boot_services)(image_handle, key) };
             if status == Status::INVALID_PARAMETER {
