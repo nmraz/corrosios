@@ -2,6 +2,8 @@ use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::{mem, ptr};
 
+use uninit::out_ref::Out;
+
 use crate::proto::io::{SimpleTextOutput, SimpleTextOutputAbi};
 use crate::proto::{Protocol, ProtocolHandle};
 use crate::{Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, Result, Status, U16CStr};
@@ -173,7 +175,7 @@ impl BootServices {
 
     pub fn memory_map<'a>(
         &self,
-        buf: &'a mut [u8],
+        mut buf: Out<'a, [u8]>,
     ) -> Result<(
         MemoryMapKey,
         impl ExactSizeIterator<Item = &'a MemoryDescriptor> + Clone,
@@ -200,7 +202,7 @@ impl BootServices {
         }
         .to_result()?;
 
-        let iter = buf[..size].chunks(desc_size).map(move |chunk| {
+        let iter = buf.as_uninit()[..size].chunks(desc_size).map(move |chunk| {
             assert_eq!(chunk.len(), desc_size);
             // Safety: aligned, we trust the firmware.
             unsafe { &*(chunk.as_ptr() as *const MemoryDescriptor) }
@@ -348,15 +350,19 @@ impl BootTable {
     pub fn exit_boot_services(
         self,
         image_handle: Handle,
-        mmap_buf: &mut [u8],
+        mmap_buf: Out<'_, [u8]>,
     ) -> Result<(
         RuntimeTable,
         impl ExactSizeIterator<Item = &MemoryDescriptor> + Clone,
     )> {
+        // Safety: we just have to trust the firmware not to de-initialize things. In practice, this
+        // should be fine since LLVM can't see into the firmware anyway.
+        let mmap_buf = unsafe { mmap_buf.as_mut_uninit() };
+
         loop {
             // Work around rust-lang/rust#51526.
-            let mmap_buf = unsafe { &mut *(mmap_buf as *mut _) };
-            let (key, mmap) = self.boot_services().memory_map(mmap_buf)?;
+            let mmap_buf = unsafe { &mut *(mmap_buf as *mut [_]) };
+            let (key, mmap) = self.boot_services().memory_map(mmap_buf.into())?;
 
             let status = unsafe { (self.boot_services().exit_boot_services)(image_handle, key) };
             if status == Status::INVALID_PARAMETER {

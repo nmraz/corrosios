@@ -111,7 +111,7 @@ fn print_mem_map(
     let mmap_size = boot_services.memory_map_size()? + 0x100;
     let mut mmap_buf = vec![0; mmap_size];
 
-    let (_key, mmap) = boot_services.memory_map(&mut mmap_buf)?;
+    let (_key, mmap) = boot_services.memory_map(mmap_buf.as_mut_slice().into())?;
 
     let conventional_mem_pages: u64 = mmap
         .clone()
