@@ -1,6 +1,7 @@
 use core::mem::{self, MaybeUninit};
-use core::ptr;
+use core::{ptr, slice};
 
+use uninit::extension_traits::AsOut;
 use uninit::out_ref::Out;
 
 use crate::{align_item_offset, ItemHeader, ItemKind, ITEM_ALIGN};
@@ -33,12 +34,22 @@ impl<'a> Builder<'a> {
         })
     }
 
-    pub fn append<T: ?Sized>(&mut self, kind: ItemKind, val: &T) -> Result<(), BuildError> {
-        if mem::align_of_val(val) > ITEM_ALIGN {
+    /// # Safety
+    ///
+    /// The caller must initialize the entire buffer reserved.
+    pub unsafe fn reserve<T>(
+        &mut self,
+        kind: ItemKind,
+        count: usize,
+    ) -> Result<&mut [MaybeUninit<T>], BuildError> {
+        if mem::align_of::<T>() > ITEM_ALIGN {
             return Err(BuildError::BadAlign);
         }
 
-        let size = mem::size_of_val(val);
+        let size = mem::size_of::<T>()
+            .checked_mul(count)
+            .ok_or(BuildError::BadSize)?;
+
         let total_size = size
             .checked_add(mem::size_of::<ItemHeader>())
             .ok_or(BuildError::BadSize)?;
@@ -49,6 +60,8 @@ impl<'a> Builder<'a> {
         if next_off > self.buf.len() {
             return Err(BuildError::BadSize);
         }
+
+        self.off = next_off;
 
         // Safety: offset has been checked, pointer is suitably aligned thanks to `align_to_offset`.
         unsafe {
@@ -63,15 +76,27 @@ impl<'a> Builder<'a> {
 
         // Safety: alignment and validity of offset checked above.
         unsafe {
-            ptr::copy_nonoverlapping(
-                val as *const _ as *const u8,
+            Ok(slice::from_raw_parts_mut(
                 self.buf
                     .as_mut_ptr()
-                    .add(off + mem::size_of::<ItemHeader>()),
-                size,
-            );
+                    .add(off + mem::size_of::<ItemHeader>())
+                    .cast(),
+                count,
+            ))
         }
+    }
 
+    pub fn append<T: Copy>(&mut self, kind: ItemKind, val: &T) -> Result<(), BuildError> {
+        // Safety: the single reserved element is initialized below.
+        let buf = unsafe { self.reserve(kind, 1)? };
+        buf[0].write(*val);
+        Ok(())
+    }
+
+    pub fn append_slice<T: Copy>(&mut self, kind: ItemKind, val: &[T]) -> Result<(), BuildError> {
+        // Safety: the buffer is initialized below.
+        let buf = unsafe { self.reserve(kind, val.len())? };
+        buf.as_out().copy_from_slice(val);
         Ok(())
     }
 
