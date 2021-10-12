@@ -1,4 +1,4 @@
-use core::{iter, mem, ptr, slice};
+use core::{iter, mem, slice};
 
 use crate::{ItemHeader, ItemKind};
 
@@ -97,10 +97,9 @@ impl<'a> ItemView<'a> {
     /// # Safety
     ///
     /// `T` must have a stable, well-defined layout, and the contents of the payload must be a
-    /// valid value of type `T`. Care should be taken not to create multiple copies of a `!Copy`
-    /// type (including materializing another instance via a call to [`ItemView::get`]).
-    pub unsafe fn read<T>(&self) -> Result<T, InvalidPayload> {
-        unsafe { self.get().map(|p| ptr::read(p)) }
+    /// valid value of type `T`.
+    pub unsafe fn read<T: Copy>(&self) -> Result<T, InvalidPayload> {
+        unsafe { self.get().map(|p| *p) }
     }
 
     /// # Safety
