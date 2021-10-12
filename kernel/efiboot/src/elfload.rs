@@ -1,12 +1,13 @@
 use alloc::vec::Vec;
 use core::mem::{self, MaybeUninit};
 use core::{iter, slice};
-use uninit::out_ref::Out;
 
 use minielf::{Header, ProgramHeader, SEGMENT_TYPE_LOAD};
 use uefi::proto::fs::File;
 use uefi::table::{AllocMode, BootServices};
 use uefi::{Result, Status};
+
+use uninit::extension_traits::AsOut;
 
 const PAGE_SIZE: u64 = 0x1000;
 
@@ -54,7 +55,7 @@ fn load_segment(
     };
 
     let file_size = pheader.file_size as usize;
-    let (file_part, bss_part) = Out::<'_, [u8]>::from(buf).split_at_out(file_size);
+    let (file_part, bss_part) = buf.as_out().split_at_out(file_size);
 
     file.set_position(pheader.off)?;
     file.read_exact(file_part)?;
@@ -79,7 +80,7 @@ fn read_pheaders(header: &Header, file: &mut File<'_>) -> Result<Vec<ProgramHead
             headers.as_mut_ptr() as *mut MaybeUninit<u8>,
             count * mem::size_of::<ProgramHeader>(),
         );
-        file.read_exact(buf.into())?;
+        file.read_exact(buf.as_out())?;
         headers.set_len(count);
     }
 
@@ -106,7 +107,7 @@ unsafe fn read<T>(file: &mut File<'_>) -> Result<T> {
         )
     };
 
-    file.read_exact(buf.into())?;
+    file.read_exact(buf.as_out())?;
 
     Ok(unsafe { val.assume_init() })
 }

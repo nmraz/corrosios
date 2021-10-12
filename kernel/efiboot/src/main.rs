@@ -19,6 +19,8 @@ use uefi::proto::ProtocolHandle;
 use uefi::table::{BootServices, BootTable, OpenProtocolHandle};
 use uefi::{u16cstr, Handle, MemoryType, Result, Status};
 
+use uninit::extension_traits::AsOut;
+
 mod allocator;
 mod elfload;
 
@@ -111,7 +113,7 @@ fn print_mem_map(
     let mmap_size = boot_services.memory_map_size()? + 0x100;
     let mut mmap_buf = vec![0; mmap_size];
 
-    let (_key, mmap) = boot_services.memory_map(mmap_buf.as_mut_slice().into())?;
+    let (_key, mmap) = boot_services.memory_map(mmap_buf.as_out())?;
 
     let conventional_mem_pages: u64 = mmap
         .clone()
