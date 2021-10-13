@@ -51,3 +51,10 @@ pub struct MemoryDescriptor {
     pub page_count: u64,
     pub attr: u64,
 }
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct ConfigTableEntry {
+    pub guid: Guid,
+    pub ptr: usize,
+}

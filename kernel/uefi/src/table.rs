@@ -1,12 +1,12 @@
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
-use core::{mem, ptr};
+use core::{mem, ptr, slice};
 
 use uninit::out_ref::Out;
 
 use crate::proto::io::{SimpleTextOutput, SimpleTextOutputAbi};
 use crate::proto::{Protocol, ProtocolHandle};
-use crate::{Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, Result, Status, U16CStr};
+use crate::{ConfigTableEntry, Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, Result, Status, U16CStr};
 
 pub struct OpenProtocolHandle<'a, P: Protocol> {
     proto: P,
@@ -302,8 +302,8 @@ pub struct SystemTableAbi {
     stderr_protocol: *mut SimpleTextOutputAbi,
     runtime_services: *const (), // TODO
     boot_services: *const BootServices,
-    num_entries: usize,
-    configuration_table: *const (), // TODO
+    config_table_entries: usize,
+    config_table: *const ConfigTableEntry
 }
 
 pub trait TableState {}
@@ -338,6 +338,12 @@ impl<S: TableState> SystemTable<S> {
 
     pub fn firmware_revision(&self) -> u32 {
         self.0.firmware_revision
+    }
+
+    pub fn config_table(&self) -> &[ConfigTableEntry] {
+        unsafe {
+            slice::from_raw_parts(self.0.config_table, self.0.config_table_entries)
+        }
     }
 }
 
