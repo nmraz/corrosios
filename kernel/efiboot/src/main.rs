@@ -82,7 +82,7 @@ fn append_mmap<'a>(
 
     for (efi_desc, info) in mmap.zip(buf) {
         info.write(MemoryRange {
-            start_page: efi_desc.page_count as usize / PAGE_SIZE,
+            start_page: efi_desc.phys_start as usize / PAGE_SIZE,
             page_count: efi_desc.page_count as usize,
             kind: mem_kind_from_efi(efi_desc.mem_type),
         });
