@@ -40,6 +40,7 @@ impl MemoryType {
     pub const RUNTIME_SERVICES_DATA: Self = Self(6);
     pub const CONVENTIONAL: Self = Self(7);
     pub const UNUSABLE: Self = Self(8);
+    pub const ACPI_RECLAIM: Self = Self(9);
 }
 
 #[derive(Debug, Clone, Copy)]
