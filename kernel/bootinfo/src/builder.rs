@@ -86,10 +86,10 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn append<T: Copy>(&mut self, kind: ItemKind, val: &T) -> Result<(), BuildError> {
+    pub fn append<T>(&mut self, kind: ItemKind, val: T) -> Result<(), BuildError> {
         // Safety: the single reserved element is initialized below.
         let buf = unsafe { self.reserve(kind, 1)? };
-        buf[0].write(*val);
+        buf[0].write(val);
         Ok(())
     }
 
