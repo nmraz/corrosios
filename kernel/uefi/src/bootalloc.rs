@@ -5,6 +5,7 @@ use crate::table::BootServices;
 
 const MAX_ALIGN: usize = 8;
 
+#[derive(Clone)]
 pub struct BootAlloc<'a> {
     boot_services: &'a BootServices,
 }
