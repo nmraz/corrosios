@@ -9,7 +9,7 @@ use uefi::{Result, Status};
 
 use uninit::extension_traits::AsOut;
 
-const PAGE_SIZE: u64 = 0x1000;
+use crate::page::{to_page_count, PAGE_SIZE};
 
 pub fn load_elf(boot_services: &BootServices, file: &mut File<'_>) -> Result<u64> {
     let header = read_header(file)?;
@@ -39,12 +39,14 @@ fn load_segment(
     pheader: &ProgramHeader,
     file: &mut File<'_>,
 ) -> Result<()> {
-    if pheader.phys_addr % PAGE_SIZE != 0 || pheader.file_size > pheader.mem_size {
+    if pheader.phys_addr as usize % PAGE_SIZE != 0 || pheader.file_size > pheader.mem_size {
         return Err(Status::LOAD_ERROR);
     }
 
-    let pages = (pheader.mem_size + PAGE_SIZE - 1) / PAGE_SIZE;
-    boot_services.alloc_pages(AllocMode::At(pheader.phys_addr), pages as usize)?;
+    boot_services.alloc_pages(
+        AllocMode::At(pheader.phys_addr),
+        to_page_count(pheader.mem_size as usize),
+    )?;
 
     // Safety: memory range has been reserved via call to `alloc_pages` above.
     let buf = unsafe {

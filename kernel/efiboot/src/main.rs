@@ -23,6 +23,7 @@ use uninit::extension_traits::AsOut;
 
 mod allocator;
 mod elfload;
+mod page;
 
 fn halt() -> ! {
     unsafe {
