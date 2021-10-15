@@ -80,8 +80,8 @@ fn append_mmap<'a>(
     // Safety: the loop below initializes all `mmap.len()` elements.
     let buf = unsafe { builder.reserve(ItemKind::MEMORY_MAP, mmap.len()) }.unwrap();
 
-    for (efi_desc, info) in mmap.zip(buf) {
-        info.write(MemoryRange {
+    for (efi_desc, range) in mmap.zip(buf) {
+        range.write(MemoryRange {
             start_page: efi_desc.phys_start as usize / PAGE_SIZE,
             page_count: efi_desc.page_count as usize,
             kind: mem_kind_from_efi(efi_desc.mem_type),
