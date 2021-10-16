@@ -3,12 +3,12 @@ use core::fmt::Write;
 use core::mem::{self, MaybeUninit};
 
 use bootinfo::builder::Builder;
-use bootinfo::MemoryRange;
+use bootinfo::{Framebuffer, ItemKind, MemoryRange};
 use uefi::proto::fs::{OpenMode, SimpleFileSystem};
-use uefi::proto::gop::GraphicsOutput;
+use uefi::proto::gop::{self, GraphicsOutput};
 use uefi::proto::image::LoadedImage;
 use uefi::table::{BootServices, BootTable};
-use uefi::{u16cstr, Handle, MemoryDescriptor, Result};
+use uefi::{u16cstr, Handle, MemoryDescriptor, Result, Status};
 use uninit::extension_traits::AsOut;
 
 use crate::{elfload, page};
@@ -26,12 +26,14 @@ pub fn setup(image_handle: Handle, boot_table: &BootTable) -> Result<SetupCtx> {
 
     let kernel_entry = load_kernel(image_handle, boot_services)?;
 
-    print_graphics_info(boot_table)?;
+    let framebuffer = get_framebuffer(boot_table)?;
 
     let mmap_size = boot_services.memory_map_size()? + 0x200;
     let max_mmap_entries = mmap_size / mem::size_of::<MemoryDescriptor>();
 
-    let bootinfo_builder = make_bootinfo_builder(boot_services, max_mmap_entries)?;
+    let mut bootinfo_builder = make_bootinfo_builder(boot_services, max_mmap_entries)?;
+
+    append_bootinfo(&mut bootinfo_builder, ItemKind::FRAMEBUFFER, framebuffer)?;
 
     Ok(SetupCtx {
         kernel_entry: kernel_entry as usize,
@@ -52,12 +54,13 @@ fn load_kernel(image_handle: Handle, boot_services: &BootServices) -> Result<u64
     elfload::load_elf(boot_services, &mut file)
 }
 
-fn print_graphics_info(boot_table: &BootTable) -> Result<()> {
-    let mode_info = boot_table
+fn get_framebuffer(boot_table: &BootTable) -> Result<Framebuffer> {
+    let current_mode = boot_table
         .boot_services()
         .locate_protocol::<GraphicsOutput>()?
-        .current_mode()
-        .info;
+        .current_mode();
+
+    let mode_info = current_mode.info;
 
     writeln!(
         boot_table.stdout(),
@@ -68,7 +71,27 @@ fn print_graphics_info(boot_table: &BootTable) -> Result<()> {
     )
     .unwrap();
 
-    Ok(())
+    let gop_framebuffer = current_mode.framebuffer.ok_or(Status::UNSUPPORTED)?;
+    let format = match mode_info.pixel_format {
+        gop::PixelFormat::Rgb => bootinfo::PixelFormat::RGB,
+        gop::PixelFormat::Bgr => bootinfo::PixelFormat::BGR,
+        _ => return Err(Status::UNSUPPORTED),
+    };
+
+    Ok(Framebuffer {
+        paddr: gop_framebuffer.base as usize,
+        size: gop_framebuffer.size,
+        width: mode_info.hres,
+        height: mode_info.vres,
+        stride: mode_info.pixels_per_scanline,
+        format,
+    })
+}
+
+fn append_bootinfo<T>(builder: &mut Builder, kind: ItemKind, val: T) -> Result<()> {
+    builder
+        .append(kind, val)
+        .map_err(|_| Status::OUT_OF_RESOURCES)
 }
 
 fn make_bootinfo_builder(
