@@ -13,7 +13,8 @@ use core::panic::PanicInfo;
 use uninit::extension_traits::AsOut;
 
 use bootinfo::builder::Builder;
-use bootinfo::{ItemKind, MemoryKind, MemoryRange};
+use bootinfo::item as bootitem;
+use bootinfo::ItemKind;
 use uefi::table::BootTable;
 use uefi::{Handle, MemoryDescriptor, MemoryType, Result, Status};
 
@@ -82,7 +83,7 @@ fn append_mmap<'a>(
     let buf = unsafe { builder.reserve(ItemKind::MEMORY_MAP, mmap.len()) }.unwrap();
 
     for (efi_desc, range) in mmap.zip(buf) {
-        range.write(MemoryRange {
+        range.write(bootitem::MemoryRange {
             start_page: efi_desc.phys_start as usize / PAGE_SIZE,
             page_count: efi_desc.page_count as usize,
             kind: mem_kind_from_efi(efi_desc.mem_type),
@@ -90,22 +91,22 @@ fn append_mmap<'a>(
     }
 }
 
-fn mem_kind_from_efi(efi_type: MemoryType) -> MemoryKind {
+fn mem_kind_from_efi(efi_type: MemoryType) -> bootitem::MemoryKind {
     match efi_type {
         MemoryType::CONVENTIONAL
         | MemoryType::BOOT_SERVICES_CODE
         | MemoryType::BOOT_SERVICES_DATA
         | MemoryType::LOADER_CODE
-        | MemoryType::LOADER_DATA => MemoryKind::USABLE,
+        | MemoryType::LOADER_DATA => bootitem::MemoryKind::USABLE,
 
-        MemoryType::UNUSABLE => MemoryKind::UNUSABLE,
+        MemoryType::UNUSABLE => bootitem::MemoryKind::UNUSABLE,
 
-        MemoryType::ACPI_RECLAIM => MemoryKind::ACPI_TABLES,
+        MemoryType::ACPI_RECLAIM => bootitem::MemoryKind::ACPI_TABLES,
 
         MemoryType::RUNTIME_SERVICES_CODE | MemoryType::RUNTIME_SERVICES_DATA => {
-            MemoryKind::FIRMWARE
+            bootitem::MemoryKind::FIRMWARE
         }
 
-        _ => MemoryKind::RESERVED,
+        _ => bootitem::MemoryKind::RESERVED,
     }
 }

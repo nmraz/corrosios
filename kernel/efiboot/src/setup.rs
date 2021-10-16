@@ -3,7 +3,8 @@ use core::fmt::Write;
 use core::mem::{self, MaybeUninit};
 
 use bootinfo::builder::Builder;
-use bootinfo::{Framebuffer, ItemKind, MemoryRange};
+use bootinfo::item as bootitem;
+use bootinfo::ItemKind;
 use uefi::proto::fs::{OpenMode, SimpleFileSystem};
 use uefi::proto::gop::{self, GraphicsOutput};
 use uefi::proto::image::LoadedImage;
@@ -54,7 +55,7 @@ fn load_kernel(image_handle: Handle, boot_services: &BootServices) -> Result<u64
     elfload::load_elf(boot_services, &mut file)
 }
 
-fn get_framebuffer(boot_table: &BootTable) -> Result<Framebuffer> {
+fn get_framebuffer(boot_table: &BootTable) -> Result<bootitem::Framebuffer> {
     let current_mode = boot_table
         .boot_services()
         .locate_protocol::<GraphicsOutput>()?
@@ -73,12 +74,12 @@ fn get_framebuffer(boot_table: &BootTable) -> Result<Framebuffer> {
 
     let gop_framebuffer = current_mode.framebuffer.ok_or(Status::UNSUPPORTED)?;
     let format = match mode_info.pixel_format {
-        gop::PixelFormat::Rgb => bootinfo::PixelFormat::RGB,
-        gop::PixelFormat::Bgr => bootinfo::PixelFormat::BGR,
+        gop::PixelFormat::Rgb => bootitem::PixelFormat::RGB,
+        gop::PixelFormat::Bgr => bootitem::PixelFormat::BGR,
         _ => return Err(Status::UNSUPPORTED),
     };
 
-    Ok(Framebuffer {
+    Ok(bootitem::Framebuffer {
         paddr: gop_framebuffer.base as usize,
         size: gop_framebuffer.size,
         width: mode_info.hres,
@@ -100,7 +101,7 @@ fn make_bootinfo_builder(
 ) -> Result<Builder<'static>> {
     let buf = alloc_uninit_pages(
         boot_services,
-        BOOTINFO_FIXED_SIZE + max_mmap_entries / mem::size_of::<MemoryRange>(),
+        BOOTINFO_FIXED_SIZE + max_mmap_entries / mem::size_of::<bootitem::MemoryRange>(),
     )?;
     Ok(Builder::new(buf.as_out()).expect("buffer should be large and aligned"))
 }
