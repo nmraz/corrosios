@@ -6,7 +6,10 @@ use uninit::out_ref::Out;
 
 use crate::proto::io::{SimpleTextOutput, SimpleTextOutputAbi};
 use crate::proto::{Protocol, ProtocolHandle};
-use crate::{ConfigTableEntry, Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, Result, Status, U16CStr};
+use crate::{
+    ConfigTableEntry, Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, Result, Status,
+    U16CStr,
+};
 
 pub struct OpenProtocolHandle<'a, P: Protocol> {
     proto: P,
@@ -303,7 +306,7 @@ pub struct SystemTableAbi {
     runtime_services: *const (), // TODO
     boot_services: *const BootServices,
     config_table_entries: usize,
-    config_table: *const ConfigTableEntry
+    config_table: *const ConfigTableEntry,
 }
 
 pub trait TableState {}
@@ -341,9 +344,7 @@ impl<S: TableState> SystemTable<S> {
     }
 
     pub fn config_table(&self) -> &[ConfigTableEntry] {
-        unsafe {
-            slice::from_raw_parts(self.0.config_table, self.0.config_table_entries)
-        }
+        unsafe { slice::from_raw_parts(self.0.config_table, self.0.config_table_entries) }
     }
 }
 
