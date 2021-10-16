@@ -2,6 +2,8 @@ use alloc::vec;
 use core::fmt::Write;
 use core::mem::{self, MaybeUninit};
 
+use uninit::extension_traits::AsOut;
+
 use bootinfo::builder::Builder;
 use bootinfo::item as bootitem;
 use bootinfo::ItemKind;
@@ -10,7 +12,6 @@ use uefi::proto::gop::{self, GraphicsOutput};
 use uefi::proto::image::LoadedImage;
 use uefi::table::{BootServices, BootTable};
 use uefi::{u16cstr, Handle, MemoryDescriptor, Result, Status};
-use uninit::extension_traits::AsOut;
 
 use crate::{elfload, page};
 
