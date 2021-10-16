@@ -14,6 +14,7 @@ impl Status {
 
     pub const LOAD_ERROR: Self = Self(1 | ERROR_BIT);
     pub const INVALID_PARAMETER: Self = Self(2 | ERROR_BIT);
+    pub const UNSUPPORTED: Self = Self(3 | ERROR_BIT);
     pub const BUFFER_TOO_SMALL: Self = Self(5 | ERROR_BIT);
     pub const OUT_OF_RESOURCES: Self = Self(9 | ERROR_BIT);
     pub const END_OF_FILE: Self = Self(31 | ERROR_BIT);
