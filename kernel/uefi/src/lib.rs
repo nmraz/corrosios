@@ -1,7 +1,7 @@
 #![feature(abi_efiapi, asm)]
 #![feature(allocator_api)]
-#![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
+#![no_std]
 
 // Allow proc macros referencing `::uefi` to work within this crate
 extern crate self as uefi;

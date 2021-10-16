@@ -1,5 +1,5 @@
-#![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
+#![no_std]
 
 pub mod builder;
 pub mod view;
