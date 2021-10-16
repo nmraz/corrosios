@@ -8,6 +8,10 @@ pub mod image;
 pub mod io;
 pub mod path;
 
+/// # Safety
+///
+/// The reported GUID value must be correct, as it will be trusted by unsafe code casting to the
+/// correct protocol pointer.
 pub unsafe trait Protocol {
     type Abi;
     const GUID: Guid;
