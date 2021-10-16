@@ -46,9 +46,10 @@ pub extern "efiapi" fn efi_main(image_handle: Handle, boot_table: BootTable) -> 
 }
 
 fn run(image_handle: Handle, boot_table: BootTable) -> Result<()> {
+    boot_table.stdout().reset()?;
+
     let ctx = allocator::with(&boot_table, || setup::setup(image_handle, &boot_table))?;
 
-    boot_table.stdout().reset()?;
     writeln!(
         boot_table.stdout(),
         "Kernel entry: {:#x}\nMemmap size: {:#x}",

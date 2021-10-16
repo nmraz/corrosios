@@ -1,9 +1,11 @@
+use alloc::vec;
+use core::fmt::Write;
 use core::mem::{self, MaybeUninit};
 
-use alloc::vec;
 use bootinfo::builder::Builder;
 use bootinfo::MemoryRange;
 use uefi::proto::fs::{OpenMode, SimpleFileSystem};
+use uefi::proto::gop::GraphicsOutput;
 use uefi::proto::image::LoadedImage;
 use uefi::table::{BootServices, BootTable};
 use uefi::{u16cstr, Handle, MemoryDescriptor, Result};
@@ -23,6 +25,9 @@ pub fn setup(image_handle: Handle, boot_table: &BootTable) -> Result<SetupCtx> {
     let boot_services = boot_table.boot_services();
 
     let kernel_entry = load_kernel(image_handle, boot_services)?;
+
+    print_graphics_info(boot_table)?;
+
     let mmap_size = boot_services.memory_map_size()? + 0x200;
     let max_mmap_entries = mmap_size / mem::size_of::<MemoryDescriptor>();
 
@@ -45,6 +50,25 @@ fn load_kernel(image_handle: Handle, boot_services: &BootServices) -> Result<u64
     let mut file = root_dir.open(u16cstr!("regasos\\kernel"), OpenMode::READ)?;
 
     elfload::load_elf(boot_services, &mut file)
+}
+
+fn print_graphics_info(boot_table: &BootTable) -> Result<()> {
+    let mode_info = boot_table
+        .boot_services()
+        .locate_protocol::<GraphicsOutput>()?
+        .current_mode()
+        .info;
+
+    writeln!(
+        boot_table.stdout(),
+        "Graphics mode: {}x{}, {:?}",
+        mode_info.hres,
+        mode_info.vres,
+        mode_info.pixel_format
+    )
+    .unwrap();
+
+    Ok(())
 }
 
 fn make_bootinfo_builder(
