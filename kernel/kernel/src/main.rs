@@ -11,9 +11,3 @@ mod arch;
 fn handle_panic(_info: &PanicInfo) -> ! {
     loop {}
 }
-
-#[link_section = ".boottext"]
-#[no_mangle]
-fn boot_main() -> ! {
-    loop {}
-}
