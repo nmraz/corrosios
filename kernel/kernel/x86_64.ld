@@ -1,50 +1,50 @@
 ENTRY(boot_main)
 
 SECTIONS {
-  . = 1M;
+    . = 1M;
 
-  .boottext : {
-    *(.boottext)
-  }
-  . = ALIGN(4K);
+    .boottext : {
+        *(.boottext)
+    }
+    . = ALIGN(4K);
 
-  __bootseg_end = .;
+    __bootseg_end = .;
 
-  __phys_start = .;
-  . += 0xFFFFFFFF80000000; /* -2GiB */
-  __virt_start = .;
+    __phys_start = .;
+    . += 0xFFFFFFFF80000000; /* -2GiB */
+    __virt_start = .;
 
-  __code_start = .;
-  .text : AT(ADDR(.text) - __virt_start + __bootseg_end) {
-    *(.text*)
-  }
-  . = ALIGN(4K);
-  __code_end = .;
+    __code_start = .;
+    .text : AT(ADDR(.text) - __virt_start + __bootseg_end) {
+        *(.text*)
+    }
+    . = ALIGN(4K);
+    __code_end = .;
 
-  __rodata_start = .;
-  .rodata : AT(ADDR(.rodata) - __virt_start + __bootseg_end) {
-    *(.rodata*)
-  }
-  . = ALIGN(4K);
-  __rodata_end = .;
+    __rodata_start = .;
+    .rodata : AT(ADDR(.rodata) - __virt_start + __bootseg_end) {
+        *(.rodata*)
+    }
+    . = ALIGN(4K);
+    __rodata_end = .;
 
-  __data_start = .;
-  .data : AT(ADDR(.data) - __virt_start + __bootseg_end) {
-    *(.data*)
-  }
-  . = ALIGN(4K);
-  __data_end = .;
+    __data_start = .;
+    .data : AT(ADDR(.data) - __virt_start + __bootseg_end) {
+        *(.data*)
+    }
+    . = ALIGN(4K);
+    __data_end = .;
 
-  __bss_start = .;
-  .bss : AT(ADDR(.bss) - __virt_start + __bootseg_end) {
-    *(COMMON)
-    *(.bss*)
-  }
-  . = ALIGN(4K);
-  __bss_end = .;
+    __bss_start = .;
+    .bss : AT(ADDR(.bss) - __virt_start + __bootseg_end) {
+        *(COMMON)
+        *(.bss*)
+    }
+    . = ALIGN(4K);
+    __bss_end = .;
 
-  __virt_end = .;
-  __phys_end = . - __virt_start + __bootseg_end;
+    __virt_end = .;
+    __phys_end = . - __virt_start + __bootseg_end;
 
-  ASSERT(__phys_end < 8M, "Kernel too large")
+    ASSERT(__phys_end < 8M, "Kernel too large")
 }
