@@ -12,7 +12,7 @@
 func \name
 .endm
 
-.section .boottext, "ax"
+.section .boot.text, "ax"
 
 global_func boot_main
 1:

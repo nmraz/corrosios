@@ -3,9 +3,13 @@ ENTRY(boot_main)
 SECTIONS {
     . = 1M;
 
-    .boottext : {
-        *(.boottext)
+    .boot : {
+        *(.boot.text)
+        *(.boot.rodata)
+        *(.boot.data)
+        *(.boot.bss)
     }
+
     . = ALIGN(4K);
 
     __bootseg_end = .;
