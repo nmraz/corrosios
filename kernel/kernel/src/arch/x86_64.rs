@@ -1,1 +1,2 @@
 mod boot;
+mod gdt;
