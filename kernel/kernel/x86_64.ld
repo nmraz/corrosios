@@ -3,8 +3,11 @@ ENTRY(boot_main)
 SECTIONS {
     . = 1M;
 
-    .boot : {
+    .boot.text : {
         *(.boot.text)
+    }
+
+    .boot.data : {
         *(.boot.rodata)
         *(.boot.data)
         *(.boot.bss)
