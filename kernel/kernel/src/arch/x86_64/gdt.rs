@@ -12,8 +12,10 @@ bitflags! {
     }
 }
 
+pub const GDT_SIZE: usize = 2;
+
 #[no_mangle]
-static GDT: [DescriptorFlags; 2] = [
+pub static GDT: [DescriptorFlags; GDT_SIZE] = [
     // Null descriptor
     DescriptorFlags::empty(),
     // Kernel code segment
