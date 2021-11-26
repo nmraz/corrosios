@@ -53,5 +53,6 @@ SECTIONS {
     __virt_end = .;
     __phys_end = . - __virt_start + __bootseg_end;
 
+    /* Keep in sync with size reserved in `kernel_tables.rs` */
     ASSERT(__phys_end < 8M, "Kernel too large")
 }
