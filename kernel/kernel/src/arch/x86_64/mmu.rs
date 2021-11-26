@@ -11,7 +11,7 @@ pub const ENTRY_COUNT: usize = 1 << LEVEL_SHIFT;
 const PADDR_MASK: u64 = 0xffffffffff000;
 
 bitflags! {
-    pub struct EntryFlags: u64 {
+    pub struct PageTableFlags: u64 {
         const PRESENT = 1 << 0;
         const WRITABLE = 1 << 1;
         const USER_MODE = 1 << 2;
@@ -26,20 +26,20 @@ bitflags! {
 
 #[derive(Clone, Copy)]
 #[repr(transparent)]
-pub struct Entry(u64);
+pub struct PageTableEntry(u64);
 
-impl Entry {
+impl PageTableEntry {
     pub const fn new() -> Self {
         Self(0)
     }
 
-    pub const fn from_paddr_flags(paddr: u64, flags: EntryFlags) -> Self {
+    pub const fn from_paddr_flags(paddr: u64, flags: PageTableFlags) -> Self {
         assert!(paddr & !PADDR_MASK == 0, "invalid physical frame address");
         Self(paddr | flags.bits())
     }
 
-    pub const fn flags(self) -> EntryFlags {
-        EntryFlags::from_bits_truncate(self.0)
+    pub const fn flags(self) -> PageTableFlags {
+        PageTableFlags::from_bits_truncate(self.0)
     }
 
     pub const fn paddr(self) -> u64 {
@@ -49,27 +49,27 @@ impl Entry {
 
 #[repr(C, align(0x1000))]
 pub struct PageTable {
-    entries: [Entry; ENTRY_COUNT],
+    entries: [PageTableEntry; ENTRY_COUNT],
 }
 
 impl PageTable {
     pub const fn new() -> Self {
         Self {
-            entries: [Entry::new(); ENTRY_COUNT],
+            entries: [PageTableEntry::new(); ENTRY_COUNT],
         }
     }
 }
 
 impl Index<usize> for PageTable {
-    type Output = Entry;
+    type Output = PageTableEntry;
 
-    fn index(&self, index: usize) -> &Entry {
+    fn index(&self, index: usize) -> &PageTableEntry {
         &self.entries[index]
     }
 }
 
 impl IndexMut<usize> for PageTable {
-    fn index_mut(&mut self, index: usize) -> &mut Entry {
+    fn index_mut(&mut self, index: usize) -> &mut PageTableEntry {
         &mut self.entries[index]
     }
 }
