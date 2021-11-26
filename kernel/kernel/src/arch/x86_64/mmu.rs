@@ -5,6 +5,8 @@ use bitflags::bitflags;
 pub const PAGE_SHIFT: usize = 12;
 pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
 
+pub const LEVEL_COUNT: usize = 4;
+
 pub const LEVEL_SHIFT: usize = 9;
 pub const ENTRY_COUNT: usize = 1 << LEVEL_SHIFT;
 
