@@ -49,6 +49,7 @@ impl PageTableEntry {
     }
 }
 
+#[derive(Clone, Copy)]
 #[repr(C, align(0x1000))]
 pub struct PageTable {
     entries: [PageTableEntry; ENTRY_COUNT],
