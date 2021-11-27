@@ -73,7 +73,7 @@ fn main() -> Result<()> {
             let mut args = vec!["-bios", &qemu.firmware_path, "-drive", &drive];
 
             if qemu.gdbserver {
-                args.push("-S");
+                args.extend(["-s", "-S"]);
             }
 
             cmd.args(args);
