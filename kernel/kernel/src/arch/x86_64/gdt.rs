@@ -13,6 +13,7 @@ bitflags! {
 }
 
 pub const GDT_SIZE: usize = 2;
+pub const KERNEL_CS_SELECTOR: usize = 8;
 
 #[no_mangle]
 pub static GDT: [DescriptorFlags; GDT_SIZE] = [
