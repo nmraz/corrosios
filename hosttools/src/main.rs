@@ -77,6 +77,8 @@ fn main() -> Result<()> {
             }
 
             cmd.args(args);
+            println!("{:?}", cmd);
+
             cmd.spawn().context("failed to start QEMU")?.wait()?;
             Ok(())
         }
