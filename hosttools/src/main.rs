@@ -47,6 +47,10 @@ struct QemuSubcommand {
     /// path to bios to give QEMU
     firmware_path: String,
 
+    /// enable GDB server in QEMU
+    #[argh(switch)]
+    gdbserver: bool,
+
     #[argh(positional)]
     additional_build_args: Vec<String>,
 }
@@ -64,12 +68,15 @@ fn main() -> Result<()> {
         Subcommand::Qemu(qemu) => {
             let image_path = create_disk_image(&qemu.additional_build_args)?;
             let mut cmd = Command::new("qemu-system-x86_64");
-            cmd.args([
-                "-bios",
-                &qemu.firmware_path,
-                "-drive",
-                &format!("file={},format=raw", image_path.display()),
-            ]);
+
+            let drive = format!("file={},format=raw", image_path.display());
+            let mut args = vec!["-bios", &qemu.firmware_path, "-drive", &drive];
+
+            if qemu.gdbserver {
+                args.push("-S");
+            }
+
+            cmd.args(args);
             cmd.spawn().context("failed to start QEMU")?.wait()?;
             Ok(())
         }
