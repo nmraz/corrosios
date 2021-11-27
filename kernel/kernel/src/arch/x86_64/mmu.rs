@@ -5,10 +5,10 @@ use bitflags::bitflags;
 pub const PAGE_SHIFT: usize = 12;
 pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
 
-pub const LEVEL_COUNT: usize = 4;
+pub const PT_LEVEL_COUNT: usize = 4;
 
-pub const LEVEL_SHIFT: usize = 9;
-pub const ENTRY_COUNT: usize = 1 << LEVEL_SHIFT;
+pub const PT_LEVEL_SHIFT: usize = 9;
+pub const PT_ENTRY_COUNT: usize = 1 << PT_LEVEL_SHIFT;
 
 const PADDR_MASK: u64 = 0xffffffffff000;
 
@@ -52,13 +52,13 @@ impl PageTableEntry {
 #[derive(Clone, Copy)]
 #[repr(C, align(0x1000))]
 pub struct PageTable {
-    entries: [PageTableEntry; ENTRY_COUNT],
+    entries: [PageTableEntry; PT_ENTRY_COUNT],
 }
 
 impl PageTable {
     pub const fn new() -> Self {
         Self {
-            entries: [PageTableEntry::new(); ENTRY_COUNT],
+            entries: [PageTableEntry::new(); PT_ENTRY_COUNT],
         }
     }
 }

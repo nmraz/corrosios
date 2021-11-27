@@ -1,8 +1,8 @@
-use super::mmu::{PageTable, LEVEL_SHIFT, PAGE_SHIFT};
+use super::mmu::{PageTable, PAGE_SHIFT, PT_LEVEL_SHIFT};
 
 const MB: usize = 0x100000;
 
-const PT_RANGE: usize = 1 << (LEVEL_SHIFT + PAGE_SHIFT);
+const PT_RANGE: usize = 1 << (PT_LEVEL_SHIFT + PAGE_SHIFT);
 
 // Note: keep in sync with linker script
 const KERNEL_MAX: usize = 8 * MB;
