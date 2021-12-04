@@ -7,6 +7,11 @@ use core::panic::PanicInfo;
 
 mod arch;
 
+#[no_mangle]
+fn kernel_main(bootinfo_paddr: usize) -> ! {
+    arch::irq::idle_loop();
+}
+
 #[panic_handler]
 fn handle_panic(_info: &PanicInfo) -> ! {
     loop {}

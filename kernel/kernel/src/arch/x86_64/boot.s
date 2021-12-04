@@ -121,7 +121,13 @@ boot_main:
 
 .type high_entry, @function
 high_entry:
-1:
-    hlt
-    jmp 1b
+    xor eax, eax
+    mov ss, ax
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+    lea rsp, [boot_stack_top]
+    jmp kernel_main
 .size high_entry, . - high_entry
