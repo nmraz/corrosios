@@ -1,3 +1,10 @@
+.macro initial_kernel_pt_index reg level
+    lea \reg, [__virt_start]
+    shr \reg, (\level - 1) * {PT_LEVEL_SHIFT} + {PAGE_SHIFT}
+    and \reg, {PT_ENTRY_COUNT} - 1
+.endm
+
+
 .bss
 
 .set BOOT_STACK_SIZE, 0x4000 # 16K
@@ -10,13 +17,17 @@ boot_stack:
 .size boot_stack, . - boot_stack
 boot_stack_top:
 
+
 .section .boot.rodata, "a"
 
 .type early_gdtr, @object
 early_gdtr:
-    .word {GDT_SIZE}
+    .word {GDT_SIZE} * 8 - 1
     .long GDT - {KERNEL_OFFSET}
 .size early_gdtr, . - early_gdtr
+
+
+.section .boot.bss, "aw", @nobits
 
 .align {PAGE_SIZE}
 .type early_low_pdpt, @object
@@ -29,6 +40,7 @@ early_low_pdpt:
 early_low_pd:
     .skip {PAGE_SIZE}
 .size early_low_pd, . - early_low_pd
+
 
 .section .boot.text, "ax"
 
@@ -50,35 +62,42 @@ boot_main:
     # Initialize kernel mapping at -2GiB
 
     lea rax, [KERNEL_PDPT - {KERNEL_OFFSET} + 0x3]
-    mov [KERNEL_PML4 - {KERNEL_OFFSET} + 0x1ff], rax
+    initial_kernel_pt_index rbx 4
+    mov [KERNEL_PML4 - {KERNEL_OFFSET} + 8 * rbx], rax
+
     lea rax, [KERNEL_PD - {KERNEL_OFFSET} + 0x3]
-    mov [KERNEL_PDPT - {KERNEL_OFFSET} + 0x1ff], rax
+    initial_kernel_pt_index rbx 3
+    mov [KERNEL_PDPT - {KERNEL_OFFSET} + 8 * rbx], rax
+
+    # Compute number of 2MiB ranges necessary to cover kernel
+    lea rcx, [__phys_end + ({PAGE_SIZE} << {PT_LEVEL_SHIFT}) - 1]
+    lea rax, [__phys_start]
+    sub rcx, rax
+    shr rcx, {PT_LEVEL_SHIFT} + {PAGE_SHIFT}
+
+    # Find offset in `KERNEL_PTS` of first page table needed to cover kernel,
+    # assuming that they start covering at physical address 0. This is
+    # effectively a division by 2MiB followed by a multiplication by 4KiB.
+    lea rax, [__phys_start]
+    shr rax, {PT_LEVEL_SHIFT}
+    and rax, -{PAGE_SIZE}
+
+    lea rax, [KERNEL_PTS - {KERNEL_OFFSET} + rax]
+    or rax, 3
+
+    initial_kernel_pt_index rdx 2
+    lea rdi, [KERNEL_PD - {KERNEL_OFFSET} + 8 * rdx]
+
+.Lfill_kernel_pd:
+    mov [rdi], rax
+    add rax, {PAGE_SIZE}
+    loop .Lfill_kernel_pd
 
     lea rax, [__phys_start + 0x3]
     lea rbx, [__phys_end]
 
-    # Find initial PD index
-    lea rdx, [__virt_start]
-    shr rdx, {PT_LEVEL_SHIFT} + {PAGE_SHIFT}
-    and rdx, {PT_ENTRY_COUNT} - 1
-
-    lea rdi, [KERNEL_PD - {KERNEL_OFFSET} + rdx]
-
-.Lfill_kernel_pd:
-    mov [rdi], rax
-    add rdi, 8 # Entry size
-    add rax, {PAGE_SIZE} << {PT_LEVEL_SHIFT}
-    cmp rax, rbx
-    jl .Lfill_kernel_pd
-
-    lea rax, [__phys_start + 0x3]
-
-    # Find initial PT index
-    lea rdx, [__virt_start]
-    shr rdx, {PAGE_SHIFT}
-    and rdx, {PT_ENTRY_COUNT} - 1
-
-    lea rdi, [KERNEL_PTS - {KERNEL_OFFSET} + rdx]
+    initial_kernel_pt_index rdx 1
+    lea rdi, [KERNEL_PTS - {KERNEL_OFFSET} + 8 * rdx]
 
 .Lfill_kernel_pts:
     mov [rdi], rax
@@ -94,8 +113,9 @@ boot_main:
     push {KERNEL_CS_SELECTOR}
     lea rax, [high_entry]
     push rax
-    retf
+    retfq
 .size boot_main, . - boot_main
+
 
 .text
 
