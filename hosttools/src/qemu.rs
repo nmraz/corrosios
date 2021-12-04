@@ -1,18 +1,35 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command};
 
 use anyhow::{Context, Result};
 use tempfile::TempDir;
 
 use crate::config;
 
-pub fn run_qemu(image_path: &Path, additional_args: &[String]) -> Result<()> {
+pub struct QemuOptions<'a> {
+    pub image_path: &'a Path,
+    pub enable_gdbserver: bool,
+}
+
+pub struct QemuChild {
+    _temp_dir: TempDir,
+    child: Child,
+}
+
+impl QemuChild {
+    pub fn wait(mut self) -> Result<()> {
+        self.child.wait()?;
+        Ok(())
+    }
+}
+
+pub fn run_qemu(opts: &QemuOptions<'_>) -> Result<QemuChild> {
     let mut cmd = Command::new("qemu-system-x86_64");
 
     let firmware_paths = get_firmware_paths()?;
 
-    let disk = format!("file={},format=raw", image_path.display());
+    let disk = format!("file={},format=raw", opts.image_path.display());
     let uefi_flash = format!(
         "if=pflash,format=raw,readonly=on,file={}",
         firmware_paths.code.display()
@@ -30,14 +47,20 @@ pub fn run_qemu(image_path: &Path, additional_args: &[String]) -> Result<()> {
         "-drive",
         &disk,
     ]);
-    cmd.args(additional_args);
 
-    cmd.spawn().context("failed to start QEMU")?.wait()?;
-    Ok(())
+    if opts.enable_gdbserver {
+        cmd.args(["-s", "-S"]);
+    }
+
+    let child = cmd.spawn().context("failed to start QEMU")?;
+    Ok(QemuChild {
+        _temp_dir: firmware_paths.temp_dir,
+        child,
+    })
 }
 
 struct FirmwarePaths {
-    _temp_dir: TempDir,
+    temp_dir: TempDir,
     code: PathBuf,
     vars: PathBuf,
 }
@@ -52,7 +75,7 @@ fn get_firmware_paths() -> Result<FirmwarePaths> {
         .context("failed to copy UEFI variables to temporary directory")?;
 
     Ok(FirmwarePaths {
-        _temp_dir: temp_dir,
+        temp_dir,
         code: firmware_dir.join(config::QEMU_FIRMWARE_CODE),
         vars,
     })

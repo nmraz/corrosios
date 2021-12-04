@@ -3,7 +3,7 @@ use argh::FromArgs;
 
 use hosttools::cross::cross_run_all;
 use hosttools::image::create_disk_image;
-use hosttools::qemu::run_qemu;
+use hosttools::qemu::{run_qemu, QemuOptions};
 
 #[derive(FromArgs)]
 /// Tools for use on the host.
@@ -63,13 +63,12 @@ fn main() -> Result<()> {
         }
         Subcommand::Qemu(qemu) => {
             let image_path = create_disk_image(&qemu.additional_build_args)?;
-            let mut args = vec![];
+            let opts = QemuOptions {
+                image_path: &image_path,
+                enable_gdbserver: qemu.gdbserver,
+            };
 
-            if qemu.gdbserver {
-                args.extend(["-s".to_owned(), "-S".to_owned()]);
-            }
-
-            run_qemu(&image_path, &args)
+            run_qemu(&opts)?.wait()
         }
     }
 }
