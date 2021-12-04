@@ -52,14 +52,14 @@ boot_main:
     # NOTE: We must avoid clobbering `rdi` here as it contains the physical
     # address of the data provided by the bootloader.
 
-    # Initialize early low 1GiB mapping
+    # Initialize early low 2MiB mapping
 
     # Present, writable, executable
     lea rax, [early_low_pdpt + 0x3]
     mov [KERNEL_PML4 - {KERNEL_OFFSET}], rax
     lea rax, [early_low_pd + 0x3]
     mov [early_low_pdpt], rax
-    # Present, writable, executable, huge
+    # Present, writable, executable, large
     mov qword ptr [early_low_pd], 0x83
 
     # Initialize kernel mapping at -2GiB

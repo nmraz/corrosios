@@ -60,6 +60,9 @@ SECTIONS {
     __virt_end = .;
     __phys_end = . - __virt_start + __bootseg_end;
 
+    /* Keep in sync with early mapping code in `boot.S` */
+    ASSERT(__bootseg_end < 2M, "Boot segment too large")
+
     /* Keep in sync with size reserved in `kernel_tables.rs` */
     ASSERT(__phys_end < 8M, "Kernel too large")
 }
