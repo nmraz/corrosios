@@ -49,6 +49,9 @@ early_low_pd:
 boot_main:
     lea rsp, [boot_stack_top - {KERNEL_OFFSET}]
 
+    # NOTE: We must avoid clobbering `rdi` here as it contains the physical
+    # address of the data provided by the bootloader.
+
     # Initialize early low 1GiB mapping
 
     # Present, writable, executable
@@ -86,10 +89,11 @@ boot_main:
     or rax, 3
 
     initial_kernel_pt_index rdx 2
-    lea rdi, [KERNEL_PD - {KERNEL_OFFSET} + 8 * rdx]
+    lea rsi, [KERNEL_PD - {KERNEL_OFFSET} + 8 * rdx]
 
 .Lfill_kernel_pd:
-    mov [rdi], rax
+    mov [rsi], rax
+    add rsi, 8
     add rax, {PAGE_SIZE}
     loop .Lfill_kernel_pd
 
@@ -97,11 +101,11 @@ boot_main:
     lea rbx, [__phys_end]
 
     initial_kernel_pt_index rdx 1
-    lea rdi, [KERNEL_PTS - {KERNEL_OFFSET} + 8 * rdx]
+    lea rsi, [KERNEL_PTS - {KERNEL_OFFSET} + 8 * rdx]
 
 .Lfill_kernel_pts:
-    mov [rdi], rax
-    add rdi, 8
+    mov [rsi], rax
+    add rsi, 8
     add rax, {PAGE_SIZE}
     cmp rax, rbx
     jl .Lfill_kernel_pts
@@ -121,6 +125,8 @@ boot_main:
 
 .type high_entry, @function
 high_entry:
+    # NOTE: Avoid clobbering `rdi`.
+
     xor eax, eax
     mov ss, ax
     mov ds, ax
