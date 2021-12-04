@@ -3,7 +3,8 @@ use std::process::Command;
 use anyhow::{Context, Result};
 use argh::FromArgs;
 
-use hosttools::{create_disk_image, cross_run_all};
+use hosttools::cross::cross_run_all;
+use hosttools::image::create_disk_image;
 
 #[derive(FromArgs)]
 /// Tools for use on the host.
