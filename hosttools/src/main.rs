@@ -1,10 +1,9 @@
-use std::process::Command;
-
-use anyhow::{Context, Result};
+use anyhow::Result;
 use argh::FromArgs;
 
 use hosttools::cross::cross_run_all;
 use hosttools::image::create_disk_image;
+use hosttools::qemu::run_qemu;
 
 #[derive(FromArgs)]
 /// Tools for use on the host.
@@ -44,10 +43,6 @@ struct ImageSubcommand {
 /// Run UEFI image in QEMU.
 #[argh(subcommand, name = "qemu")]
 struct QemuSubcommand {
-    #[argh(option)]
-    /// path to bios to give QEMU
-    firmware_path: String,
-
     /// enable GDB server in QEMU
     #[argh(switch)]
     gdbserver: bool,
@@ -68,20 +63,13 @@ fn main() -> Result<()> {
         }
         Subcommand::Qemu(qemu) => {
             let image_path = create_disk_image(&qemu.additional_build_args)?;
-            let mut cmd = Command::new("qemu-system-x86_64");
-
-            let drive = format!("file={},format=raw", image_path.display());
-            let mut args = vec!["-bios", &qemu.firmware_path, "-drive", &drive];
+            let mut args = vec![];
 
             if qemu.gdbserver {
-                args.extend(["-s", "-S"]);
+                args.extend(["-s".to_owned(), "-S".to_owned()]);
             }
 
-            cmd.args(args);
-            println!("{:?}", cmd);
-
-            cmd.spawn().context("failed to start QEMU")?.wait()?;
-            Ok(())
+            run_qemu(&image_path, &args)
         }
     }
 }
