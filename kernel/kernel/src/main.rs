@@ -3,16 +3,10 @@
 #![no_std]
 #![no_main]
 
-use core::panic::PanicInfo;
-
 mod arch;
+mod panic;
 
 #[no_mangle]
 fn kernel_main(bootinfo_paddr: usize) -> ! {
     arch::irq::idle_loop();
-}
-
-#[panic_handler]
-fn handle_panic(_info: &PanicInfo) -> ! {
-    loop {}
 }
