@@ -1,3 +1,5 @@
+use core::arch::global_asm;
+
 use super::gdt::{GDT_SIZE, KERNEL_CS_SELECTOR};
 use super::mmu::{PAGE_SHIFT, PAGE_SIZE, PT_ENTRY_COUNT, PT_LEVEL_SHIFT};
 

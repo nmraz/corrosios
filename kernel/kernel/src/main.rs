@@ -1,4 +1,4 @@
-#![feature(asm, global_asm)]
+#![feature(asm_const)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
 #![no_main]

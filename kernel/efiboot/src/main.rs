@@ -1,4 +1,4 @@
-#![feature(abi_efiapi, asm)]
+#![feature(abi_efiapi)]
 #![feature(alloc_error_handler, allocator_api)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
@@ -6,6 +6,7 @@
 
 extern crate alloc;
 
+use core::arch::asm;
 use core::fmt::Write;
 use core::mem;
 use core::panic::PanicInfo;
