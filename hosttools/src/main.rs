@@ -1,7 +1,8 @@
 use anyhow::Result;
 use argh::FromArgs;
 
-use hosttools::cross::cross_run_all;
+use hosttools::cross::{cross_run_all, kernel_binary_path};
+use hosttools::gdb::{run_gdb, GdbOptions};
 use hosttools::image::create_disk_image;
 use hosttools::qemu::{run_qemu, QemuOptions};
 
@@ -18,6 +19,7 @@ enum Subcommand {
     Cross(CrossSubcommand),
     Image(ImageSubcommand),
     Qemu(QemuSubcommand),
+    Gdb(GdbSubcommand),
 }
 
 #[derive(FromArgs)]
@@ -51,6 +53,14 @@ struct QemuSubcommand {
     additional_build_args: Vec<String>,
 }
 
+#[derive(FromArgs)]
+/// Run UEFI image in QEMU, attach gdb.
+#[argh(subcommand, name = "gdb")]
+struct GdbSubcommand {
+    #[argh(positional)]
+    additional_build_args: Vec<String>,
+}
+
 fn main() -> Result<()> {
     let args: Args = argh::from_env();
 
@@ -69,6 +79,27 @@ fn main() -> Result<()> {
             };
 
             run_qemu(&opts)?.wait()
+        }
+        Subcommand::Gdb(gdb) => {
+            let image_path = create_disk_image(&gdb.additional_build_args)?;
+            let qemu_opts = QemuOptions {
+                image_path: &image_path,
+                enable_gdbserver: true,
+            };
+
+            let kernel_path = kernel_binary_path(&gdb.additional_build_args)?;
+            let gdb_opts = GdbOptions {
+                kernel_binary: &kernel_path,
+                server_port: 1234,
+            };
+
+            let qemu_child = run_qemu(&qemu_opts)?;
+            let mut gdb_child = run_gdb(&gdb_opts)?;
+
+            gdb_child.wait()?;
+            qemu_child.wait()?;
+
+            Ok(())
         }
     }
 }
