@@ -21,7 +21,23 @@ pub fn cross_run_all(subcommand: &str, additional_args: &[String]) -> Result<()>
     )
 }
 
-pub fn built_binary_path(
+pub fn kernel_binary_path(additional_args: &[String]) -> Result<PathBuf> {
+    built_binary_path(
+        config::KERNEL_PACKAGE_NAME,
+        config::KERNEL_PACKAGE_TARGET,
+        additional_args,
+    )
+}
+
+pub fn bootloader_binary_path(additional_args: &[String]) -> Result<PathBuf> {
+    built_binary_path(
+        config::BOOTLOADER_PACKAGE_NAME,
+        config::BOOTLOADER_PACKAGE_TARGET,
+        additional_args,
+    )
+}
+
+fn built_binary_path(
     package_name: &str,
     target: &str,
     additional_args: &[String],

@@ -11,7 +11,7 @@ use gpt::mbr::ProtectiveMBR;
 use gpt::{GptConfig, GptDisk};
 
 use crate::config;
-use crate::cross::{built_binary_path, cross_run_all};
+use crate::cross::{bootloader_binary_path, cross_run_all, kernel_binary_path};
 
 const KB: u64 = 1024;
 const MB: u64 = KB * KB;
@@ -24,16 +24,8 @@ const DISK_SIZE: u64 = EFI_PARTITION_SIZE + 64 * KB;
 pub fn create_disk_image(build_args: &[String]) -> Result<PathBuf> {
     cross_run_all("build", build_args)?;
 
-    let kernel_path = built_binary_path(
-        config::KERNEL_PACKAGE_NAME,
-        config::KERNEL_PACKAGE_TARGET,
-        build_args,
-    )?;
-    let bootloader_path = built_binary_path(
-        config::BOOTLOADER_PACKAGE_NAME,
-        config::BOOTLOADER_PACKAGE_TARGET,
-        build_args,
-    )?;
+    let kernel_path = kernel_binary_path(build_args)?;
+    let bootloader_path = bootloader_binary_path(build_args)?;
 
     let image_path = bootloader_path.with_file_name(config::IMAGE_NAME);
 
