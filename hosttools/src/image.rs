@@ -96,7 +96,7 @@ fn format_efi_partition(
     let fs = FileSystem::new(partition, FsOptions::new())?;
     let root = fs.root_dir();
 
-    let mut kernel_file = root.create_dir("regasos")?.create_file("kernel")?;
+    let mut kernel_file = root.create_dir("corrosios")?.create_file("kernel")?;
     io::copy(&mut File::open(kernel_path)?, &mut kernel_file)?;
 
     let mut boot_file = root

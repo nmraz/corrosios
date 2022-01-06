@@ -51,7 +51,7 @@ fn load_kernel(image_handle: Handle, boot_services: &BootServices) -> Result<u64
         .open_protocol::<SimpleFileSystem>(loaded_image.device_handle(), image_handle)?;
 
     let root_dir = boot_fs.open_volume()?;
-    let mut file = root_dir.open(u16cstr!("regasos\\kernel"), OpenMode::READ)?;
+    let mut file = root_dir.open(u16cstr!("corrosios\\kernel"), OpenMode::READ)?;
 
     elfload::load_elf(boot_services, &mut file)
 }
