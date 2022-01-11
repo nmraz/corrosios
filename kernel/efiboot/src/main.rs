@@ -21,8 +21,8 @@ use uefi::{Handle, MemoryDescriptor, MemoryType, Result, Status};
 
 use page::PAGE_SIZE;
 
-mod allocator;
 mod elfload;
+mod global_alloc;
 mod page;
 mod setup;
 
@@ -50,7 +50,7 @@ pub extern "efiapi" fn efi_main(image_handle: Handle, boot_table: BootTable) -> 
 fn run(image_handle: Handle, boot_table: BootTable) -> Result<()> {
     boot_table.stdout().reset()?;
 
-    let ctx = allocator::with(&boot_table, || setup::setup(image_handle, &boot_table))?;
+    let ctx = setup::setup(image_handle, &boot_table)?;
 
     writeln!(
         boot_table.stdout(),

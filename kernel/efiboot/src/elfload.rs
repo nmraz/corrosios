@@ -5,7 +5,7 @@ use core::{iter, slice};
 use minielf::{Header, ProgramHeader, SEGMENT_TYPE_LOAD};
 use uefi::proto::fs::File;
 use uefi::table::{AllocMode, BootServices};
-use uefi::{Result, Status};
+use uefi::{BootAlloc, Result, Status};
 
 use uninit::extension_traits::AsOut;
 
@@ -13,7 +13,7 @@ use crate::page::{to_page_count, PAGE_SIZE};
 
 pub fn load_elf(boot_services: &BootServices, file: &mut File<'_>) -> Result<u64> {
     let header = read_header(file)?;
-    let pheaders = read_pheaders(&header, file)?;
+    let pheaders = read_pheaders(boot_services, &header, file)?;
 
     let loadable = pheaders
         .iter()
@@ -67,7 +67,11 @@ fn load_segment(
     Ok(())
 }
 
-fn read_pheaders(header: &Header, file: &mut File<'_>) -> Result<Vec<ProgramHeader>> {
+fn read_pheaders<'b>(
+    boot_services: &'b BootServices,
+    header: &Header,
+    file: &mut File<'_>,
+) -> Result<Vec<ProgramHeader, BootAlloc<'b>>> {
     if header.ph_entry_size as usize != mem::size_of::<ProgramHeader>() {
         return Err(Status::LOAD_ERROR);
     }
@@ -75,7 +79,7 @@ fn read_pheaders(header: &Header, file: &mut File<'_>) -> Result<Vec<ProgramHead
     file.set_position(header.ph_off)?;
 
     let count = header.ph_entry_num as usize;
-    let mut headers = Vec::with_capacity(count);
+    let mut headers = Vec::with_capacity_in(count, BootAlloc::new(boot_services));
 
     unsafe {
         let buf = slice::from_raw_parts_mut(

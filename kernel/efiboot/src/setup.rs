@@ -1,6 +1,6 @@
-use alloc::vec;
 use core::fmt::Write;
 use core::mem::{self, MaybeUninit};
+use core::slice;
 
 use uninit::extension_traits::AsOut;
 
@@ -39,7 +39,7 @@ pub fn setup(image_handle: Handle, boot_table: &BootTable) -> Result<SetupCtx> {
 
     Ok(SetupCtx {
         kernel_entry: kernel_entry as usize,
-        mmap_buf: vec![MaybeUninit::uninit(); mmap_size].leak(),
+        mmap_buf: alloc_uninit_bytes(boot_services, mmap_size)?,
         bootinfo_builder,
     })
 }
@@ -113,4 +113,12 @@ fn alloc_uninit_pages(
 ) -> Result<&'static mut [MaybeUninit<u8>]> {
     let p = page::alloc_pages(boot_services, bytes)?;
     Ok(unsafe { &mut *(p.as_ptr() as *mut _) })
+}
+
+fn alloc_uninit_bytes(
+    boot_services: &BootServices,
+    bytes: usize,
+) -> Result<&'static mut [MaybeUninit<u8>]> {
+    let p = boot_services.alloc(bytes)?;
+    Ok(unsafe { slice::from_raw_parts_mut(p.cast(), bytes) })
 }
