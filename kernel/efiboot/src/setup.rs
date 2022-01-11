@@ -17,16 +17,25 @@ use crate::{elfload, page};
 
 const BOOTINFO_FIXED_SIZE: usize = 0x1000;
 
-pub struct SetupCtx {
-    pub kernel_entry: usize,
+pub struct BootinfoCtx {
     pub mmap_buf: &'static mut [MaybeUninit<u8>],
-    pub bootinfo_builder: Builder<'static>,
+    pub builder: Builder<'static>,
 }
 
-pub fn setup(image_handle: Handle, boot_table: &BootTable) -> Result<SetupCtx> {
-    let boot_services = boot_table.boot_services();
+pub fn load_kernel(image_handle: Handle, boot_services: &BootServices) -> Result<u64> {
+    let loaded_image = boot_services.open_protocol::<LoadedImage>(image_handle, image_handle)?;
 
-    let kernel_entry = load_kernel(image_handle, boot_services)?;
+    let boot_fs = boot_services
+        .open_protocol::<SimpleFileSystem>(loaded_image.device_handle(), image_handle)?;
+
+    let root_dir = boot_fs.open_volume()?;
+    let mut file = root_dir.open(u16cstr!("corrosios\\kernel"), OpenMode::READ)?;
+
+    elfload::load_elf(boot_services, &mut file)
+}
+
+pub fn prepare_bootinfo(boot_table: &BootTable) -> Result<BootinfoCtx> {
+    let boot_services = boot_table.boot_services();
 
     let framebuffer = get_framebuffer(boot_table)?;
 
@@ -37,23 +46,10 @@ pub fn setup(image_handle: Handle, boot_table: &BootTable) -> Result<SetupCtx> {
 
     append_bootinfo(&mut bootinfo_builder, ItemKind::FRAMEBUFFER, framebuffer)?;
 
-    Ok(SetupCtx {
-        kernel_entry: kernel_entry as usize,
+    Ok(BootinfoCtx {
         mmap_buf: alloc_uninit_bytes(boot_services, mmap_size)?,
-        bootinfo_builder,
+        builder: bootinfo_builder,
     })
-}
-
-fn load_kernel(image_handle: Handle, boot_services: &BootServices) -> Result<u64> {
-    let loaded_image = boot_services.open_protocol::<LoadedImage>(image_handle, image_handle)?;
-
-    let boot_fs = boot_services
-        .open_protocol::<SimpleFileSystem>(loaded_image.device_handle(), image_handle)?;
-
-    let root_dir = boot_fs.open_volume()?;
-    let mut file = root_dir.open(u16cstr!("corrosios\\kernel"), OpenMode::READ)?;
-
-    elfload::load_elf(boot_services, &mut file)
 }
 
 fn get_framebuffer(boot_table: &BootTable) -> Result<bootitem::Framebuffer> {
