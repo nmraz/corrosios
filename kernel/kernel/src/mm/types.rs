@@ -1,4 +1,4 @@
-use crate::arch::mmu::PAGE_SHIFT;
+use crate::arch::mmu::{PAGE_SHIFT, PT_LEVEL_SHIFT};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -94,5 +94,9 @@ impl VirtFrame {
 
     pub const fn addr(self) -> VirtAddr {
         VirtAddr::new(self.0 << PAGE_SHIFT)
+    }
+
+    pub const fn pt_index(self, level: usize) -> usize {
+        self.0 >> (PT_LEVEL_SHIFT * (level - 1))
     }
 }
