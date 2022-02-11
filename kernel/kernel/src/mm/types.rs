@@ -97,6 +97,6 @@ impl VirtPfn {
     }
 
     pub const fn pt_index(self, level: usize) -> usize {
-        self.0 >> (PT_LEVEL_SHIFT * (level - 1))
+        self.0 >> (PT_LEVEL_SHIFT * level)
     }
 }
