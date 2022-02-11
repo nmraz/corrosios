@@ -2,6 +2,8 @@ use core::ops::{Index, IndexMut};
 
 use bitflags::bitflags;
 
+use crate::mm::types::PhysFrame;
+
 pub const PAGE_SHIFT: usize = 12;
 pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
 
@@ -31,21 +33,20 @@ bitflags! {
 pub struct PageTableEntry(u64);
 
 impl PageTableEntry {
-    pub const fn new() -> Self {
+    pub const fn empty() -> Self {
         Self(0)
     }
 
-    pub const fn from_paddr_flags(paddr: u64, flags: PageTableFlags) -> Self {
-        assert!(paddr & !PADDR_MASK == 0, "invalid physical frame address");
-        Self(paddr | flags.bits())
+    pub const fn new(frame: PhysFrame, flags: PageTableFlags) -> Self {
+        Self(frame.addr().as_u64() | flags.bits())
     }
 
     pub const fn flags(self) -> PageTableFlags {
         PageTableFlags::from_bits_truncate(self.0)
     }
 
-    pub const fn paddr(self) -> u64 {
-        self.0 & PADDR_MASK
+    pub const fn frame(self) -> PhysFrame {
+        PhysFrame::new((self.0 >> PAGE_SHIFT) as usize)
     }
 }
 
@@ -58,7 +59,7 @@ pub struct PageTable {
 impl PageTable {
     pub const fn new() -> Self {
         Self {
-            entries: [PageTableEntry::new(); PT_ENTRY_COUNT],
+            entries: [PageTableEntry::empty(); PT_ENTRY_COUNT],
         }
     }
 }
