@@ -1,4 +1,4 @@
-use crate::arch::mmu::{PAGE_SHIFT, PT_LEVEL_SHIFT};
+use crate::arch::mmu::{PAGE_SHIFT, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
@@ -97,6 +97,6 @@ impl VirtPfn {
     }
 
     pub const fn pt_index(self, level: usize) -> usize {
-        self.0 >> (PT_LEVEL_SHIFT * level)
+        (self.0 >> (PT_LEVEL_SHIFT * level + PAGE_SHIFT)) & PT_LEVEL_MASK
     }
 }
