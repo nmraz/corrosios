@@ -1,4 +1,4 @@
-use super::mmu::{PageTable, PAGE_SHIFT, PT_LEVEL_SHIFT};
+use super::{PageTable, PAGE_SHIFT, PT_LEVEL_SHIFT};
 
 const MB: usize = 0x100000;
 
