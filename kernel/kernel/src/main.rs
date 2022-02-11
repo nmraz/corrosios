@@ -5,6 +5,7 @@
 
 mod arch;
 mod panic;
+mod mm;
 
 #[no_mangle]
 fn kernel_main(bootinfo_paddr: usize) -> ! {
