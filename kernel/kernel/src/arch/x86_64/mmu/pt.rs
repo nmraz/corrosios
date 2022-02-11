@@ -45,6 +45,10 @@ impl PageTableEntry {
         PageTableFlags::from_bits_truncate(self.0)
     }
 
+    pub const fn is_present(self) -> bool {
+        self.flags().contains(PageTableFlags::PRESENT)
+    }
+
     pub const fn page(self) -> PhysPfn {
         PhysPfn::new((self.0 >> PAGE_SHIFT) as usize)
     }
