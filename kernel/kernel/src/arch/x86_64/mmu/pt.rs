@@ -2,7 +2,7 @@ use core::ops::{Index, IndexMut};
 
 use bitflags::bitflags;
 
-use crate::mm::types::PhysFrame;
+use crate::mm::types::PhysPageId;
 
 pub const PAGE_SHIFT: usize = 12;
 pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
@@ -37,16 +37,16 @@ impl PageTableEntry {
         Self(0)
     }
 
-    pub const fn new(frame: PhysFrame, flags: PageTableFlags) -> Self {
-        Self(frame.addr().as_u64() | flags.bits())
+    pub const fn new(page: PhysPageId, flags: PageTableFlags) -> Self {
+        Self(page.addr().as_u64() | flags.bits())
     }
 
     pub const fn flags(self) -> PageTableFlags {
         PageTableFlags::from_bits_truncate(self.0)
     }
 
-    pub const fn frame(self) -> PhysFrame {
-        PhysFrame::new((self.0 >> PAGE_SHIFT) as usize)
+    pub const fn page(self) -> PhysPageId {
+        PhysPageId::new((self.0 >> PAGE_SHIFT) as usize)
     }
 }
 

@@ -17,8 +17,8 @@ impl PhysAddr {
         self.0 as u64
     }
 
-    pub const fn containing_frame(self) -> PhysFrame {
-        PhysFrame::new(self.0 >> PAGE_SHIFT)
+    pub const fn containing_page(self) -> PhysPageId {
+        PhysPageId::new(self.0 >> PAGE_SHIFT)
     }
 }
 
@@ -48,16 +48,16 @@ impl VirtAddr {
         self.0 as _
     }
 
-    pub const fn containing_frame(self) -> VirtFrame {
-        VirtFrame::new(self.0 >> PAGE_SHIFT)
+    pub const fn containing_page(self) -> VirtPageId {
+        VirtPageId::new(self.0 >> PAGE_SHIFT)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct PhysFrame(usize);
+pub struct PhysPageId(usize);
 
-impl PhysFrame {
+impl PhysPageId {
     pub const fn new(val: usize) -> Self {
         Self(val)
     }
@@ -77,9 +77,9 @@ impl PhysFrame {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct VirtFrame(usize);
+pub struct VirtPageId(usize);
 
-impl VirtFrame {
+impl VirtPageId {
     pub const fn new(val: usize) -> Self {
         Self(val)
     }
