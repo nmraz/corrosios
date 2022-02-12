@@ -81,9 +81,10 @@ impl<T: TranslatePhys> Walker<T> {
 
     fn next_table_ptr(&self, table: &PageTable, index: usize) -> Option<*mut PageTable> {
         let entry = table[index];
-        entry
-            .is_present()
-            .then(|| self.translator.translate(entry.page()).addr().as_mut_ptr())
+        entry.is_present().then(|| {
+            assert!(!entry.is_huge(), "attempting to walk through huge page");
+            self.translator.translate(entry.page()).addr().as_mut_ptr()
+        })
     }
 }
 

@@ -50,6 +50,10 @@ impl PageTableEntry {
         self.flags().contains(PageTableFlags::PRESENT)
     }
 
+    pub const fn is_huge(self) -> bool {
+        self.flags().contains(PageTableFlags::HUGE_PAGE)
+    }
+
     pub const fn page(self) -> PhysPageNum {
         PhysPageNum::new((self.0 >> PAGE_SHIFT) as usize)
     }
