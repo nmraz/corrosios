@@ -49,6 +49,20 @@ impl PageTableFlags {
         );
     }
 
+    pub fn add_perms(&mut self, perms: PageTablePerms) {
+        if perms.contains(PageTablePerms::WRITE) {
+            self.insert(PageTableFlags::WRITABLE);
+        }
+
+        if perms.contains(PageTablePerms::USER) {
+            self.insert(PageTableFlags::USER_MODE);
+        }
+
+        if perms.contains(PageTablePerms::EXECUTE) {
+            self.remove(PageTableFlags::NO_EXEC);
+        }
+    }
+
     pub fn perms(self) -> PageTablePerms {
         let mut ret = PageTablePerms::empty();
 
