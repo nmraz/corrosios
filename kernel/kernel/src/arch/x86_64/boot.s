@@ -1,6 +1,6 @@
 .macro initial_kernel_pt_index reg level
     lea \reg, [__virt_start]
-    shr \reg, (\level - 1) * {PT_LEVEL_SHIFT} + {PAGE_SHIFT}
+    shr \reg, \level * {PT_LEVEL_SHIFT} + {PAGE_SHIFT}
     and \reg, {PT_ENTRY_COUNT} - 1
 .endm
 
@@ -65,11 +65,11 @@ boot_main:
     # Initialize kernel mapping at -2GiB
 
     lea rax, [KERNEL_PDPT - {KERNEL_OFFSET} + 0x3]
-    initial_kernel_pt_index rbx 4
+    initial_kernel_pt_index rbx 3
     mov [KERNEL_PML4 - {KERNEL_OFFSET} + 8 * rbx], rax
 
     lea rax, [KERNEL_PD - {KERNEL_OFFSET} + 0x3]
-    initial_kernel_pt_index rbx 3
+    initial_kernel_pt_index rbx 2
     mov [KERNEL_PDPT - {KERNEL_OFFSET} + 8 * rbx], rax
 
     # Compute number of 2MiB ranges necessary to cover kernel
@@ -88,7 +88,7 @@ boot_main:
     lea rax, [KERNEL_PTS - {KERNEL_OFFSET} + rax]
     or rax, 3
 
-    initial_kernel_pt_index rdx 2
+    initial_kernel_pt_index rdx 1
     lea rsi, [KERNEL_PD - {KERNEL_OFFSET} + 8 * rdx]
 
 .Lfill_kernel_pd:
@@ -100,7 +100,7 @@ boot_main:
     lea rax, [__phys_start + 0x3]
     lea rbx, [__phys_end]
 
-    initial_kernel_pt_index rdx 1
+    initial_kernel_pt_index rdx 0
     lea rsi, [KERNEL_PTS - {KERNEL_OFFSET} + 8 * rdx]
 
 .Lfill_kernel_pts:
