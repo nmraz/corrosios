@@ -58,6 +58,19 @@ impl<T: TranslatePhys> Walker<T> {
     /// # Safety
     ///
     /// The provided table must be correctly structured.
+    pub unsafe fn next_table_mut_ensure_perms<'a>(
+        &self,
+        table: &'a mut PageTable,
+        index: usize,
+        perms: PageTablePerms,
+    ) -> Option<&'a mut PageTable> {
+        self.next_table_ptr_ensure_perms(table, index, perms)
+            .map(|p| unsafe { &mut *p })
+    }
+
+    /// # Safety
+    ///
+    /// The provided table must be correctly structured.
     pub unsafe fn next_table_or_create<'a, 'b, A: PageTableAlloc>(
         &self,
         table: &'a mut PageTable,
@@ -65,7 +78,7 @@ impl<T: TranslatePhys> Walker<T> {
         alloc: &'b mut A,
         perms: PageTablePerms,
     ) -> Result<&'a mut PageTable, PageTableAllocError> {
-        if let Some(next) = self.next_table_ptr(table, index) {
+        if let Some(next) = self.next_table_ptr_ensure_perms(table, index, perms) {
             return Ok(unsafe { &mut *next });
         }
 
@@ -88,6 +101,28 @@ impl<T: TranslatePhys> Walker<T> {
             );
             self.translator.translate(entry.page()).addr().as_mut_ptr()
         })
+    }
+
+    fn next_table_ptr_ensure_perms(
+        &self,
+        table: &mut PageTable,
+        index: usize,
+        perms: PageTablePerms,
+    ) -> Option<*mut PageTable> {
+        let entry = &mut table[index];
+        let mut flags = entry.flags();
+        if !flags.has_present() {
+            return None;
+        }
+
+        assert!(!flags.has_huge(), "attempting to walk through huge page");
+
+        flags.add_perms(perms);
+
+        let pfn = entry.page();
+        *entry = PageTableEntry::new(pfn, flags);
+
+        Some(self.translator.translate(pfn).addr().as_mut_ptr())
     }
 }
 
