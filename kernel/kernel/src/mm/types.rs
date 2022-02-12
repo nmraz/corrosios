@@ -99,7 +99,7 @@ impl VirtPageNum {
     }
 
     pub const fn pt_index(self, level: usize) -> usize {
-        (self.0 >> (PT_LEVEL_SHIFT * level + PAGE_SHIFT)) & PT_LEVEL_MASK
+        (self.0 >> (PT_LEVEL_SHIFT * level)) & PT_LEVEL_MASK
     }
 }
 
