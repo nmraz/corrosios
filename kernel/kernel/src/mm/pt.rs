@@ -81,8 +81,11 @@ impl<T: TranslatePhys> Walker<T> {
 
     fn next_table_ptr(&self, table: &PageTable, index: usize) -> Option<*mut PageTable> {
         let entry = table[index];
-        entry.is_present().then(|| {
-            assert!(!entry.is_huge(), "attempting to walk through huge page");
+        entry.flags().has_present().then(|| {
+            assert!(
+                !entry.flags().has_huge(),
+                "attempting to walk through huge page"
+            );
             self.translator.translate(entry.page()).addr().as_mut_ptr()
         })
     }
@@ -141,7 +144,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
         }
 
         let target_entry = &mut pt[virt.pt_index(0)];
-        if target_entry.is_present() {
+        if target_entry.flags().has_present() {
             return Err(MapError::EntryExists);
         }
 

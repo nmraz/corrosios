@@ -81,6 +81,14 @@ impl PageTableFlags {
 
         ret
     }
+
+    pub const fn has_present(self) -> bool {
+        self.contains(PageTableFlags::PRESENT)
+    }
+
+    pub const fn has_huge(self) -> bool {
+        self.contains(PageTableFlags::HUGE_PAGE)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -98,14 +106,6 @@ impl PageTableEntry {
 
     pub const fn flags(self) -> PageTableFlags {
         PageTableFlags::from_bits_truncate(self.0)
-    }
-
-    pub const fn is_present(self) -> bool {
-        self.flags().contains(PageTableFlags::PRESENT)
-    }
-
-    pub const fn is_huge(self) -> bool {
-        self.flags().contains(PageTableFlags::HUGE_PAGE)
     }
 
     pub const fn page(self) -> PhysPageNum {
