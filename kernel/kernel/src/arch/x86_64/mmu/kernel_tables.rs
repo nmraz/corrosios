@@ -1,3 +1,5 @@
+use core::ptr;
+
 use super::{PageTable, PAGE_SHIFT, PT_LEVEL_SHIFT};
 
 const MB: usize = 0x100000;
@@ -20,3 +22,8 @@ static mut KERNEL_PD: PageTable = PageTable::new();
 
 #[no_mangle]
 static mut KERNEL_PTS: [PageTable; KERNEL_PT_COUNT] = [PageTable::new(); KERNEL_PT_COUNT];
+
+pub fn kernel_pt_root() -> *mut PageTable {
+    // Safety: we never create a reference here, only a raw pointer
+    unsafe { ptr::addr_of_mut!(KERNEL_PML4) }
+}
