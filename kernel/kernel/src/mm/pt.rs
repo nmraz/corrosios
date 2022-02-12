@@ -2,7 +2,7 @@ use core::ptr;
 
 use crate::arch::mmu::{PageTable, PageTableEntry, PageTableFlags, PT_LEVEL_COUNT};
 
-use super::types::{PhysPfn, VirtPfn};
+use super::types::{PhysPageNum, VirtPageNum};
 
 pub struct PageTableAllocError;
 
@@ -11,12 +11,12 @@ pub struct PageTableAllocError;
 /// The implementation must ensure that it returns memory usable as a page table along with its true
 /// physical address.
 pub unsafe trait PageTableAlloc {
-    fn allocate(&mut self) -> Result<PhysPfn, PageTableAllocError>;
-    unsafe fn deallocate(&mut self, pfn: PhysPfn);
+    fn allocate(&mut self) -> Result<PhysPageNum, PageTableAllocError>;
+    unsafe fn deallocate(&mut self, pfn: PhysPageNum);
 }
 
 pub trait TranslatePhys {
-    fn translate(&self, phys: PhysPfn) -> VirtPfn;
+    fn translate(&self, phys: PhysPageNum) -> VirtPageNum;
 }
 
 pub struct Walker<'t, T> {
@@ -119,8 +119,8 @@ impl<'a, 't, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, 't, A, T> {
 
     pub fn map(
         &mut self,
-        virt: VirtPfn,
-        phys: PhysPfn,
+        virt: VirtPageNum,
+        phys: PhysPageNum,
         flags: PageTableFlags,
     ) -> Result<(), MapError> {
         let walker = unsafe { Walker::new(self.translator) };
