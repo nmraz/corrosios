@@ -19,16 +19,16 @@ pub trait TranslatePhys {
     fn translate(&self, phys: PhysPageNum) -> VirtPageNum;
 }
 
-pub struct Walker<'t, T> {
-    translator: &'t T,
+pub struct Walker<T> {
+    translator: T,
 }
 
-impl<'t, T: TranslatePhys> Walker<'t, T> {
+impl<T: TranslatePhys> Walker<T> {
     /// # Safety
     ///
     /// The caller must guarantee that `translator` provides correct virtual page numbers for any
     /// queried physical pages.
-    pub unsafe fn new(translator: &'t T) -> Self {
+    pub unsafe fn new(translator: T) -> Self {
         Self { translator }
     }
 
@@ -98,22 +98,22 @@ impl From<PageTableAllocError> for MapError {
     }
 }
 
-pub struct Mapper<'a, 't, A, T> {
+pub struct Mapper<'a, A, T> {
     root_pt: &'a mut PageTable,
     alloc: &'a mut A,
-    translator: &'t T,
+    walker: Walker<T>,
 }
 
-impl<'a, 't, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, 't, A, T> {
+impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
     /// # Safety
     ///
     /// The caller must guarantee that the provided table is correctly structured and that
     /// `translator` provides correct virtual page numbers for any queried physical pages.
-    pub unsafe fn new(root_pt: &'a mut PageTable, alloc: &'a mut A, translator: &'t T) -> Self {
+    pub unsafe fn new(root_pt: &'a mut PageTable, alloc: &'a mut A, translator: T) -> Self {
         Self {
             root_pt,
             alloc,
-            translator,
+            walker: unsafe { Walker::new(translator) },
         }
     }
 
@@ -123,10 +123,8 @@ impl<'a, 't, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, 't, A, T> {
         phys: PhysPageNum,
         flags: PageTableFlags,
     ) -> Result<(), MapError> {
-        let walker = unsafe { Walker::new(self.translator) };
-
         let mut pt = unsafe {
-            walker.next_table_or_create(
+            self.walker.next_table_or_create(
                 self.root_pt,
                 virt.pt_index(PT_LEVEL_COUNT - 1),
                 self.alloc,
@@ -136,7 +134,8 @@ impl<'a, 't, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, 't, A, T> {
 
         for level in (1..PT_LEVEL_COUNT - 1).rev() {
             pt = unsafe {
-                walker.next_table_or_create(pt, virt.pt_index(level), self.alloc, flags)?
+                self.walker
+                    .next_table_or_create(pt, virt.pt_index(level), self.alloc, flags)?
             };
         }
 
