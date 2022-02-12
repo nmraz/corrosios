@@ -2,7 +2,7 @@ use core::ptr;
 
 use crate::arch::mmu::{PageTable, PageTableEntry, PageTableFlags, PT_LEVEL_COUNT};
 
-use super::types::{PhysPageNum, VirtPageNum};
+use super::types::{PageTablePerms, PhysPageNum, VirtPageNum};
 
 pub struct PageTableAllocError;
 
@@ -63,7 +63,7 @@ impl<T: TranslatePhys> Walker<T> {
         table: &'a mut PageTable,
         index: usize,
         alloc: &'b mut A,
-        flags: PageTableFlags,
+        perms: PageTablePerms,
     ) -> Result<&'a mut PageTable, PageTableAllocError> {
         if let Some(next) = self.next_table_ptr(table, index) {
             return Ok(unsafe { &mut *next });
@@ -75,7 +75,7 @@ impl<T: TranslatePhys> Walker<T> {
             ptr::write(new_table, PageTable::new());
         }
 
-        table[index] = PageTableEntry::new(new_table_pfn, flags);
+        table[index] = PageTableEntry::new(new_table_pfn, flags_from_perms(perms));
         Ok(unsafe { &mut *new_table })
     }
 
@@ -125,21 +125,21 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
         &mut self,
         virt: VirtPageNum,
         phys: PhysPageNum,
-        flags: PageTableFlags,
+        perms: PageTablePerms,
     ) -> Result<(), MapError> {
         let mut pt = unsafe {
             self.walker.next_table_or_create(
                 self.root_pt,
                 virt.pt_index(PT_LEVEL_COUNT - 1),
                 self.alloc,
-                flags,
+                perms,
             )?
         };
 
         for level in (1..PT_LEVEL_COUNT - 1).rev() {
             pt = unsafe {
                 self.walker
-                    .next_table_or_create(pt, virt.pt_index(level), self.alloc, flags)?
+                    .next_table_or_create(pt, virt.pt_index(level), self.alloc, perms)?
             };
         }
 
@@ -148,8 +148,14 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
             return Err(MapError::EntryExists);
         }
 
-        *target_entry = PageTableEntry::new(phys, flags);
+        *target_entry = PageTableEntry::new(phys, flags_from_perms(perms));
 
         Ok(())
     }
+}
+
+fn flags_from_perms(perms: PageTablePerms) -> PageTableFlags {
+    let mut flags = PageTableFlags::common();
+    flags.apply_perms(perms);
+    flags
 }
