@@ -2,7 +2,7 @@ use core::ops::{Index, IndexMut};
 
 use bitflags::bitflags;
 
-use crate::mm::types::PhysPageNum;
+use crate::mm::types::{PageTablePerms, PhysPageNum};
 
 pub const PAGE_SHIFT: usize = 12;
 pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
@@ -26,6 +26,46 @@ bitflags! {
         const HUGE_PAGE = 1 << 7;
 
         const NO_EXEC = 1 << 63;
+    }
+}
+
+impl PageTableFlags {
+    pub const fn common() -> Self {
+        Self::PRESENT
+    }
+
+    pub fn apply_perms(&mut self, perms: PageTablePerms) {
+        self.set(
+            PageTableFlags::WRITABLE,
+            perms.contains(PageTablePerms::WRITE),
+        );
+        self.set(
+            PageTableFlags::USER_MODE,
+            perms.contains(PageTablePerms::USER),
+        );
+        self.set(
+            PageTableFlags::NO_EXEC,
+            !perms.contains(PageTablePerms::EXECUTE),
+        );
+    }
+
+    pub fn perms(self) -> PageTablePerms {
+        let mut ret = PageTablePerms::empty();
+
+        ret.set(
+            PageTablePerms::WRITE,
+            self.contains(PageTableFlags::WRITABLE),
+        );
+        ret.set(
+            PageTablePerms::USER,
+            self.contains(PageTableFlags::USER_MODE),
+        );
+        ret.set(
+            PageTablePerms::EXECUTE,
+            !self.contains(PageTableFlags::NO_EXEC),
+        );
+
+        ret
     }
 }
 

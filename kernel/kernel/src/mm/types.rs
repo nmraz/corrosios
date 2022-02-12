@@ -1,3 +1,5 @@
+use bitflags::bitflags;
+
 use crate::arch::mmu::{PAGE_SHIFT, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,5 +100,13 @@ impl VirtPageNum {
 
     pub const fn pt_index(self, level: usize) -> usize {
         (self.0 >> (PT_LEVEL_SHIFT * level + PAGE_SHIFT)) & PT_LEVEL_MASK
+    }
+}
+
+bitflags! {
+    pub struct PageTablePerms: u8 {
+        const WRITE = 1 << 0;
+        const EXECUTE = 1 << 1;
+        const USER = 1 << 2;
     }
 }
