@@ -23,7 +23,7 @@ boot_stack_top:
 .type early_gdtr, @object
 early_gdtr:
     .word {GDT_SIZE} * 8 - 1
-    .long GDT - {KERNEL_OFFSET}
+    .quad GDT - {KERNEL_OFFSET}
 .size early_gdtr, . - early_gdtr
 
 
