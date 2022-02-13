@@ -64,7 +64,7 @@ impl PageTableFlags {
     }
 
     pub fn perms(self) -> PageTablePerms {
-        let mut ret = PageTablePerms::empty();
+        let mut ret = PageTablePerms::READ;
 
         ret.set(
             PageTablePerms::WRITE,

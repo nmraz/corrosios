@@ -25,7 +25,7 @@ pub unsafe fn map_bootinfo(bootinfo_paddr: PhysAddr) -> View<'static> {
     // Safety: all page tables lie within the kernel image mapping, allowing us to use `KernelPfnTranslator`.
     let mut mapper = unsafe { Mapper::new(kernel_pt, &mut pt_alloc, KernelPfnTranslator) };
 
-    let perms = PageTablePerms::empty();
+    let perms = PageTablePerms::READ;
 
     let bootinfo_pfn = bootinfo_paddr.containing_page();
     mapper

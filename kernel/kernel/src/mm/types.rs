@@ -4,9 +4,10 @@ use crate::arch::mmu::{PAGE_SHIFT, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
 
 bitflags! {
     pub struct PageTablePerms: u8 {
-        const WRITE = 1 << 0;
-        const EXECUTE = 1 << 1;
-        const USER = 1 << 2;
+        const READ = 1 << 0;
+        const WRITE = 1 << 1;
+        const EXECUTE = 1 << 2;
+        const USER = 1 << 3;
     }
 }
 
