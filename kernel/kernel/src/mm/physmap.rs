@@ -37,8 +37,8 @@ pub unsafe fn map_bootinfo(bootinfo_paddr: PhysAddr) -> View<'static> {
 
     let bootinfo_pages = (view.total_size() + PAGE_SIZE - 1) / PAGE_SIZE;
     for page in 1..bootinfo_pages {
-        let vpn = VirtPageNum::new(BOOTINFO_SPACE_BASE.as_usize() + page);
-        let pfn = PhysPageNum::new(bootinfo_paddr.as_usize() + page);
+        let vpn = BOOTINFO_SPACE_BASE + page;
+        let pfn = bootinfo_pfn + page;
 
         mapper
             .map(vpn, pfn, perms)
@@ -61,19 +61,19 @@ impl BumpPageTableAlloc {
     pub fn new(start: PhysPageNum, pages: usize) -> Self {
         Self {
             cur: start,
-            end: PhysPageNum::new(start.as_usize() + pages),
+            end: start + pages,
         }
     }
 }
 
 unsafe impl PageTableAlloc for BumpPageTableAlloc {
     fn allocate(&mut self) -> Result<PhysPageNum, PageTableAllocError> {
-        if self.cur.as_usize() >= self.end.as_usize() {
+        if self.cur >= self.end {
             return Err(PageTableAllocError);
         }
 
         let ret = self.cur;
-        self.cur = PhysPageNum::new(ret.as_usize() + 1);
+        self.cur += 1;
 
         Ok(ret)
     }
@@ -90,9 +90,9 @@ impl TranslatePhys for KernelPfnTranslator {
 }
 
 fn pfn_from_kernel_vaddr(vaddr: VirtAddr) -> PhysPageNum {
-    PhysPageNum::new(vaddr.containing_page().as_usize() - KERNEL_IMAGE_SPACE_BASE.as_usize())
+    PhysPageNum::new(vaddr.containing_page() - KERNEL_IMAGE_SPACE_BASE)
 }
 
 fn vpn_from_kernel_pfn(pfn: PhysPageNum) -> VirtPageNum {
-    VirtPageNum::new(pfn.as_usize() + KERNEL_IMAGE_SPACE_BASE.as_usize())
+    KERNEL_IMAGE_SPACE_BASE + pfn.as_usize()
 }

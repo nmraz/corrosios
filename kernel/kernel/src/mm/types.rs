@@ -2,7 +2,15 @@ use bitflags::bitflags;
 
 use crate::arch::mmu::{PAGE_SHIFT, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+bitflags! {
+    pub struct PageTablePerms: u8 {
+        const WRITE = 1 << 0;
+        const EXECUTE = 1 << 1;
+        const USER = 1 << 2;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct PhysAddr(usize);
 
@@ -24,7 +32,7 @@ impl PhysAddr {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct VirtAddr(usize);
 
@@ -62,7 +70,7 @@ impl VirtAddr {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct PhysPageNum(usize);
 
@@ -84,7 +92,7 @@ impl PhysPageNum {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct VirtPageNum(usize);
 
@@ -110,10 +118,55 @@ impl VirtPageNum {
     }
 }
 
-bitflags! {
-    pub struct PageTablePerms: u8 {
-        const WRITE = 1 << 0;
-        const EXECUTE = 1 << 1;
-        const USER = 1 << 2;
-    }
+macro_rules! impl_add_sub_usize {
+    ($t:ty) => {
+        impl core::ops::Add<usize> for $t {
+            type Output = $t;
+
+            fn add(self, rhs: usize) -> $t {
+                <$t>::new(self.as_usize() + rhs)
+            }
+        }
+
+        impl core::ops::Add<$t> for usize {
+            type Output = $t;
+
+            fn add(self, rhs: $t) -> $t {
+                <$t>::new(self + rhs.as_usize())
+            }
+        }
+
+        impl core::ops::AddAssign<usize> for $t {
+            fn add_assign(&mut self, rhs: usize) {
+                self.0 += rhs;
+            }
+        }
+
+        impl core::ops::Sub<usize> for $t {
+            type Output = $t;
+
+            fn sub(self, rhs: usize) -> $t {
+                <$t>::new(self.as_usize() - rhs)
+            }
+        }
+
+        impl core::ops::Sub for $t {
+            type Output = usize;
+
+            fn sub(self, rhs: $t) -> usize {
+                self.as_usize() - rhs.as_usize()
+            }
+        }
+
+        impl core::ops::SubAssign<usize> for $t {
+            fn sub_assign(&mut self, rhs: usize) {
+                self.0 -= rhs;
+            }
+        }
+    };
 }
+
+impl_add_sub_usize!(PhysAddr);
+impl_add_sub_usize!(VirtAddr);
+impl_add_sub_usize!(PhysPageNum);
+impl_add_sub_usize!(VirtPageNum);
