@@ -4,6 +4,7 @@ use crate::arch::mmu::{PageTable, PageTableEntry, PageTableFlags, PT_LEVEL_COUNT
 
 use super::types::{PageTablePerms, PhysPageNum, VirtPageNum};
 
+#[derive(Debug, Clone, Copy)]
 pub struct PageTableAllocError;
 
 /// # Safety
@@ -126,6 +127,7 @@ impl<T: TranslatePhys> Walker<T> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum MapError {
     AllocFailed,
     EntryExists,
