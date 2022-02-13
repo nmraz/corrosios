@@ -33,6 +33,14 @@ impl VirtAddr {
         Self(val)
     }
 
+    pub fn from_ptr<T>(p: *const T) -> Self {
+        Self(p as usize)
+    }
+
+    pub fn from_mut_ptr<T>(p: *mut T) -> Self {
+        Self(p as usize)
+    }
+
     pub const fn as_usize(self) -> usize {
         self.0
     }
@@ -42,7 +50,6 @@ impl VirtAddr {
     }
 
     pub const fn as_ptr<T>(self) -> *const T {
-        assert!(self.0 % core::mem::align_of::<T>() == 0);
         self.0 as _
     }
 
