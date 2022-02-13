@@ -50,7 +50,9 @@ impl<'a> View<'a> {
             // Safety: per the safety contract of `new`, this offset should still point into the
             // allocation and point to a valid `ItemHeader`.
             let header = unsafe { &*(base.add(off) as *const ItemHeader) };
-            off = crate::align_item_offset(off + header.payload_len as usize);
+            off = crate::align_item_offset(
+                off + mem::size_of::<ItemHeader>() + header.payload_len as usize,
+            );
 
             Some(ItemView { header })
         })
