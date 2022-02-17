@@ -36,14 +36,14 @@ pub unsafe fn map_bootinfo(bootinfo_paddr: PhysAddr) -> View<'static> {
     let view = unsafe { View::new(&*bootinfo_ptr) }.expect("invalid bootinfo");
 
     let bootinfo_pages = (view.total_size() + PAGE_SIZE - 1) / PAGE_SIZE;
-    for page in 1..bootinfo_pages {
-        let vpn = BOOTINFO_SPACE_BASE + page;
-        let pfn = bootinfo_pfn + page;
-
-        mapper
-            .map_contiguous(vpn, pfn, 1, perms)
-            .expect("failed to map bootinfo page");
-    }
+    mapper
+        .map_contiguous(
+            BOOTINFO_SPACE_BASE + 1,
+            bootinfo_pfn + 1,
+            bootinfo_pages - 1,
+            perms,
+        )
+        .expect("failed to map remaining bootinfo pages");
 
     view
 }
