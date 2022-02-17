@@ -30,6 +30,39 @@ pub trait TranslatePhys {
     fn translate(&self, phys: PhysPageNum) -> VirtPageNum;
 }
 
+pub struct MappingPointer {
+    base: VirtPageNum,
+    size: usize,
+    offset: usize,
+}
+
+impl MappingPointer {
+    pub fn new(base: VirtPageNum, size: usize) -> Self {
+        Self {
+            base,
+            size,
+            offset: 0,
+        }
+    }
+
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn virt(&self) -> VirtPageNum {
+        self.base + self.offset
+    }
+
+    pub fn remaining_pages(&self) -> usize {
+        self.size - self.offset
+    }
+
+    pub fn advance(&mut self, pages: usize) {
+        self.offset += pages;
+        debug_assert!(self.offset <= self.size);
+    }
+}
+
 pub struct Mapper<'a, A, T> {
     root_pt: &'a mut PageTable,
     inner: MapperInner<'a, A, T>,
@@ -49,23 +82,13 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
 
     pub fn map_contiguous(
         &mut self,
-        virt: VirtPageNum,
-        phys: PhysPageNum,
-        pages: usize,
+        pointer: &mut MappingPointer,
+        phys_base: PhysPageNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
-        let mut offset = 0;
-
         // TODO: remove partial mappings on error
-        self.inner.map_contiguous(
-            self.root_pt,
-            PT_LEVEL_COUNT - 1,
-            virt,
-            phys,
-            pages,
-            &mut offset,
-            perms,
-        )?;
+        self.inner
+            .map_contiguous(self.root_pt, PT_LEVEL_COUNT - 1, pointer, phys_base, perms)?;
 
         // TODO: handle TLB
 
@@ -92,33 +115,23 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         &mut self,
         table: &mut PageTable,
         level: usize,
-        virt: VirtPageNum,
-        phys: PhysPageNum,
-        pages: usize,
-        offset: &mut usize,
+        pointer: &mut MappingPointer,
+        phys_base: PhysPageNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
-        let mut index = (virt + *offset).pt_index(level);
+        let mut index = pointer.virt().pt_index(level);
 
-        while index < PT_ENTRY_COUNT && (pages - *offset) > 0 {
+        while index < PT_ENTRY_COUNT && pointer.remaining_pages() > 0 {
             if level == 0 {
-                self.map_terminal(table, index, phys + *offset, perms)?;
-                *offset += 1;
+                self.map_terminal(table, index, phys_base + pointer.offset(), perms)?;
+                pointer.advance(1);
             } else {
                 // TODO: large page support?
                 let next = self.next_table_or_create(table, index)?;
-                self.map_contiguous(
-                    next,
-                    level - 1,
-                    virt + *offset,
-                    phys + *offset,
-                    pages - *offset,
-                    offset,
-                    perms,
-                )?;
+                self.map_contiguous(next, level - 1, pointer, phys_base, perms)?;
             }
 
-            index = (virt + *offset).pt_index(level);
+            index += 1;
         }
 
         Ok(())

@@ -7,7 +7,7 @@ use crate::arch::kernel_vmspace::{BOOTINFO_SPACE_BASE, KERNEL_IMAGE_SPACE_BASE};
 use crate::arch::mmu::{PageTable, PAGE_SIZE};
 use crate::mm::pt::Mapper;
 
-use super::pt::{PageTableAlloc, PageTableAllocError, TranslatePhys};
+use super::pt::{MappingPointer, PageTableAlloc, PageTableAllocError, TranslatePhys};
 use super::types::{PageTablePerms, PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
 
 /// # Safety
@@ -29,20 +29,23 @@ pub unsafe fn map_bootinfo(bootinfo_paddr: PhysAddr) -> View<'static> {
 
     let bootinfo_pfn = bootinfo_paddr.containing_page();
     mapper
-        .map_contiguous(BOOTINFO_SPACE_BASE, bootinfo_pfn, 1, perms)
+        .map_contiguous(
+            &mut MappingPointer::new(BOOTINFO_SPACE_BASE, 1),
+            bootinfo_pfn,
+            perms,
+        )
         .expect("failed to map initial bootinfo page");
 
     let bootinfo_ptr: *const ItemHeader = BOOTINFO_SPACE_BASE.addr().as_ptr();
     let view = unsafe { View::new(&*bootinfo_ptr) }.expect("invalid bootinfo");
 
     let bootinfo_pages = (view.total_size() + PAGE_SIZE - 1) / PAGE_SIZE;
+
+    let mut pointer = MappingPointer::new(BOOTINFO_SPACE_BASE, bootinfo_pages);
+    pointer.advance(1); // We've already mapped the first page above
+
     mapper
-        .map_contiguous(
-            BOOTINFO_SPACE_BASE + 1,
-            bootinfo_pfn + 1,
-            bootinfo_pages - 1,
-            perms,
-        )
+        .map_contiguous(&mut pointer, bootinfo_pfn, perms)
         .expect("failed to map remaining bootinfo pages");
 
     view
