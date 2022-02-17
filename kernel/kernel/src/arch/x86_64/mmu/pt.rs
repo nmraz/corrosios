@@ -23,7 +23,7 @@ bitflags! {
 
         const ACCESSED = 1 << 5;
         const DIRTY = 1 << 6;
-        const HUGE_PAGE = 1 << 7;
+        const LARGE = 1 << 7;
 
         const NO_EXEC = 1 << 63;
     }
@@ -86,8 +86,8 @@ impl PageTableFlags {
         self.contains(PageTableFlags::PRESENT)
     }
 
-    pub const fn has_huge(self) -> bool {
-        self.contains(PageTableFlags::HUGE_PAGE)
+    pub const fn has_large(self) -> bool {
+        self.contains(PageTableFlags::LARGE)
     }
 }
 

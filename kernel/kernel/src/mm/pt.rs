@@ -123,7 +123,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
             return Err(NextTableError::NotPresent);
         }
 
-        if flags.has_huge() {
+        if flags.has_large() {
             return Err(NextTableError::LargePage(entry));
         }
 
