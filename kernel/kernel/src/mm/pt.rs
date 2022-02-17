@@ -72,7 +72,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
     }
 }
 
-pub enum NextTableError {
+enum NextTableError {
     NotPresent,
     LargePage(PageTableEntry),
 }
