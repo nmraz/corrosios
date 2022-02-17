@@ -29,7 +29,7 @@ pub unsafe fn map_bootinfo(bootinfo_paddr: PhysAddr) -> View<'static> {
 
     let bootinfo_pfn = bootinfo_paddr.containing_page();
     mapper
-        .map(BOOTINFO_SPACE_BASE, bootinfo_pfn, perms)
+        .map_contiguous(BOOTINFO_SPACE_BASE, bootinfo_pfn, 1, perms)
         .expect("failed to map initial bootinfo page");
 
     let bootinfo_ptr: *const ItemHeader = BOOTINFO_SPACE_BASE.addr().as_ptr();
@@ -41,7 +41,7 @@ pub unsafe fn map_bootinfo(bootinfo_paddr: PhysAddr) -> View<'static> {
         let pfn = bootinfo_pfn + page;
 
         mapper
-            .map(vpn, pfn, perms)
+            .map_contiguous(vpn, pfn, 1, perms)
             .expect("failed to map bootinfo page");
     }
 

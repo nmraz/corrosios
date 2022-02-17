@@ -1,4 +1,4 @@
-use crate::arch::mmu::{PageTable, PageTableEntry, PageTableFlags, PT_LEVEL_COUNT};
+use crate::arch::mmu::{PageTable, PageTableEntry, PageTableFlags, PT_ENTRY_COUNT, PT_LEVEL_COUNT};
 
 use super::types::{PageTablePerms, PhysPageNum, VirtPageNum};
 
@@ -47,26 +47,27 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
         }
     }
 
-    pub fn map(
+    pub fn map_contiguous(
         &mut self,
         virt: VirtPageNum,
         phys: PhysPageNum,
+        pages: usize,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
-        let mut pt = self
-            .inner
-            .next_table_or_create(self.root_pt, virt.pt_index(PT_LEVEL_COUNT - 1))?;
+        let mut offset = 0;
 
-        for level in (1..PT_LEVEL_COUNT - 1).rev() {
-            pt = self.inner.next_table_or_create(pt, virt.pt_index(level))?;
-        }
+        // TODO: remove partial mappings on error
+        self.inner.map_contiguous(
+            self.root_pt,
+            PT_LEVEL_COUNT - 1,
+            virt,
+            phys,
+            pages,
+            &mut offset,
+            perms,
+        )?;
 
-        let target_entry = &mut pt[virt.pt_index(0)];
-        if target_entry.flags().has_present() {
-            return Err(MapError::EntryExists);
-        }
-
-        *target_entry = PageTableEntry::new(phys, flags_from_perms(perms));
+        // TODO: handle TLB
 
         Ok(())
     }
@@ -85,6 +86,59 @@ struct MapperInner<'a, A, T> {
 impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
     fn new(alloc: &'a mut A, translator: T) -> Self {
         Self { alloc, translator }
+    }
+
+    fn map_contiguous(
+        &mut self,
+        table: &mut PageTable,
+        level: usize,
+        virt: VirtPageNum,
+        phys: PhysPageNum,
+        pages: usize,
+        offset: &mut usize,
+        perms: PageTablePerms,
+    ) -> Result<(), MapError> {
+        let mut index = (virt + *offset).pt_index(level);
+
+        while index < PT_ENTRY_COUNT && (pages - *offset) > 0 {
+            if level == 0 {
+                self.map_terminal(table, index, phys + *offset, perms)?;
+                *offset += 1;
+            } else {
+                // TODO: large page support?
+                let next = self.next_table_or_create(table, index)?;
+                self.map_contiguous(
+                    next,
+                    level - 1,
+                    virt + *offset,
+                    phys + *offset,
+                    pages - *offset,
+                    offset,
+                    perms,
+                )?;
+            }
+
+            index = (virt + *offset).pt_index(level);
+        }
+
+        Ok(())
+    }
+
+    fn map_terminal(
+        &mut self,
+        table: &mut PageTable,
+        index: usize,
+        phys: PhysPageNum,
+        perms: PageTablePerms,
+    ) -> Result<(), MapError> {
+        let target_entry = &mut table[index];
+        if target_entry.flags().has_present() {
+            return Err(MapError::EntryExists);
+        }
+
+        *target_entry = PageTableEntry::new(phys, flags_from_perms(perms));
+
+        Ok(())
     }
 
     fn next_table_or_create<'t>(
