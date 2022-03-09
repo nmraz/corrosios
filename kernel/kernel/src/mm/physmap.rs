@@ -45,7 +45,7 @@ pub unsafe fn map_bootinfo(bootinfo_paddr: PhysAddr) -> View<'static> {
     pointer.advance(1); // We've already mapped the first page above
 
     mapper
-        .map_contiguous(&mut pointer, bootinfo_pfn, perms)
+        .map_contiguous(&mut pointer, bootinfo_pfn + 1, perms)
         .expect("failed to map remaining bootinfo pages");
 
     view

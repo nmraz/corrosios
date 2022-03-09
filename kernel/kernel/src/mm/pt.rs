@@ -83,12 +83,12 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
     pub fn map_contiguous(
         &mut self,
         pointer: &mut MappingPointer,
-        phys_base: PhysPageNum,
+        phys: PhysPageNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
         // TODO: remove partial mappings on error
         self.inner
-            .map_contiguous(self.root_pt, PT_LEVEL_COUNT - 1, pointer, phys_base, perms)?;
+            .map_contiguous(self.root_pt, PT_LEVEL_COUNT - 1, pointer, phys, perms)?;
 
         // TODO: handle TLB
 
@@ -116,19 +116,20 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         table: &mut PageTable,
         level: usize,
         pointer: &mut MappingPointer,
-        phys_base: PhysPageNum,
+        mut phys: PhysPageNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
         let mut index = pointer.virt().pt_index(level);
 
         while index < PT_ENTRY_COUNT && pointer.remaining_pages() > 0 {
             if level == 0 {
-                self.map_terminal(table, index, phys_base + pointer.offset(), perms)?;
+                self.map_terminal(table, index, phys, perms)?;
+                phys += 1;
                 pointer.advance(1);
             } else {
                 // TODO: large page support?
                 let next = self.next_table_or_create(table, index)?;
-                self.map_contiguous(next, level - 1, pointer, phys_base, perms)?;
+                self.map_contiguous(next, level - 1, pointer, phys, perms)?;
             }
 
             index += 1;
