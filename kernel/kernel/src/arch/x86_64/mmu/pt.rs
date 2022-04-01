@@ -2,7 +2,7 @@ use core::ops::{Index, IndexMut};
 
 use bitflags::bitflags;
 
-use crate::mm::types::{PageTablePerms, PhysPageNum};
+use crate::mm::types::{PageTableFlags, PageTablePerms, PhysPageNum};
 
 pub const PAGE_SHIFT: usize = 12;
 pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
@@ -15,82 +15,6 @@ pub const PT_LEVEL_MASK: usize = PT_ENTRY_COUNT - 1;
 
 const PADDR_MASK: u64 = 0xffffffffff000;
 
-bitflags! {
-    pub struct PageTableFlags: u64 {
-        const PRESENT = 1 << 0;
-        const WRITABLE = 1 << 1;
-        const USER_MODE = 1 << 2;
-
-        const ACCESSED = 1 << 5;
-        const DIRTY = 1 << 6;
-        const LARGE = 1 << 7;
-
-        const NO_EXEC = 1 << 63;
-    }
-}
-
-impl PageTableFlags {
-    pub const fn common() -> Self {
-        Self::PRESENT
-    }
-
-    pub fn apply_perms(&mut self, perms: PageTablePerms) {
-        self.set(
-            PageTableFlags::WRITABLE,
-            perms.contains(PageTablePerms::WRITE),
-        );
-        self.set(
-            PageTableFlags::USER_MODE,
-            perms.contains(PageTablePerms::USER),
-        );
-        self.set(
-            PageTableFlags::NO_EXEC,
-            !perms.contains(PageTablePerms::EXECUTE),
-        );
-    }
-
-    pub fn add_perms(&mut self, perms: PageTablePerms) {
-        if perms.contains(PageTablePerms::WRITE) {
-            self.insert(PageTableFlags::WRITABLE);
-        }
-
-        if perms.contains(PageTablePerms::USER) {
-            self.insert(PageTableFlags::USER_MODE);
-        }
-
-        if perms.contains(PageTablePerms::EXECUTE) {
-            self.remove(PageTableFlags::NO_EXEC);
-        }
-    }
-
-    pub fn perms(self) -> PageTablePerms {
-        let mut ret = PageTablePerms::READ;
-
-        ret.set(
-            PageTablePerms::WRITE,
-            self.contains(PageTableFlags::WRITABLE),
-        );
-        ret.set(
-            PageTablePerms::USER,
-            self.contains(PageTableFlags::USER_MODE),
-        );
-        ret.set(
-            PageTablePerms::EXECUTE,
-            !self.contains(PageTableFlags::NO_EXEC),
-        );
-
-        ret
-    }
-
-    pub const fn has_present(self) -> bool {
-        self.contains(PageTableFlags::PRESENT)
-    }
-
-    pub const fn has_large(self) -> bool {
-        self.contains(PageTableFlags::LARGE)
-    }
-}
-
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct PageTableEntry(u64);
@@ -100,16 +24,76 @@ impl PageTableEntry {
         Self(0)
     }
 
-    pub const fn new(page: PhysPageNum, flags: PageTableFlags) -> Self {
-        Self(page.addr().as_u64() | flags.bits())
+    pub fn new(page: PhysPageNum, perms: PageTablePerms, flags: PageTableFlags) -> Self {
+        let mut x86_flags = X86PageTableFlags::empty();
+
+        x86_flags.set(
+            X86PageTableFlags::WRITABLE,
+            perms.contains(PageTablePerms::WRITE),
+        );
+        x86_flags.set(
+            X86PageTableFlags::USER_MODE,
+            perms.contains(PageTablePerms::USER),
+        );
+        x86_flags.set(
+            X86PageTableFlags::NO_EXEC,
+            !perms.contains(PageTablePerms::EXECUTE),
+        );
+
+        x86_flags.set(
+            X86PageTableFlags::PRESENT,
+            flags.contains(PageTableFlags::PRESENT),
+        );
+        x86_flags.set(
+            X86PageTableFlags::LARGE,
+            flags.contains(PageTableFlags::LARGE),
+        );
+
+        Self(page.addr().as_u64() | x86_flags.bits())
     }
 
-    pub const fn flags(self) -> PageTableFlags {
-        PageTableFlags::from_bits_truncate(self.0)
+    pub fn perms(self) -> PageTablePerms {
+        let flags = self.x86_flags();
+        let mut ret = PageTablePerms::READ;
+
+        ret.set(
+            PageTablePerms::WRITE,
+            flags.contains(X86PageTableFlags::WRITABLE),
+        );
+        ret.set(
+            PageTablePerms::USER,
+            flags.contains(X86PageTableFlags::USER_MODE),
+        );
+        ret.set(
+            PageTablePerms::EXECUTE,
+            !flags.contains(X86PageTableFlags::NO_EXEC),
+        );
+
+        ret
+    }
+
+    pub fn flags(self) -> PageTableFlags {
+        let flags = self.x86_flags();
+        let mut ret = PageTableFlags::empty();
+
+        ret.set(
+            PageTableFlags::PRESENT,
+            flags.contains(X86PageTableFlags::PRESENT),
+        );
+        ret.set(
+            PageTableFlags::LARGE,
+            flags.contains(X86PageTableFlags::LARGE),
+        );
+
+        ret
     }
 
     pub const fn page(self) -> PhysPageNum {
         PhysPageNum::new((self.0 >> PAGE_SHIFT) as usize)
+    }
+
+    const fn x86_flags(self) -> X86PageTableFlags {
+        X86PageTableFlags::from_bits_truncate(self.0)
     }
 }
 
@@ -138,5 +122,19 @@ impl Index<usize> for PageTable {
 impl IndexMut<usize> for PageTable {
     fn index_mut(&mut self, index: usize) -> &mut PageTableEntry {
         &mut self.entries[index]
+    }
+}
+
+bitflags! {
+    struct X86PageTableFlags: u64 {
+        const PRESENT = 1 << 0;
+        const WRITABLE = 1 << 1;
+        const USER_MODE = 1 << 2;
+
+        const ACCESSED = 1 << 5;
+        const DIRTY = 1 << 6;
+        const LARGE = 1 << 7;
+
+        const NO_EXEC = 1 << 63;
     }
 }

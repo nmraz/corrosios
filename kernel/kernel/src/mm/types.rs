@@ -11,6 +11,13 @@ bitflags! {
     }
 }
 
+bitflags! {
+    pub struct PageTableFlags: u8 {
+        const PRESENT = 1 << 0;
+        const LARGE = 1 << 1;
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct PhysAddr(usize);

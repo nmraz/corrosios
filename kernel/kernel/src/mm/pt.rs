@@ -1,6 +1,6 @@
-use crate::arch::mmu::{PageTable, PageTableEntry, PageTableFlags, PT_ENTRY_COUNT, PT_LEVEL_COUNT};
+use crate::arch::mmu::{PageTable, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT};
 
-use super::types::{PageTablePerms, PhysPageNum, VirtPageNum};
+use super::types::{PageTableFlags, PageTablePerms, PhysPageNum, VirtPageNum};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PageTableAllocError;
@@ -123,7 +123,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
 
         while index < PT_ENTRY_COUNT && pointer.remaining_pages() > 0 {
             if level == 0 {
-                self.map_terminal(table, index, phys, perms)?;
+                self.map_terminal(table, index, phys, perms, PageTableFlags::empty())?;
                 phys += 1;
                 pointer.advance(1);
             } else {
@@ -144,13 +144,14 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         index: usize,
         phys: PhysPageNum,
         perms: PageTablePerms,
+        flags: PageTableFlags,
     ) -> Result<(), MapError> {
         let target_entry = &mut table[index];
-        if target_entry.flags().has_present() {
+        if target_entry.flags().contains(PageTableFlags::PRESENT) {
             return Err(MapError::EntryExists);
         }
 
-        *target_entry = PageTableEntry::new(phys, flags_from_perms(perms));
+        *target_entry = PageTableEntry::new(phys, perms, flags | PageTableFlags::PRESENT);
 
         Ok(())
     }
@@ -175,7 +176,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         };
 
         let new_table = self.alloc.allocate()?;
-        table[index] = PageTableEntry::new(new_table, flags_from_perms(perms));
+        table[index] = PageTableEntry::new(new_table, perms, PageTableFlags::PRESENT);
         Ok(unsafe { &mut *self.translate(new_table) })
     }
 
@@ -187,11 +188,11 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         let entry = table[index];
         let flags = entry.flags();
 
-        if !flags.has_present() {
+        if !flags.contains(PageTableFlags::PRESENT) {
             return Err(NextTableError::NotPresent);
         }
 
-        if flags.has_large() {
+        if flags.contains(PageTableFlags::LARGE) {
             return Err(NextTableError::LargePage(entry));
         }
 
@@ -201,10 +202,4 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
     fn translate(&self, table_pfn: PhysPageNum) -> *mut PageTable {
         self.translator.translate(table_pfn).addr().as_mut_ptr()
     }
-}
-
-fn flags_from_perms(perms: PageTablePerms) -> PageTableFlags {
-    let mut flags = PageTableFlags::common();
-    flags.apply_perms(perms);
-    flags
 }
