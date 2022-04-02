@@ -1,3 +1,4 @@
 set disassembly-flavor intel
+thbreak kernel_main
 layout src
-advance kernel_main
+c
