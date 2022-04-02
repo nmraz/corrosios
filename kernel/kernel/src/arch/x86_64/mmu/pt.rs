@@ -13,6 +13,10 @@ pub const PT_LEVEL_SHIFT: usize = 9;
 pub const PT_ENTRY_COUNT: usize = 1 << PT_LEVEL_SHIFT;
 pub const PT_LEVEL_MASK: usize = PT_ENTRY_COUNT - 1;
 
+pub fn supports_page_size(level: usize) -> bool {
+    matches!(level, 0 | 1)
+}
+
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct PageTableEntry(u64);

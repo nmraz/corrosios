@@ -1,4 +1,6 @@
-use crate::arch::mmu::{PageTable, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT};
+use crate::arch::mmu::{
+    self, PageTable, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT,
+};
 
 use super::types::{PageTableFlags, PageTablePerms, PhysPageNum, VirtPageNum};
 
@@ -86,12 +88,8 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
         phys_base: PhysPageNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
-        // TODO: remove partial mappings on error
         self.inner
             .map_contiguous(self.root_pt, PT_LEVEL_COUNT - 1, pointer, phys_base, perms)?;
-
-        // TODO: handle TLB
-
         Ok(())
     }
 }
@@ -122,17 +120,16 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         let mut index = pointer.virt().pt_index(level);
 
         while index < PT_ENTRY_COUNT && pointer.remaining_pages() > 0 {
-            if level == 0 {
-                self.map_terminal(
-                    table,
-                    index,
-                    phys_base + pointer.offset(),
-                    perms,
-                    PageTableFlags::empty(),
-                )?;
-                pointer.advance(1);
+            if mmu::supports_page_size(level) && can_use_level_page(level, pointer, phys_base) {
+                let flags = if level == 0 {
+                    PageTableFlags::empty()
+                } else {
+                    PageTableFlags::LARGE
+                };
+
+                self.map_terminal(table, index, phys_base + pointer.offset(), perms, flags)?;
+                pointer.advance(level_page_count(level));
             } else {
-                // TODO: large page support?
                 let next = self.next_table_or_create(table, index)?;
                 self.map_contiguous(next, level - 1, pointer, phys_base, perms)?;
             }
@@ -205,4 +202,23 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
     fn translate(&self, table_pfn: PhysPageNum) -> *mut PageTable {
         self.translator.translate(table_pfn).addr().as_mut_ptr()
     }
+}
+
+fn can_use_level_page(level: usize, pointer: &MappingPointer, phys_base: PhysPageNum) -> bool {
+    let min_pages = level_page_count(level);
+    pointer.remaining_pages() >= min_pages
+        && aligned_for_level(pointer.virt().as_usize(), level)
+        && aligned_for_level(phys_base.as_usize() + pointer.offset(), level)
+}
+
+fn aligned_for_level(page_num: usize, level: usize) -> bool {
+    page_num & level_page_mask(level) == 0
+}
+
+fn level_page_count(level: usize) -> usize {
+    1 << (level * PT_LEVEL_SHIFT)
+}
+
+fn level_page_mask(level: usize) -> usize {
+    level_page_count(level) - 1
 }
