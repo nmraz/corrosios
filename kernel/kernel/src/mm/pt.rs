@@ -25,7 +25,6 @@ impl From<PageTableAllocError> for MapError {
 /// physical address.
 pub unsafe trait PageTableAlloc {
     fn allocate(&mut self) -> Result<PhysPageNum, PageTableAllocError>;
-    unsafe fn deallocate(&mut self, pfn: PhysPageNum);
 }
 
 pub trait TranslatePhys {
