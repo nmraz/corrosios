@@ -116,7 +116,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         table: &mut PageTable,
         level: usize,
         pointer: &mut MappingPointer,
-        mut phys_base: PhysPageNum,
+        phys_base: PhysPageNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
         let mut index = pointer.virt().pt_index(level);
