@@ -165,7 +165,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         &mut self,
         table: &'t mut PageTable,
         index: usize,
-    ) -> Result<&'t mut PageTable, PageTableAllocError> {
+    ) -> Result<&'t mut PageTable, MapError> {
         let perms: PageTablePerms = PageTablePerms::READ
             | PageTablePerms::WRITE
             | PageTablePerms::EXECUTE
@@ -174,9 +174,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         match self.next_table_ptr(table, index) {
             Ok(next) => return Ok(unsafe { &mut *next }),
 
-            Err(NextTableError::LargePage(_)) => {
-                panic!("encountered large page")
-            }
+            Err(NextTableError::LargePage(_)) => return Err(MapError::EntryExists),
             Err(NextTableError::NotPresent) => {}
         };
 
