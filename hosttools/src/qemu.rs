@@ -40,6 +40,8 @@ pub fn run_qemu(opts: &QemuOptions<'_>) -> Result<QemuChild> {
     );
 
     cmd.args(vec![
+        "-accel",
+        "kvm",
         "-drive",
         &uefi_flash,
         "-drive",
