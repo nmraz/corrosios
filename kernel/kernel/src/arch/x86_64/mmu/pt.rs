@@ -13,8 +13,6 @@ pub const PT_LEVEL_SHIFT: usize = 9;
 pub const PT_ENTRY_COUNT: usize = 1 << PT_LEVEL_SHIFT;
 pub const PT_LEVEL_MASK: usize = PT_ENTRY_COUNT - 1;
 
-const PADDR_MASK: u64 = 0xffffffffff000;
-
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct PageTableEntry(u64);
