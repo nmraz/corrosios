@@ -154,13 +154,16 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
             if level == 0 {
                 unmap_terminal(table, level, pointer, gather);
             } else {
-                let next_ptr = match self.next_table_ptr(table, pointer.virt().pt_index(level)) {
+                let index = pointer.virt().pt_index(level);
+                let next_ptr = match self.next_table_ptr(table, index) {
                     Ok(next_ptr) => next_ptr,
 
                     Err(NextTableError::LargePage(entry)) => {
                         let page_count = level_page_count(level);
 
-                        if pointer.remaining_pages() >= page_count {
+                        if aligned_for_level(pointer.virt().as_usize(), level)
+                            && pointer.remaining_pages() >= page_count
+                        {
                             unmap_terminal(table, level, pointer, gather);
                             return Ok(());
                         } else {
