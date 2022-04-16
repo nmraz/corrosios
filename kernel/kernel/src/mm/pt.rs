@@ -88,14 +88,14 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
         }
     }
 
-    pub fn map_contiguous(
+    pub fn map(
         &mut self,
         pointer: &mut MappingPointer,
         phys_base: PhysPageNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
         self.inner
-            .map_contiguous(self.root_pt, PT_LEVEL_COUNT - 1, pointer, phys_base, perms)
+            .map(self.root_pt, PT_LEVEL_COUNT - 1, pointer, phys_base, perms)
     }
 
     pub fn unmap(
@@ -123,7 +123,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         Self { alloc, translator }
     }
 
-    fn map_contiguous(
+    fn map(
         &mut self,
         table: &mut PageTable,
         level: usize,
@@ -136,7 +136,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
                 map_terminal(table, level, pointer, phys_base, perms)?;
             } else {
                 let next = self.next_table_or_create(table, pointer.virt().pt_index(level))?;
-                self.map_contiguous(next, level - 1, pointer, phys_base, perms)?;
+                self.map(next, level - 1, pointer, phys_base, perms)?;
             }
 
             Ok(())
