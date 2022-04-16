@@ -80,8 +80,6 @@ unsafe impl PageTableAlloc for BumpPageTableAlloc {
 
         Ok(ret)
     }
-
-    unsafe fn deallocate(&mut self, _pfn: PhysPageNum) {}
 }
 
 struct KernelPfnTranslator;
