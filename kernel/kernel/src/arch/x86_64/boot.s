@@ -134,6 +134,10 @@ high_entry:
     mov fs, ax
     mov gs, ax
 
+    # Remove low mapping
+    mov qword ptr [KERNEL_PML4], 0
+    invlpg [0]
+
     lea rsp, [boot_stack_top]
     jmp kernel_main
 .size high_entry, . - high_entry

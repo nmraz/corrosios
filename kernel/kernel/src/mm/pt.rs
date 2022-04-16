@@ -1,3 +1,5 @@
+use core::cmp;
+
 use crate::arch::mmu::{
     self, PageTable, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT,
 };
@@ -29,6 +31,11 @@ pub unsafe trait PageTableAlloc {
 
 pub trait TranslatePhys {
     fn translate(&self, phys: PhysPageNum) -> VirtPageNum;
+}
+
+pub trait GatherInvalidations {
+    fn add_tlb_flush(&mut self, vpn: VirtPageNum);
+    fn add_pt_dealloc(&mut self, pt: PhysPageNum);
 }
 
 pub struct MappingPointer {
@@ -81,15 +88,23 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
         }
     }
 
-    pub fn map_contiguous(
+    pub fn map(
         &mut self,
         pointer: &mut MappingPointer,
         phys_base: PhysPageNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
         self.inner
-            .map_contiguous(self.root_pt, PT_LEVEL_COUNT - 1, pointer, phys_base, perms)?;
-        Ok(())
+            .map(self.root_pt, PT_LEVEL_COUNT - 1, pointer, phys_base, perms)
+    }
+
+    pub fn unmap(
+        &mut self,
+        pointer: &mut MappingPointer,
+        gather: &mut impl GatherInvalidations,
+    ) -> Result<(), PageTableAllocError> {
+        self.inner
+            .unmap(self.root_pt, PT_LEVEL_COUNT - 1, pointer, gather)
     }
 }
 
@@ -108,7 +123,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         Self { alloc, translator }
     }
 
-    fn map_contiguous(
+    fn map(
         &mut self,
         table: &mut PageTable,
         level: usize,
@@ -116,45 +131,60 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         phys_base: PhysPageNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
-        let mut index = pointer.virt().pt_index(level);
-
-        while index < PT_ENTRY_COUNT && pointer.remaining_pages() > 0 {
+        walk_level(level, pointer, |pointer| {
             if mmu::supports_page_size(level) && can_use_level_page(level, pointer, phys_base) {
-                let flags = if level == 0 {
-                    PageTableFlags::empty()
-                } else {
-                    PageTableFlags::LARGE
-                };
-
-                self.map_terminal(table, index, phys_base + pointer.offset(), perms, flags)?;
-                pointer.advance(level_page_count(level));
+                map_terminal(table, level, pointer, phys_base, perms)?;
             } else {
-                let next = self.next_table_or_create(table, index)?;
-                self.map_contiguous(next, level - 1, pointer, phys_base, perms)?;
+                let next = self.next_table_or_create(table, pointer.virt().pt_index(level))?;
+                self.map(next, level - 1, pointer, phys_base, perms)?;
             }
 
-            index += 1;
-        }
-
-        Ok(())
+            Ok(())
+        })
     }
 
-    fn map_terminal(
+    fn unmap(
         &mut self,
         table: &mut PageTable,
-        index: usize,
-        phys: PhysPageNum,
-        perms: PageTablePerms,
-        flags: PageTableFlags,
-    ) -> Result<(), MapError> {
-        let target_entry = &mut table[index];
-        if target_entry.flags().contains(PageTableFlags::PRESENT) {
-            return Err(MapError::EntryExists);
-        }
+        level: usize,
+        pointer: &mut MappingPointer,
+        gather: &mut dyn GatherInvalidations,
+    ) -> Result<(), PageTableAllocError> {
+        walk_level(level, pointer, |pointer| {
+            if level == 0 {
+                unmap_terminal(table, level, pointer, gather);
+            } else {
+                let index = pointer.virt().pt_index(level);
+                let next_ptr = match self.next_table_ptr(table, index) {
+                    Ok(next_ptr) => next_ptr,
 
-        *target_entry = PageTableEntry::new(phys, perms, flags | PageTableFlags::PRESENT);
+                    Err(NextTableError::LargePage(entry)) => {
+                        let page_count = level_page_count(level);
 
-        Ok(())
+                        if aligned_for_level(pointer.virt().as_usize(), level)
+                            && pointer.remaining_pages() >= page_count
+                        {
+                            unmap_terminal(table, level, pointer, gather);
+                            return Ok(());
+                        } else {
+                            todo!("Split large page")
+                        }
+                    }
+
+                    Err(NextTableError::NotPresent) => {
+                        pointer.advance(level_page_count(level));
+                        return Ok(());
+                    }
+                };
+
+                let next = unsafe { &mut *next_ptr };
+                self.unmap(next, level - 1, pointer, gather)?;
+            }
+
+            Ok(())
+        })
+
+        // TODO: free table if possible
     }
 
     fn next_table_or_create<'t>(
@@ -201,6 +231,60 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
     fn translate(&self, table_pfn: PhysPageNum) -> *mut PageTable {
         self.translator.translate(table_pfn).addr().as_mut_ptr()
     }
+}
+
+fn map_terminal(
+    table: &mut PageTable,
+    level: usize,
+    pointer: &mut MappingPointer,
+    phys_base: PhysPageNum,
+    perms: PageTablePerms,
+) -> Result<(), MapError> {
+    let target_entry = &mut table[pointer.virt().pt_index(level)];
+
+    if target_entry.flags().contains(PageTableFlags::PRESENT) {
+        return Err(MapError::EntryExists);
+    }
+
+    let mut flags = PageTableFlags::PRESENT;
+    if level > 0 {
+        flags |= PageTableFlags::LARGE;
+    }
+
+    *target_entry = PageTableEntry::new(phys_base + pointer.offset(), perms, flags);
+
+    pointer.advance(level_page_count(level));
+
+    Ok(())
+}
+
+fn unmap_terminal(
+    table: &mut PageTable,
+    level: usize,
+    pointer: &mut MappingPointer,
+    gather: &mut dyn GatherInvalidations,
+) {
+    table[pointer.virt().pt_index(level)] = PageTableEntry::empty();
+    gather.add_tlb_flush(pointer.virt());
+    pointer.advance(level_page_count(level));
+}
+
+fn walk_level<E>(
+    level: usize,
+    pointer: &mut MappingPointer,
+    mut f: impl FnMut(&mut MappingPointer) -> Result<(), E>,
+) -> Result<(), E> {
+    let max_offset = pointer.offset()
+        + cmp::min(
+            pointer.remaining_pages(),
+            PT_ENTRY_COUNT * level_page_count(level),
+        );
+
+    while pointer.offset() < max_offset {
+        f(pointer)?;
+    }
+
+    Ok(())
 }
 
 fn can_use_level_page(level: usize, pointer: &MappingPointer, phys_base: PhysPageNum) -> bool {
