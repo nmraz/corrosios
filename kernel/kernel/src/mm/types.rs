@@ -2,6 +2,8 @@ use bitflags::bitflags;
 
 use crate::arch::mmu::{PAGE_SHIFT, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
 
+use super::utils::{align_down, align_up};
+
 bitflags! {
     pub struct PageTablePerms: u8 {
         const READ = 1 << 0;
@@ -37,6 +39,14 @@ impl PhysAddr {
 
     pub const fn containing_page(self) -> PhysPageNum {
         PhysPageNum::new(self.0 >> PAGE_SHIFT)
+    }
+
+    pub const fn align_down(self, align: usize) -> Self {
+        Self(align_down(self.0, align))
+    }
+
+    pub const fn align_up(self, align: usize) -> Self {
+        Self(align_up(self.0, align))
     }
 }
 
@@ -75,6 +85,14 @@ impl VirtAddr {
 
     pub const fn containing_page(self) -> VirtPageNum {
         VirtPageNum::new(self.0 >> PAGE_SHIFT)
+    }
+
+    pub const fn align_down(self, align: usize) -> Self {
+        Self(align_down(self.0, align))
+    }
+
+    pub const fn align_up(self, align: usize) -> Self {
+        Self(align_up(self.0, align))
     }
 }
 
