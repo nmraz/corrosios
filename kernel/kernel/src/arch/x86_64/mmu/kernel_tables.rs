@@ -6,7 +6,7 @@ const MB: usize = 0x100000;
 
 const PT_RANGE: usize = 1 << (PT_LEVEL_SHIFT + PAGE_SHIFT);
 
-// Note: keep in sync with linker script
+// Note: keep in sync with linker script and early mapping in `boot.s`
 const KERNEL_MAX: usize = 8 * MB;
 
 const KERNEL_PT_COUNT: usize = KERNEL_MAX / PT_RANGE;

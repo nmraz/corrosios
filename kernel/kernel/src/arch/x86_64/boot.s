@@ -52,15 +52,20 @@ boot_main:
     # NOTE: We must avoid clobbering `rdi` here as it contains the physical
     # address of the data provided by the bootloader.
 
-    # Initialize early low 2MiB mapping
+    # Initialize early low 8MiB mapping
+    # Note: keep size in sync with check in linker script and `kernel_tables.rs`
 
     # Present, writable, executable
     lea rax, [early_low_pdpt + 0x3]
     mov [KERNEL_PML4 - {KERNEL_OFFSET}], rax
     lea rax, [early_low_pd + 0x3]
     mov [early_low_pdpt], rax
-    # Present, writable, executable, large
+
+    # Present, writable, executable, large: cover 0x000000-0x800000
     mov qword ptr [early_low_pd], 0x83
+    mov qword ptr [early_low_pd + 0x8], 0x200083
+    mov qword ptr [early_low_pd + 0x10], 0x400083
+    mov qword ptr [early_low_pd + 0x18], 0x600083
 
     # Initialize kernel mapping at -2GiB
 
@@ -72,11 +77,12 @@ boot_main:
     initial_kernel_pt_index rbx 2
     mov [KERNEL_PDPT - {KERNEL_OFFSET} + 8 * rbx], rax
 
-    # Compute number of 2MiB ranges necessary to cover kernel
+    # Compute number of aligned 2MiB ranges intersected by kernel
     lea rcx, [__phys_end + ({PAGE_SIZE} << {PT_LEVEL_SHIFT}) - 1]
-    lea rax, [__phys_start]
-    sub rcx, rax
     shr rcx, {PT_LEVEL_SHIFT} + {PAGE_SHIFT}
+    lea rax, [__phys_start]
+    shr rax, {PT_LEVEL_SHIFT} + {PAGE_SHIFT}
+    sub rcx, rax
 
     # Find offset in `KERNEL_PTS` of first page table needed to cover kernel,
     # assuming that they start covering at physical address 0. This is
@@ -136,7 +142,10 @@ high_entry:
 
     # Remove low mapping
     mov qword ptr [KERNEL_PML4], 0
-    invlpg [0]
+
+    # Flush TLB
+    mov rax, cr3
+    mov cr3, rax
 
     lea rsp, [boot_stack_top]
     jmp kernel_main
