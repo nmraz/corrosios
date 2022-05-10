@@ -9,6 +9,7 @@ use mm::physmap;
 use mm::types::PhysAddr;
 
 mod arch;
+#[macro_use]
 mod console;
 mod mm;
 mod panic;
