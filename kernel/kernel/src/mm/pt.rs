@@ -249,6 +249,7 @@ fn map_terminal(
     let mut flags = PageTableFlags::PRESENT;
     if level > 0 {
         flags |= PageTableFlags::LARGE;
+        println!("mapping large page at level {level}");
     }
 
     *target_entry = PageTableEntry::new(phys_base + pointer.offset(), perms, flags);

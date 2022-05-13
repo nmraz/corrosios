@@ -54,6 +54,12 @@ fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
         let phys = PhysPageNum::new(range.start_page);
         let virt = ppn_to_physmap(phys);
 
+        println!(
+            "usable range {:#x}-{:#x}",
+            phys.as_usize(),
+            phys.as_usize() + range.page_count
+        );
+
         let mut pointer = MappingPointer::new(virt, range.page_count);
         mapper
             .map(
