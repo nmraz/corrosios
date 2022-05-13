@@ -16,6 +16,10 @@ mod panic;
 
 #[no_mangle]
 fn kernel_main(bootinfo_paddr: PhysAddr) -> ! {
+    arch::earlyconsole::init_install();
+
+    println!("hi");
+
     unsafe { physmap::init(bootinfo_paddr) };
 
     // for item in bootinfo.items() {

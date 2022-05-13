@@ -49,6 +49,14 @@ struct QemuSubcommand {
     #[argh(switch)]
     gdbserver: bool,
 
+    /// run in headless mode
+    #[argh(switch)]
+    headless: bool,
+
+    /// serial value to pass to QEMU
+    #[argh(option, default = "String::from(\"mon:stdio\")")]
+    serial: String,
+
     #[argh(positional)]
     additional_build_args: Vec<String>,
 }
@@ -71,20 +79,26 @@ fn main() -> Result<()> {
             println!("Created UEFI image: {}", image_path.display());
             Ok(())
         }
+
         Subcommand::Qemu(qemu) => {
             let image_path = create_disk_image(&qemu.additional_build_args)?;
             let opts = QemuOptions {
                 image_path: &image_path,
                 enable_gdbserver: qemu.gdbserver,
+                serial: &qemu.serial,
+                headless: qemu.headless,
             };
 
             run_qemu(&opts)?.wait()
         }
+
         Subcommand::Gdb(gdb) => {
             let image_path = create_disk_image(&gdb.additional_build_args)?;
             let qemu_opts = QemuOptions {
                 image_path: &image_path,
                 enable_gdbserver: true,
+                serial: "",
+                headless: false,
             };
 
             let kernel_path = kernel_binary_path(&gdb.additional_build_args)?;

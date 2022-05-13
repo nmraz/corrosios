@@ -10,6 +10,8 @@ use crate::config;
 pub struct QemuOptions<'a> {
     pub image_path: &'a Path,
     pub enable_gdbserver: bool,
+    pub serial: &'a str,
+    pub headless: bool,
 }
 
 pub struct QemuChild {
@@ -52,6 +54,14 @@ pub fn run_qemu(opts: &QemuOptions<'_>) -> Result<QemuChild> {
 
     if opts.enable_gdbserver {
         cmd.args(["-s", "-S"]);
+    }
+
+    if opts.headless {
+        cmd.args(["-nographic"]);
+    }
+
+    if !opts.serial.is_empty() {
+        cmd.args(["-serial", opts.serial]);
     }
 
     let child = cmd.spawn().context("failed to start QEMU")?;
