@@ -7,7 +7,7 @@ use crate::config;
 
 pub struct GdbOptions<'a> {
     pub kernel_binary: &'a Path,
-    pub server_port: u16,
+    pub server: &'a str,
 }
 
 pub fn run_gdb(opts: &GdbOptions<'_>) -> Result<Child> {
@@ -20,7 +20,7 @@ pub fn run_gdb(opts: &GdbOptions<'_>) -> Result<Child> {
 
     cmd.arg(opts.kernel_binary);
 
-    let localhost_target = format!("target remote localhost:{}", opts.server_port);
+    let localhost_target = format!("target remote {}", opts.server);
     cmd.args(["-ex", &localhost_target]);
 
     cmd.args(["-x", &gdb_init_script]);

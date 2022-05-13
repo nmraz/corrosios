@@ -18,7 +18,7 @@ enum Command {
     Cross(CrossCommand),
     Image(ImageCommand),
     Qemu(QemuCommand),
-    Gdb(GdbCommand),
+    GdbAttach(GdbAttachCommand),
 }
 
 /// Run cargo subcommand with appropriate cross-compilation flags.
@@ -56,8 +56,12 @@ struct QemuCommand {
 
 /// Run UEFI image in QEMU, attach gdb.
 #[derive(Args)]
-struct GdbCommand {
-    /// Additional arguments to use when building
+struct GdbAttachCommand {
+    /// The address of the remote GDB server
+    #[clap(long, default_value = "localhost:1234")]
+    server: String,
+
+    /// Additional arguments to use when building the kernel to use with GDB
     additional_build_args: Vec<String>,
 }
 
@@ -84,26 +88,15 @@ fn main() -> Result<()> {
             run_qemu(&opts)?.wait()
         }
 
-        Command::Gdb(gdb) => {
-            let image_path = create_disk_image(&gdb.additional_build_args)?;
-            let qemu_opts = QemuOptions {
-                image_path: &image_path,
-                enable_gdbserver: true,
-                serial: "",
-                headless: false,
-            };
-
+        Command::GdbAttach(gdb) => {
             let kernel_path = kernel_binary_path(&gdb.additional_build_args)?;
             let gdb_opts = GdbOptions {
                 kernel_binary: &kernel_path,
-                server_port: 1234,
+                server: &gdb.server,
             };
 
-            let qemu_child = run_qemu(&qemu_opts)?;
             let mut gdb_child = run_gdb(&gdb_opts)?;
-
             gdb_child.wait()?;
-            qemu_child.wait()?;
 
             Ok(())
         }
