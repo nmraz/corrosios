@@ -1,3 +1,4 @@
+use core::fmt;
 use core::ops::{Index, IndexMut};
 
 use bitflags::bitflags;
@@ -96,6 +97,16 @@ impl PageTableEntry {
 
     const fn x86_flags(self) -> X86PageTableFlags {
         X86PageTableFlags::from_bits_truncate(self.0)
+    }
+}
+
+impl fmt::Debug for PageTableEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PageTableEntry")
+            .field("page", &self.page().as_usize())
+            .field("perms", &self.perms())
+            .field("flags", &self.flags())
+            .finish()
     }
 }
 
