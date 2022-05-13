@@ -6,7 +6,7 @@ use hosttools::cross::{cross_run_all, kernel_binary_path};
 use hosttools::gdb::{run_gdb, GdbOptions};
 use hosttools::image::create_disk_image;
 use hosttools::qemu::{run_qemu, QemuOptions};
-use xshell::Shell;
+use xshell::{cmd, Shell};
 
 /// Tools for use on the host.
 #[derive(Parser)]
@@ -21,6 +21,7 @@ enum Command {
     Image(ImageCommand),
     Qemu(QemuCommand),
     GdbAttach(GdbAttachCommand),
+    Gdbmux(GdbmuxSubcommand),
 }
 
 /// Run cargo subcommand with appropriate cross-compilation flags.
@@ -44,6 +45,19 @@ struct QemuCommand {
     #[clap(long)]
     gdbserver: bool,
 
+    #[clap(flatten)]
+    common: QemuArgs,
+}
+
+/// Run QEMU and GDB together in tmux.
+#[derive(Args)]
+struct GdbmuxSubcommand {
+    #[clap(flatten)]
+    qemu: QemuArgs,
+}
+
+#[derive(Args)]
+struct QemuArgs {
     /// Run in headless mode
     #[clap(long)]
     headless: bool,
@@ -82,12 +96,12 @@ fn main() -> Result<()> {
         }
 
         Command::Qemu(qemu) => {
-            let image_path = create_disk_image(&sh, &qemu.additional_build_args)?;
+            let image_path = create_disk_image(&sh, &qemu.common.additional_build_args)?;
             let opts = QemuOptions {
                 image_path: &image_path,
                 enable_gdbserver: qemu.gdbserver,
-                serial: &qemu.serial,
-                headless: qemu.headless,
+                serial: &qemu.common.serial,
+                headless: qemu.common.headless,
             };
 
             run_qemu(&sh, &opts)
@@ -101,6 +115,23 @@ fn main() -> Result<()> {
             };
 
             run_gdb(&sh, &gdb_opts)
+        }
+
+        Command::Gdbmux(gdbmux) => {
+            let image_path = create_disk_image(&sh, &gdbmux.qemu.additional_build_args)?;
+            let opts = QemuOptions {
+                image_path: &image_path,
+                enable_gdbserver: true,
+                serial: &gdbmux.qemu.serial,
+                headless: gdbmux.qemu.headless,
+            };
+
+            let cargo = env!("CARGO");
+            cmd!(sh, "tmux split-pane -v {cargo} gdb-attach")
+                .quiet()
+                .run()?;
+
+            run_qemu(&sh, &opts)
         }
     }
 }
