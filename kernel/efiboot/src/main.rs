@@ -14,7 +14,7 @@ use core::panic::PanicInfo;
 use uninit::extension_traits::AsOut;
 
 use bootinfo::builder::Builder;
-use bootinfo::item as bootitem;
+use bootinfo::item::{self as bootitem, MemoryRange};
 use bootinfo::ItemKind;
 use uefi::table::BootTable;
 use uefi::{Handle, MemoryDescriptor, MemoryType, Result, Status};
@@ -84,13 +84,17 @@ fn append_mmap<'a>(
     // Safety: the loop below initializes all `mmap.len()` elements.
     let buf = unsafe { builder.reserve(ItemKind::MEMORY_MAP, mmap.len()) }.unwrap();
 
-    for (efi_desc, range) in mmap.zip(buf) {
+    for (efi_desc, range) in mmap.zip(buf.iter_mut()) {
         range.write(bootitem::MemoryRange {
             start_page: efi_desc.phys_start as usize / PAGE_SIZE,
             page_count: efi_desc.page_count as usize,
             kind: mem_kind_from_efi(efi_desc.mem_type),
         });
     }
+
+    // Safety: entire buffer is initialized.
+    let mmap_data = unsafe { &mut *(buf as *mut _ as *mut [MemoryRange]) };
+    mmap_data.sort_unstable_by_key(|range| range.start_page);
 }
 
 fn mem_kind_from_efi(efi_type: MemoryType) -> bootitem::MemoryKind {
