@@ -5,14 +5,14 @@ use arrayvec::ArrayString;
 use atomic_ref::AtomicRef;
 
 macro_rules! print {
-    ($($args:tt),*) => {
-        $crate::console::write_fmt(format_args!($($args),*))
+    ($($args:tt)*) => {
+        $crate::console::write_fmt(format_args!($($args)*))
     };
 }
 
 macro_rules! println {
-    ($($args:tt),*) => {
-        $crate::console::writeln_fmt(format_args!($($args),*))
+    ($($args:tt)*) => {
+        $crate::console::writeln_fmt(format_args!($($args)*))
     };
 }
 
