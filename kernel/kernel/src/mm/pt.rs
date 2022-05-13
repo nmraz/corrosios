@@ -274,13 +274,13 @@ fn walk_level<E>(
     pointer: &mut MappingPointer,
     mut f: impl FnMut(&mut MappingPointer) -> Result<(), E>,
 ) -> Result<(), E> {
-    let max_offset = pointer.offset()
-        + cmp::min(
-            pointer.remaining_pages(),
-            PT_ENTRY_COUNT * level_page_count(level),
-        );
+    let virt = pointer.virt();
+    let range_end = virt + pointer.remaining_pages();
+    let next_table_boundary = (virt + 1).align_up(PT_ENTRY_COUNT * level_page_count(level));
 
-    while pointer.offset() < max_offset {
+    let max_virt = cmp::min(range_end, next_table_boundary);
+
+    while pointer.virt() < max_virt {
         f(pointer)?;
     }
 
