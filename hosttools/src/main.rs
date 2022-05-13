@@ -1,86 +1,78 @@
 use anyhow::Result;
-use argh::FromArgs;
+use clap::{Args, Parser, Subcommand};
 
 use hosttools::cross::{cross_run_all, kernel_binary_path};
 use hosttools::gdb::{run_gdb, GdbOptions};
 use hosttools::image::create_disk_image;
 use hosttools::qemu::{run_qemu, QemuOptions};
 
-#[derive(FromArgs)]
 /// Tools for use on the host.
-struct Args {
-    #[argh(subcommand)]
-    subcommand: Subcommand,
+#[derive(Parser)]
+struct Cli {
+    #[clap(subcommand)]
+    command: Command,
 }
 
-#[derive(FromArgs)]
-#[argh(subcommand)]
-enum Subcommand {
-    Cross(CrossSubcommand),
-    Image(ImageSubcommand),
-    Qemu(QemuSubcommand),
-    Gdb(GdbSubcommand),
+#[derive(Subcommand)]
+enum Command {
+    Cross(CrossCommand),
+    Image(ImageCommand),
+    Qemu(QemuCommand),
+    Gdb(GdbCommand),
 }
 
-#[derive(FromArgs)]
 /// Run cargo subcommand with appropriate cross-compilation flags.
-#[argh(subcommand, name = "cross")]
-struct CrossSubcommand {
-    #[argh(positional)]
+#[derive(Args)]
+struct CrossCommand {
     subcommand: String,
-
-    #[argh(positional)]
     additional_args: Vec<String>,
 }
 
-#[derive(FromArgs)]
 /// Create a bootable UEFI image.
-#[argh(subcommand, name = "image")]
-struct ImageSubcommand {
-    #[argh(positional)]
+#[derive(Args)]
+struct ImageCommand {
+    /// Additional arguments to use when building
     additional_build_args: Vec<String>,
 }
 
-#[derive(FromArgs)]
 /// Run UEFI image in QEMU.
-#[argh(subcommand, name = "qemu")]
-struct QemuSubcommand {
-    /// enable GDB server in QEMU
-    #[argh(switch)]
+#[derive(Args)]
+struct QemuCommand {
+    /// Enable GDB server in QEMU
+    #[clap(long)]
     gdbserver: bool,
 
-    /// run in headless mode
-    #[argh(switch)]
+    /// Run in headless mode
+    #[clap(long)]
     headless: bool,
 
-    /// serial value to pass to QEMU
-    #[argh(option, default = "String::from(\"mon:stdio\")")]
+    /// Serial value to pass to QEMU
+    #[clap(long, default_value = "mon:stdio")]
     serial: String,
 
-    #[argh(positional)]
+    /// Additional arguments to use when building
     additional_build_args: Vec<String>,
 }
 
-#[derive(FromArgs)]
 /// Run UEFI image in QEMU, attach gdb.
-#[argh(subcommand, name = "gdb")]
-struct GdbSubcommand {
-    #[argh(positional)]
+#[derive(Args)]
+struct GdbCommand {
+    /// Additional arguments to use when building
     additional_build_args: Vec<String>,
 }
 
 fn main() -> Result<()> {
-    let args: Args = argh::from_env();
+    let args = Cli::parse();
 
-    match &args.subcommand {
-        Subcommand::Cross(cross) => cross_run_all(&cross.subcommand, &cross.additional_args),
-        Subcommand::Image(image) => {
+    match &args.command {
+        Command::Cross(cross) => cross_run_all(&cross.subcommand, &cross.additional_args),
+        Command::Image(image) => {
             let image_path = create_disk_image(&image.additional_build_args)?;
             println!("Created UEFI image: {}", image_path.display());
             Ok(())
         }
 
-        Subcommand::Qemu(qemu) => {
+        Command::Qemu(qemu) => {
             let image_path = create_disk_image(&qemu.additional_build_args)?;
             let opts = QemuOptions {
                 image_path: &image_path,
@@ -92,7 +84,7 @@ fn main() -> Result<()> {
             run_qemu(&opts)?.wait()
         }
 
-        Subcommand::Gdb(gdb) => {
+        Command::Gdb(gdb) => {
             let image_path = create_disk_image(&gdb.additional_build_args)?;
             let qemu_opts = QemuOptions {
                 image_path: &image_path,
