@@ -1,6 +1,7 @@
 use bootinfo::item::{MemoryKind, MemoryRange};
 use bootinfo::view::View;
 use bootinfo::{ItemHeader, ItemKind};
+use itertools::Itertools;
 
 use crate::arch::kernel_vmspace::{PHYS_MAP_BASE, PHYS_MAP_PT_PAGES};
 use crate::arch::mmu::{PageTable, PAGE_SIZE};
@@ -46,29 +47,48 @@ pub fn ppn_to_physmap(ppn: PhysPageNum) -> VirtPageNum {
 
 fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
     let mem_map = get_mem_map(bootinfo);
+
+    // Note: the bootloader is responsible for sorting the memory map
     let usable_map = mem_map
         .iter()
-        .filter(|range| range.kind == MemoryKind::USABLE);
+        .filter(|range| is_phys_mappable(range.kind))
+        .map(|range| {
+            let range_start = PhysPageNum::new(range.start_page);
+            (range_start, range_start + range.page_count)
+        })
+        .coalesce(|(prev_start, prev_end), (cur_start, cur_end)| {
+            assert!(prev_start <= cur_start, "memory map not sorted");
+            assert!(prev_end <= cur_start, "memory map ranges overlap");
 
-    for range in usable_map {
-        let phys = PhysPageNum::new(range.start_page);
-        let virt = ppn_to_physmap(phys);
+            if prev_end == cur_start {
+                Ok((prev_start, cur_end))
+            } else {
+                Err(((prev_start, prev_end), (cur_start, cur_end)))
+            }
+        });
+
+    for (range_start, range_end) in usable_map {
+        let virt = ppn_to_physmap(range_start);
 
         println!(
             "usable range {:#x}-{:#x}",
-            phys.as_usize(),
-            phys.as_usize() + range.page_count
+            range_start.as_usize(),
+            range_end.as_usize()
         );
 
-        let mut pointer = MappingPointer::new(virt, range.page_count);
+        let mut pointer = MappingPointer::new(virt, range_end - range_start);
         mapper
             .map(
                 &mut pointer,
-                phys,
+                range_start,
                 PageTablePerms::READ | PageTablePerms::WRITE,
             )
             .expect("failed to map physmap region");
     }
+}
+
+fn is_phys_mappable(kind: MemoryKind) -> bool {
+    matches!(kind, MemoryKind::USABLE | MemoryKind::ACPI_TABLES)
 }
 
 fn get_mem_map(bootinfo: View<'_>) -> &[MemoryRange] {

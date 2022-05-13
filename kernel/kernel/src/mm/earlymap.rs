@@ -46,8 +46,6 @@ unsafe impl PageTableAlloc for BumpPageTableAlloc {
         let ret = self.cur;
         self.cur += 1;
 
-        println!("alloc table {:#x}", ret.as_u64());
-
         Ok(ret)
     }
 }

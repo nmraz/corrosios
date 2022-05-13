@@ -11,3 +11,4 @@ atomic_ref = "0.2.1"
 bitflags = "1.2.1"
 
 bootinfo = { path = "../bootinfo" }
+itertools = { version = "0.10.3", default-features = false }
