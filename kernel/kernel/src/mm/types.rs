@@ -40,14 +40,6 @@ impl PhysAddr {
     pub const fn containing_page(self) -> PhysPageNum {
         PhysPageNum::new(self.0 >> PAGE_SHIFT)
     }
-
-    pub const fn align_down(self, align: usize) -> Self {
-        Self(align_down(self.0, align))
-    }
-
-    pub const fn align_up(self, align: usize) -> Self {
-        Self(align_up(self.0, align))
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -85,14 +77,6 @@ impl VirtAddr {
 
     pub const fn containing_page(self) -> VirtPageNum {
         VirtPageNum::new(self.0 >> PAGE_SHIFT)
-    }
-
-    pub const fn align_down(self, align: usize) -> Self {
-        Self(align_down(self.0, align))
-    }
-
-    pub const fn align_up(self, align: usize) -> Self {
-        Self(align_up(self.0, align))
     }
 }
 
@@ -144,8 +128,18 @@ impl VirtPageNum {
     }
 }
 
-macro_rules! impl_add_sub_usize {
+macro_rules! impl_arith_helpers {
     ($t:ty) => {
+        impl $t {
+            pub const fn align_down(self, align: usize) -> Self {
+                Self(align_down(self.0, align))
+            }
+
+            pub const fn align_up(self, align: usize) -> Self {
+                Self(align_up(self.0, align))
+            }
+        }
+
         impl core::ops::Add<usize> for $t {
             type Output = $t;
 
@@ -192,7 +186,7 @@ macro_rules! impl_add_sub_usize {
     };
 }
 
-impl_add_sub_usize!(PhysAddr);
-impl_add_sub_usize!(VirtAddr);
-impl_add_sub_usize!(PhysPageNum);
-impl_add_sub_usize!(VirtPageNum);
+impl_arith_helpers!(PhysAddr);
+impl_arith_helpers!(VirtAddr);
+impl_arith_helpers!(PhysPageNum);
+impl_arith_helpers!(VirtPageNum);
