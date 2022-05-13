@@ -9,6 +9,7 @@ use fscommon::StreamSlice;
 use gpt::disk::LogicalBlockSize;
 use gpt::mbr::ProtectiveMBR;
 use gpt::{GptConfig, GptDisk};
+use xshell::Shell;
 
 use crate::config;
 use crate::cross::{bootloader_binary_path, cross_run_all, kernel_binary_path};
@@ -21,11 +22,11 @@ const LB_SIZE: u64 = 512;
 const EFI_PARTITION_SIZE: u64 = 10 * MB;
 const DISK_SIZE: u64 = EFI_PARTITION_SIZE + 64 * KB;
 
-pub fn create_disk_image(build_args: &[String]) -> Result<PathBuf> {
-    cross_run_all("build", build_args)?;
+pub fn create_disk_image(sh: &Shell, build_args: &[String]) -> Result<PathBuf> {
+    cross_run_all(sh, "build", build_args)?;
 
-    let kernel_path = kernel_binary_path(build_args)?;
-    let bootloader_path = bootloader_binary_path(build_args)?;
+    let kernel_path = kernel_binary_path(sh, build_args)?;
+    let bootloader_path = bootloader_binary_path(sh, build_args)?;
 
     let image_path = bootloader_path.with_file_name(config::IMAGE_NAME);
 

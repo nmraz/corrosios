@@ -1,9 +1,8 @@
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::{fs, vec};
 
 use anyhow::{Context, Result};
-use tempfile::TempDir;
+use xshell::{cmd, Shell, TempDir};
 
 use crate::config;
 
@@ -14,22 +13,8 @@ pub struct QemuOptions<'a> {
     pub headless: bool,
 }
 
-pub struct QemuChild {
-    _temp_dir: TempDir,
-    child: Child,
-}
-
-impl QemuChild {
-    pub fn wait(mut self) -> Result<()> {
-        self.child.wait()?;
-        Ok(())
-    }
-}
-
-pub fn run_qemu(opts: &QemuOptions<'_>) -> Result<QemuChild> {
-    let mut cmd = Command::new("qemu-system-x86_64");
-
-    let firmware_paths = get_firmware_paths()?;
+pub fn run_qemu(sh: &Shell, opts: &QemuOptions<'_>) -> Result<()> {
+    let firmware_paths = get_firmware_paths(sh)?;
 
     let disk = format!("file={},format=raw", opts.image_path.display());
     let uefi_flash = format!(
@@ -41,53 +26,46 @@ pub fn run_qemu(opts: &QemuOptions<'_>) -> Result<QemuChild> {
         firmware_paths.vars.display()
     );
 
-    cmd.args(vec![
-        "-accel",
-        "kvm",
-        "-drive",
-        &uefi_flash,
-        "-drive",
-        &uefi_vars,
-        "-drive",
-        &disk,
-    ]);
+    let mut extra_args = vec![];
 
     if opts.enable_gdbserver {
-        cmd.args(["-s", "-S"]);
+        extra_args.extend(["-s", "-S"]);
     }
 
     if opts.headless {
-        cmd.args(["-nographic"]);
+        extra_args.extend(["-nographic"]);
     }
 
     if !opts.serial.is_empty() {
-        cmd.args(["-serial", opts.serial]);
+        extra_args.extend(["-serial", opts.serial]);
     }
 
-    let child = cmd.spawn().context("failed to start QEMU")?;
-    Ok(QemuChild {
-        _temp_dir: firmware_paths.temp_dir,
-        child,
-    })
+    cmd!(
+        sh,
+        "qemu-system-x86_64 -accel kvm -drive {uefi_flash} -drive {uefi_vars} -drive {disk} {extra_args...}"
+    )
+    .run()
+    .context("failed to start QEMU")
 }
 
 struct FirmwarePaths {
-    temp_dir: TempDir,
+    _temp_dir: TempDir,
     code: PathBuf,
     vars: PathBuf,
 }
 
-fn get_firmware_paths() -> Result<FirmwarePaths> {
+fn get_firmware_paths(sh: &Shell) -> Result<FirmwarePaths> {
     let firmware_dir = config::get_workspace_root()?.join(config::QEMU_FIRMWARE_DIR);
-    let temp_dir =
-        tempfile::tempdir().context("failed to create temporary directory for UEFI variables")?;
+    let temp_dir = sh
+        .create_temp_dir()
+        .context("failed to create temporary directory for UEFI variables")?;
 
     let vars = temp_dir.path().join("efivars.fd");
     fs::copy(firmware_dir.join(config::QEMU_FIRMWARE_VARS), &vars)
         .context("failed to copy UEFI variables to temporary directory")?;
 
     Ok(FirmwarePaths {
-        temp_dir,
+        _temp_dir: temp_dir,
         code: firmware_dir.join(config::QEMU_FIRMWARE_CODE),
         vars,
     })

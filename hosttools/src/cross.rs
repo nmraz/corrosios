@@ -1,19 +1,21 @@
 use std::path::PathBuf;
-use std::process::Command;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use cargo_metadata::Message;
+use xshell::{cmd, Cmd, Shell};
 
 use crate::config;
 
-pub fn cross_run_all(subcommand: &str, additional_args: &[String]) -> Result<()> {
+pub fn cross_run_all(sh: &Shell, subcommand: &str, additional_args: &[String]) -> Result<()> {
     cross_run(
+        sh,
         subcommand,
         config::KERNEL_PACKAGE_NAME,
         config::KERNEL_PACKAGE_TARGET,
         additional_args,
     )?;
     cross_run(
+        sh,
         subcommand,
         config::BOOTLOADER_PACKAGE_NAME,
         config::BOOTLOADER_PACKAGE_TARGET,
@@ -21,16 +23,18 @@ pub fn cross_run_all(subcommand: &str, additional_args: &[String]) -> Result<()>
     )
 }
 
-pub fn kernel_binary_path(additional_args: &[String]) -> Result<PathBuf> {
+pub fn kernel_binary_path(sh: &Shell, additional_args: &[String]) -> Result<PathBuf> {
     built_binary_path(
+        sh,
         config::KERNEL_PACKAGE_NAME,
         config::KERNEL_PACKAGE_TARGET,
         additional_args,
     )
 }
 
-pub fn bootloader_binary_path(additional_args: &[String]) -> Result<PathBuf> {
+pub fn bootloader_binary_path(sh: &Shell, additional_args: &[String]) -> Result<PathBuf> {
     built_binary_path(
+        sh,
         config::BOOTLOADER_PACKAGE_NAME,
         config::BOOTLOADER_PACKAGE_TARGET,
         additional_args,
@@ -38,12 +42,13 @@ pub fn bootloader_binary_path(additional_args: &[String]) -> Result<PathBuf> {
 }
 
 fn built_binary_path(
+    sh: &Shell,
     package_name: &str,
     target: &str,
     additional_args: &[String],
 ) -> Result<PathBuf> {
-    let mut cmd = freestanding_cross_cmd("build", package_name, target, additional_args);
-    cmd.arg("--message-format=json");
+    let cmd = freestanding_cross_cmd(sh, "build", package_name, target, additional_args)
+        .arg("--message-format=json");
 
     let output = cmd.output()?.stdout;
 
@@ -59,35 +64,28 @@ fn built_binary_path(
 }
 
 fn cross_run(
+    sh: &Shell,
     subcommand: &str,
     package_name: &str,
     target: &str,
     additional_args: &[String],
 ) -> Result<()> {
-    let mut cmd = freestanding_cross_cmd(subcommand, package_name, target, additional_args);
-    if !cmd.status()?.success() {
-        bail!("`cargo {}` failed", subcommand);
-    }
-    Ok(())
+    freestanding_cross_cmd(sh, subcommand, package_name, target, additional_args)
+        .run()
+        .with_context(|| format!("`cargo {}` failed", subcommand))
 }
 
-fn freestanding_cross_cmd(
+fn freestanding_cross_cmd<'a>(
+    sh: &'a Shell,
     subcommand: &str,
     package_name: &str,
     target: &str,
     additional_args: &[String],
-) -> Command {
-    let mut cmd = Command::new(env!("CARGO"));
-    cmd.args([
-        subcommand,
-        "-p",
-        package_name,
-        "--target",
-        target,
-        "-Zbuild-std=core,alloc",
-        "-Zbuild-std-features=compiler-builtins-mem",
-    ]);
-    cmd.args(additional_args);
+) -> Cmd<'a> {
+    let cargo = env!("CARGO");
 
-    cmd
+    cmd!(
+        sh,
+        "{cargo} {subcommand} -p {package_name} --target {target} -Zbuild-std=core,alloc -Zbuild-std-features=compiler-builtins-mem {additional_args...}"
+    ).quiet()
 }

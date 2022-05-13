@@ -1,7 +1,7 @@
 use std::path::Path;
-use std::process::{Child, Command};
 
 use anyhow::{Context, Result};
+use xshell::{cmd, Shell};
 
 use crate::config;
 
@@ -10,20 +10,17 @@ pub struct GdbOptions<'a> {
     pub server: &'a str,
 }
 
-pub fn run_gdb(opts: &GdbOptions<'_>) -> Result<Child> {
-    let gdb_init_script = config::get_workspace_root()?
-        .join(config::GDB_INIT_SCRIPT)
-        .display()
-        .to_string();
+pub fn run_gdb(sh: &Shell, opts: &GdbOptions<'_>) -> Result<()> {
+    let &GdbOptions {
+        kernel_binary,
+        server,
+    } = opts;
+    let gdb_init_script = config::get_workspace_root()?.join(config::GDB_INIT_SCRIPT);
 
-    let mut cmd = Command::new("rust-gdb");
-
-    cmd.arg(opts.kernel_binary);
-
-    let localhost_target = format!("target remote {}", opts.server);
-    cmd.args(["-ex", &localhost_target]);
-
-    cmd.args(["-x", &gdb_init_script]);
-
-    cmd.spawn().context("failed to start rust-gdb")
+    cmd!(
+        sh,
+        "rust-gdb {kernel_binary} -ex 'target remote '{server} -x {gdb_init_script}"
+    )
+    .run()
+    .context("failed to start rust-gdb")
 }
