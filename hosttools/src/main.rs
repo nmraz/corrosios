@@ -118,7 +118,9 @@ fn main() -> Result<()> {
         }
 
         Command::Gdbmux(gdbmux) => {
-            let image_path = create_disk_image(&sh, &gdbmux.qemu.additional_build_args)?;
+            let build_args = &gdbmux.qemu.additional_build_args;
+            let image_path = create_disk_image(&sh, build_args)?;
+
             let opts = QemuOptions {
                 image_path: &image_path,
                 enable_gdbserver: true,
@@ -127,9 +129,12 @@ fn main() -> Result<()> {
             };
 
             let cargo = env!("CARGO");
-            cmd!(sh, "tmux split-pane -v {cargo} gdb-attach")
-                .quiet()
-                .run()?;
+            cmd!(
+                sh,
+                "tmux split-pane -v {cargo} gdb-attach -- {build_args...}"
+            )
+            .quiet()
+            .run()?;
 
             run_qemu(&sh, &opts)
         }
