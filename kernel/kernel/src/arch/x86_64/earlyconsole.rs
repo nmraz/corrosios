@@ -21,6 +21,9 @@ pub fn init() {
 
 pub fn write(data: &[u8]) {
     for &byte in data {
+        if byte == b'\n' {
+            write_byte(b'\r');
+        }
         write_byte(byte);
     }
 }
