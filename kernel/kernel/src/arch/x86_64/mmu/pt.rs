@@ -14,6 +14,8 @@ pub const PT_LEVEL_SHIFT: usize = 9;
 pub const PT_ENTRY_COUNT: usize = 1 << PT_LEVEL_SHIFT;
 pub const PT_LEVEL_MASK: usize = PT_ENTRY_COUNT - 1;
 
+const PADDR_MASK: u64 = (1u64 << 52) - 1;
+
 pub fn supports_page_size(level: usize) -> bool {
     matches!(level, 0 | 1)
 }
@@ -92,7 +94,7 @@ impl PageTableEntry {
     }
 
     pub const fn page(self) -> PhysPageNum {
-        PhysPageNum::new((self.0 >> PAGE_SHIFT) as usize)
+        PhysPageNum::new(((self.0 & PADDR_MASK) >> PAGE_SHIFT) as usize)
     }
 
     const fn x86_flags(self) -> X86PageTableFlags {
