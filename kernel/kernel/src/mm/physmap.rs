@@ -1,5 +1,3 @@
-use core::ops::Add;
-
 use bootinfo::item::{MemoryKind, MemoryRange};
 use bootinfo::view::View;
 use bootinfo::{ItemHeader, ItemKind};
