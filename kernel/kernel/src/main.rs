@@ -25,7 +25,7 @@ fn kernel_main(bootinfo_paddr: PhysAddr) -> ! {
 
     unsafe { physmap::init(bootinfo_paddr) };
 
-    let bootinfo = unsafe { View::new(&*paddr_to_physmap(bootinfo_paddr).as_ptr()) }.unwrap();
+    let bootinfo = unsafe { View::new(paddr_to_physmap(bootinfo_paddr).as_ptr()) }.unwrap();
     for item in bootinfo.items() {
         if item.kind() == ItemKind::FRAMEBUFFER {
             let framebuffer = unsafe { item.get::<Framebuffer>() }.unwrap();

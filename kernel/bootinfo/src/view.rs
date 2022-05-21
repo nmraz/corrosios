@@ -1,3 +1,4 @@
+use core::marker::PhantomData;
 use core::{iter, mem, slice};
 
 use crate::{ItemHeader, ItemKind};
@@ -10,7 +11,9 @@ pub struct InvalidPayload;
 
 #[derive(Debug, Clone, Copy)]
 pub struct View<'a> {
-    header: &'a ItemHeader,
+    // Note: we use a raw pointer here to avoid provenance issues
+    header: *const ItemHeader,
+    _marker: PhantomData<&'a ()>,
 }
 
 impl<'a> View<'a> {
@@ -18,16 +21,21 @@ impl<'a> View<'a> {
     ///
     /// `header` must be the header of a valid boot info structure in memory. The boot info should
     /// not be mutated for the remainder of `'a`.
-    pub unsafe fn new(header: &'a ItemHeader) -> Result<Self, BadMagic> {
-        if header.kind != ItemKind::CONTAINER {
+    pub unsafe fn new(header: *const ItemHeader) -> Result<Self, BadMagic> {
+        let header_ref = unsafe { &*header };
+        if header_ref.kind != ItemKind::CONTAINER {
             Err(BadMagic)
         } else {
-            Ok(Self { header })
+            Ok(Self {
+                header,
+                _marker: PhantomData,
+            })
         }
     }
 
     pub fn content_size(&self) -> usize {
-        self.header.payload_len as usize
+        // Safety: guaranteed by the contract of `new`
+        unsafe { *self.header }.payload_len as usize
     }
 
     pub fn total_size(&self) -> usize {
@@ -37,7 +45,7 @@ impl<'a> View<'a> {
     pub fn items(&self) -> impl Iterator<Item = ItemView<'a>> + Clone {
         // Safety: we can always move to the byte just past the end of the allocation (though there
         // will generally be additional payload data after the header).
-        let base = unsafe { (self.header as *const ItemHeader).add(1) as *const u8 };
+        let base = unsafe { self.header.add(1) as *const u8 };
 
         let len = self.content_size();
         let mut off = 0;
@@ -54,19 +62,23 @@ impl<'a> View<'a> {
                 off + mem::size_of::<ItemHeader>() + header.payload_len as usize,
             );
 
-            Some(ItemView { header })
+            Some(ItemView {
+                header,
+                _marker: PhantomData,
+            })
         })
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct ItemView<'a> {
-    header: &'a ItemHeader,
+    header: *const ItemHeader,
+    _marker: PhantomData<&'a ()>,
 }
 
 impl<'a> ItemView<'a> {
     pub fn kind(&self) -> ItemKind {
-        self.header.kind
+        unsafe { *self.header }.kind
     }
 
     pub fn payload(&self) -> &'a [u8] {
@@ -75,8 +87,8 @@ impl<'a> ItemView<'a> {
         // by `payload_len` bytes of payload).
         unsafe {
             slice::from_raw_parts(
-                (self.header as *const ItemHeader).add(1) as *const _,
-                self.header.payload_len as usize,
+                self.header.add(1) as *const _,
+                (*self.header).payload_len as usize,
             )
         }
     }
