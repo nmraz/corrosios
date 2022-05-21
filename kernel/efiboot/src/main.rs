@@ -7,7 +7,6 @@
 extern crate alloc;
 
 use core::arch::asm;
-use core::fmt::Write;
 use core::mem;
 use core::panic::PanicInfo;
 
@@ -48,18 +47,8 @@ pub extern "efiapi" fn efi_main(image_handle: Handle, boot_table: BootTable) -> 
 }
 
 fn run(image_handle: Handle, boot_table: BootTable) -> Result<()> {
-    boot_table.stdout().reset()?;
-
     let kernel_entry = setup::load_kernel(image_handle, boot_table.boot_services())?;
     let bootinfo_ctx = setup::prepare_bootinfo(&boot_table)?;
-
-    writeln!(
-        boot_table.stdout(),
-        "Kernel entry: {:#x}\nMemmap size: {:#x}",
-        kernel_entry,
-        bootinfo_ctx.mmap_buf.len()
-    )
-    .unwrap();
 
     let (runtime_table, mmap) =
         boot_table.exit_boot_services(image_handle, bootinfo_ctx.mmap_buf.as_out())?;

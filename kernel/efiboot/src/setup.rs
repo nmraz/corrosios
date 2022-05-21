@@ -60,15 +60,6 @@ fn get_framebuffer(boot_table: &BootTable) -> Result<bootitem::Framebuffer> {
 
     let mode_info = current_mode.info;
 
-    writeln!(
-        boot_table.stdout(),
-        "Graphics mode: {}x{}, {:?}",
-        mode_info.hres,
-        mode_info.vres,
-        mode_info.pixel_format
-    )
-    .unwrap();
-
     let gop_framebuffer = current_mode.framebuffer.ok_or(Status::UNSUPPORTED)?;
     let format = match mode_info.pixel_format {
         gop::PixelFormat::Rgb => bootitem::PixelFormat::RGB,
