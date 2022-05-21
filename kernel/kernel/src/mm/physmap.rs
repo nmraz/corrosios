@@ -115,7 +115,7 @@ unsafe fn ident_map_bootinfo(
         .map(&mut pointer, ppn, PageTablePerms::READ)
         .expect("failed to map initial bootinfo page");
 
-    let view = unsafe { View::new(&*header) }.expect("invalid bootinfo");
+    let view = unsafe { View::new(header) }.expect("invalid bootinfo");
     let view_pages = required_pages(view.total_size());
 
     pointer = MappingPointer::new(vpn, view_pages);
