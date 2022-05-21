@@ -1,3 +1,5 @@
+use core::ops::Add;
+
 use bootinfo::item::{MemoryKind, MemoryRange};
 use bootinfo::view::View;
 use bootinfo::{ItemHeader, ItemKind};
@@ -71,7 +73,7 @@ fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
         let virt = ppn_to_physmap(range_start);
 
         println!(
-            "usable range {:#x}-{:#x}",
+            "physmap range {:#x}-{:#x}",
             range_start.as_usize(),
             range_end.as_usize()
         );
