@@ -3,6 +3,7 @@ use bootinfo::view::View;
 use bootinfo::{ItemHeader, ItemKind};
 use itertools::Itertools;
 
+use crate::arch;
 use crate::arch::kernel_vmspace::{PHYS_MAP_BASE, PHYS_MAP_PT_PAGES};
 use crate::arch::mmu::{PageTable, PAGE_SIZE};
 
@@ -12,21 +13,20 @@ use super::types::{PageTablePerms, PhysAddr, PhysPageNum, VirtAddr, VirtPageNum}
 
 const BOOTINFO_PT_PAGES: usize = 10;
 
-static mut PHYS_MAP_PT_SPACE: [PageTable; PHYS_MAP_PT_PAGES + BOOTINFO_PT_PAGES] =
-    [PageTable::new(); PHYS_MAP_PT_PAGES + BOOTINFO_PT_PAGES];
+static PHYS_MAP_PT_SPACE: [PageTable; PHYS_MAP_PT_PAGES + BOOTINFO_PT_PAGES] =
+    [PageTable::EMPTY; PHYS_MAP_PT_PAGES + BOOTINFO_PT_PAGES];
 
 /// # Safety
 ///
 /// * This function must be called only once on the bootstrap processor
-/// * There should be no live references to the kernel root page table
 /// * The kernel root page table should refer only to page tables allocated from within the kernel
 /// image
 pub unsafe fn init(bootinfo_paddr: PhysAddr) {
-    // Safety: function contract
-    let mut alloc = unsafe { BumpPageTableAlloc::from_kernel_space(&mut PHYS_MAP_PT_SPACE) };
-    let kernel_pt = unsafe { &mut *crate::arch::mmu::kernel_pt_root() };
+    let mut alloc = BumpPageTableAlloc::from_kernel_space(&PHYS_MAP_PT_SPACE);
 
-    let mut mapper = unsafe { earlymap::make_early_mapper(kernel_pt, &mut alloc) };
+    // Safety: function contract
+    let mut mapper =
+        unsafe { earlymap::make_early_mapper(arch::mmu::kernel_pt_root(), &mut alloc) };
 
     let view_size = {
         let view = unsafe { ident_map_bootinfo(&mut mapper, bootinfo_paddr) };

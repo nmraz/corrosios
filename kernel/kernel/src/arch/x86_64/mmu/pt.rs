@@ -1,5 +1,5 @@
 use core::fmt;
-use core::ops::{Index, IndexMut};
+use core::sync::atomic::{AtomicU64, Ordering};
 
 use bitflags::bitflags;
 
@@ -112,31 +112,29 @@ impl fmt::Debug for PageTableEntry {
     }
 }
 
-#[derive(Clone, Copy)]
 #[repr(C, align(0x1000))]
 pub struct PageTable {
-    entries: [PageTableEntry; PT_ENTRY_COUNT],
+    entries: [AtomicU64; PT_ENTRY_COUNT],
 }
 
 impl PageTable {
-    pub const fn new() -> Self {
+    #[allow(clippy::declare_interior_mutable_const)]
+    pub const EMPTY: Self = Self::empty();
+
+    pub const fn empty() -> Self {
+        #[allow(clippy::declare_interior_mutable_const)]
+        const INIT_ENTRY: AtomicU64 = AtomicU64::new(PageTableEntry::empty().0);
         Self {
-            entries: [PageTableEntry::empty(); PT_ENTRY_COUNT],
+            entries: [INIT_ENTRY; PT_ENTRY_COUNT],
         }
     }
-}
 
-impl Index<usize> for PageTable {
-    type Output = PageTableEntry;
-
-    fn index(&self, index: usize) -> &PageTableEntry {
-        &self.entries[index]
+    pub fn get(&self, index: usize) -> PageTableEntry {
+        PageTableEntry(self.entries[index].load(Ordering::Relaxed))
     }
-}
 
-impl IndexMut<usize> for PageTable {
-    fn index_mut(&mut self, index: usize) -> &mut PageTableEntry {
-        &mut self.entries[index]
+    pub fn set(&self, index: usize, entry: PageTableEntry) {
+        self.entries[index].store(entry.0, Ordering::Relaxed)
     }
 }
 

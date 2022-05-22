@@ -11,7 +11,7 @@ pub type EarlyMapper<'a> = Mapper<'a, BumpPageTableAlloc, KernelPfnTranslator>;
 /// The provided root table must be correctly structured, and all referenced/allocated page tables
 /// must lie in the kernel image.
 pub unsafe fn make_early_mapper<'a>(
-    root_pt: &'a mut PageTable,
+    root_pt: &'a PageTable,
     alloc: &'a mut BumpPageTableAlloc,
 ) -> EarlyMapper<'a> {
     // Safety: function contract
@@ -24,7 +24,7 @@ pub struct BumpPageTableAlloc {
 }
 
 impl BumpPageTableAlloc {
-    pub fn from_kernel_space(space: &'static mut [PageTable]) -> Self {
+    pub fn from_kernel_space(space: &'static [PageTable]) -> Self {
         let addr = VirtAddr::from_ptr(space.as_ptr());
 
         let start = pfn_from_kernel_vaddr(addr);

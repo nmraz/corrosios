@@ -72,7 +72,7 @@ impl MappingPointer {
 }
 
 pub struct Mapper<'a, A, T> {
-    root_pt: &'a mut PageTable,
+    root_pt: &'a PageTable,
     inner: MapperInner<'a, A, T>,
 }
 
@@ -81,7 +81,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
     ///
     /// The caller must guarantee that the provided table is correctly structured and that
     /// `translator` provides correct virtual page numbers for any queried physical pages.
-    pub unsafe fn new(root_pt: &'a mut PageTable, alloc: &'a mut A, translator: T) -> Self {
+    pub unsafe fn new(root_pt: &'a PageTable, alloc: &'a mut A, translator: T) -> Self {
         Self {
             root_pt,
             inner: MapperInner::new(alloc, translator),
@@ -125,7 +125,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
 
     fn map(
         &mut self,
-        table: &mut PageTable,
+        table: &PageTable,
         level: usize,
         pointer: &mut MappingPointer,
         phys_base: PhysPageNum,
@@ -145,7 +145,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
 
     fn unmap(
         &mut self,
-        table: &mut PageTable,
+        table: &PageTable,
         level: usize,
         pointer: &mut MappingPointer,
         gather: &mut dyn GatherInvalidations,
@@ -177,7 +177,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
                     }
                 };
 
-                let next = unsafe { &mut *next_ptr };
+                let next = unsafe { &*next_ptr };
                 self.unmap(next, level - 1, pointer, gather)?;
             }
 
@@ -189,32 +189,35 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
 
     fn next_table_or_create<'t>(
         &mut self,
-        table: &'t mut PageTable,
+        table: &'t PageTable,
         index: usize,
-    ) -> Result<&'t mut PageTable, MapError> {
+    ) -> Result<&'t PageTable, MapError> {
         let perms: PageTablePerms = PageTablePerms::READ
             | PageTablePerms::WRITE
             | PageTablePerms::EXECUTE
             | PageTablePerms::USER;
 
         match self.next_table_ptr(table, index) {
-            Ok(next) => return Ok(unsafe { &mut *next }),
+            Ok(next) => return Ok(unsafe { &*next }),
 
             Err(NextTableError::LargePage(_)) => return Err(MapError::EntryExists),
             Err(NextTableError::NotPresent) => {}
         };
 
         let new_table = self.alloc.allocate()?;
-        table[index] = PageTableEntry::new(new_table, perms, PageTableFlags::PRESENT);
-        Ok(unsafe { &mut *self.translate(new_table) })
+        table.set(
+            index,
+            PageTableEntry::new(new_table, perms, PageTableFlags::PRESENT),
+        );
+        Ok(unsafe { &*self.translate(new_table) })
     }
 
     fn next_table_ptr(
         &self,
         table: &PageTable,
         index: usize,
-    ) -> Result<*mut PageTable, NextTableError> {
-        let entry = table[index];
+    ) -> Result<*const PageTable, NextTableError> {
+        let entry = table.get(index);
         let flags = entry.flags();
 
         if !flags.contains(PageTableFlags::PRESENT) {
@@ -234,15 +237,15 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
 }
 
 fn map_terminal(
-    table: &mut PageTable,
+    table: &PageTable,
     level: usize,
     pointer: &mut MappingPointer,
     phys_base: PhysPageNum,
     perms: PageTablePerms,
 ) -> Result<(), MapError> {
-    let target_entry = &mut table[pointer.virt().pt_index(level)];
+    let index = pointer.virt().pt_index(level);
 
-    if target_entry.flags().contains(PageTableFlags::PRESENT) {
+    if table.get(index).flags().contains(PageTableFlags::PRESENT) {
         return Err(MapError::EntryExists);
     }
 
@@ -251,7 +254,10 @@ fn map_terminal(
         flags |= PageTableFlags::LARGE;
     }
 
-    *target_entry = PageTableEntry::new(phys_base + pointer.offset(), perms, flags);
+    table.set(
+        index,
+        PageTableEntry::new(phys_base + pointer.offset(), perms, flags),
+    );
 
     pointer.advance(level_page_count(level));
 
@@ -259,12 +265,12 @@ fn map_terminal(
 }
 
 fn unmap_terminal(
-    table: &mut PageTable,
+    table: &PageTable,
     level: usize,
     pointer: &mut MappingPointer,
     gather: &mut dyn GatherInvalidations,
 ) {
-    table[pointer.virt().pt_index(level)] = PageTableEntry::empty();
+    table.set(pointer.virt().pt_index(level), PageTableEntry::empty());
     gather.add_tlb_flush(pointer.virt());
     pointer.advance(level_page_count(level));
 }
