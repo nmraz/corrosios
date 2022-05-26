@@ -4,7 +4,7 @@ use crate::arch::mmu::{
     self, PageTable, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT,
 };
 
-use super::types::{PageTableFlags, PageTablePerms, PhysPageNum, VirtPageNum};
+use super::types::{PageTableFlags, PageTablePerms, PhysFrameNum, VirtPageNum};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PageTableAllocError;
@@ -26,16 +26,16 @@ impl From<PageTableAllocError> for MapError {
 /// The implementation must ensure that it returns memory usable as a page table along with its true
 /// physical address.
 pub unsafe trait PageTableAlloc {
-    fn allocate(&mut self) -> Result<PhysPageNum, PageTableAllocError>;
+    fn allocate(&mut self) -> Result<PhysFrameNum, PageTableAllocError>;
 }
 
 pub trait TranslatePhys {
-    fn translate(&self, phys: PhysPageNum) -> VirtPageNum;
+    fn translate(&self, phys: PhysFrameNum) -> VirtPageNum;
 }
 
 pub trait GatherInvalidations {
     fn add_tlb_flush(&mut self, vpn: VirtPageNum);
-    fn add_pt_dealloc(&mut self, pt: PhysPageNum);
+    fn add_pt_dealloc(&mut self, pt: PhysFrameNum);
 }
 
 pub struct MappingPointer {
@@ -91,7 +91,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
     pub fn map(
         &mut self,
         pointer: &mut MappingPointer,
-        phys_base: PhysPageNum,
+        phys_base: PhysFrameNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
         self.inner
@@ -128,7 +128,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         table: &PageTable,
         level: usize,
         pointer: &mut MappingPointer,
-        phys_base: PhysPageNum,
+        phys_base: PhysFrameNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
         walk_level(level, pointer, |pointer| {
@@ -231,7 +231,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         Ok(self.translate(entry.page()))
     }
 
-    fn translate(&self, table_pfn: PhysPageNum) -> *mut PageTable {
+    fn translate(&self, table_pfn: PhysFrameNum) -> *mut PageTable {
         self.translator.translate(table_pfn).addr().as_mut_ptr()
     }
 }
@@ -240,7 +240,7 @@ fn map_terminal(
     table: &PageTable,
     level: usize,
     pointer: &mut MappingPointer,
-    phys_base: PhysPageNum,
+    phys_base: PhysFrameNum,
     perms: PageTablePerms,
 ) -> Result<(), MapError> {
     let index = pointer.virt().pt_index(level);
@@ -293,7 +293,7 @@ fn walk_level<E>(
     Ok(())
 }
 
-fn can_use_level_page(level: usize, pointer: &MappingPointer, phys_base: PhysPageNum) -> bool {
+fn can_use_level_page(level: usize, pointer: &MappingPointer, phys_base: PhysFrameNum) -> bool {
     let min_pages = level_page_count(level);
     pointer.remaining_pages() >= min_pages
         && aligned_for_level(pointer.virt().as_usize(), level)

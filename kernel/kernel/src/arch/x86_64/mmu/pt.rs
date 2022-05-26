@@ -3,7 +3,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use bitflags::bitflags;
 
-use crate::mm::types::{PageTableFlags, PageTablePerms, PhysPageNum};
+use crate::mm::types::{PageTableFlags, PageTablePerms, PhysFrameNum};
 
 pub const PAGE_SHIFT: usize = 12;
 pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
@@ -29,7 +29,7 @@ impl PageTableEntry {
         Self(0)
     }
 
-    pub fn new(page: PhysPageNum, perms: PageTablePerms, flags: PageTableFlags) -> Self {
+    pub fn new(page: PhysFrameNum, perms: PageTablePerms, flags: PageTableFlags) -> Self {
         let mut x86_flags = X86PageTableFlags::empty();
 
         x86_flags.set(
@@ -93,8 +93,8 @@ impl PageTableEntry {
         ret
     }
 
-    pub const fn page(self) -> PhysPageNum {
-        PhysPageNum::new(((self.0 & PADDR_MASK) >> PAGE_SHIFT) as usize)
+    pub const fn page(self) -> PhysFrameNum {
+        PhysFrameNum::new(((self.0 & PADDR_MASK) >> PAGE_SHIFT) as usize)
     }
 
     const fn x86_flags(self) -> X86PageTableFlags {

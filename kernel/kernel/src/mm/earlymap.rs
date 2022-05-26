@@ -2,7 +2,7 @@ use crate::arch::kernel_vmspace::KERNEL_IMAGE_SPACE_BASE;
 use crate::arch::mmu::PageTable;
 
 use super::pt::{GatherInvalidations, Mapper, PageTableAlloc, PageTableAllocError, TranslatePhys};
-use super::types::{PhysPageNum, VirtAddr, VirtPageNum};
+use super::types::{PhysFrameNum, VirtAddr, VirtPageNum};
 
 pub type EarlyMapper<'a> = Mapper<'a, BumpPageTableAlloc, KernelPfnTranslator>;
 
@@ -19,8 +19,8 @@ pub unsafe fn make_early_mapper<'a>(
 }
 
 pub struct BumpPageTableAlloc {
-    cur: PhysPageNum,
-    end: PhysPageNum,
+    cur: PhysFrameNum,
+    end: PhysFrameNum,
 }
 
 impl BumpPageTableAlloc {
@@ -38,7 +38,7 @@ impl BumpPageTableAlloc {
 }
 
 unsafe impl PageTableAlloc for BumpPageTableAlloc {
-    fn allocate(&mut self) -> Result<PhysPageNum, PageTableAllocError> {
+    fn allocate(&mut self) -> Result<PhysFrameNum, PageTableAllocError> {
         if self.cur >= self.end {
             return Err(PageTableAllocError);
         }
@@ -54,21 +54,21 @@ pub struct NoopGather;
 
 impl GatherInvalidations for NoopGather {
     fn add_tlb_flush(&mut self, _vpn: VirtPageNum) {}
-    fn add_pt_dealloc(&mut self, _pt: PhysPageNum) {}
+    fn add_pt_dealloc(&mut self, _pt: PhysFrameNum) {}
 }
 
 pub struct KernelPfnTranslator;
 
 impl TranslatePhys for KernelPfnTranslator {
-    fn translate(&self, phys: PhysPageNum) -> VirtPageNum {
+    fn translate(&self, phys: PhysFrameNum) -> VirtPageNum {
         vpn_from_kernel_pfn(phys)
     }
 }
 
-fn pfn_from_kernel_vaddr(vaddr: VirtAddr) -> PhysPageNum {
-    PhysPageNum::new(vaddr.containing_page() - KERNEL_IMAGE_SPACE_BASE)
+fn pfn_from_kernel_vaddr(vaddr: VirtAddr) -> PhysFrameNum {
+    PhysFrameNum::new(vaddr.containing_page() - KERNEL_IMAGE_SPACE_BASE)
 }
 
-fn vpn_from_kernel_pfn(pfn: PhysPageNum) -> VirtPageNum {
+fn vpn_from_kernel_pfn(pfn: PhysFrameNum) -> VirtPageNum {
     KERNEL_IMAGE_SPACE_BASE + pfn.as_usize()
 }

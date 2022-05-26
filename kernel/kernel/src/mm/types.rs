@@ -37,8 +37,8 @@ impl PhysAddr {
         self.0 as u64
     }
 
-    pub const fn containing_page(self) -> PhysPageNum {
-        PhysPageNum::new(self.0 >> PAGE_SHIFT)
+    pub const fn containing_frame(self) -> PhysFrameNum {
+        PhysFrameNum::new(self.0 >> PAGE_SHIFT)
     }
 }
 
@@ -82,9 +82,9 @@ impl VirtAddr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
-pub struct PhysPageNum(usize);
+pub struct PhysFrameNum(usize);
 
-impl PhysPageNum {
+impl PhysFrameNum {
     pub const fn new(val: usize) -> Self {
         Self(val)
     }
@@ -188,5 +188,5 @@ macro_rules! impl_arith_helpers {
 
 impl_arith_helpers!(PhysAddr);
 impl_arith_helpers!(VirtAddr);
-impl_arith_helpers!(PhysPageNum);
+impl_arith_helpers!(PhysFrameNum);
 impl_arith_helpers!(VirtPageNum);

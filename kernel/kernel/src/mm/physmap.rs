@@ -9,7 +9,7 @@ use crate::arch::mmu::{PageTable, PAGE_SIZE};
 
 use super::earlymap::{self, BumpPageTableAlloc, EarlyMapper, NoopGather};
 use super::pt::MappingPointer;
-use super::types::{PageTablePerms, PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
+use super::types::{PageTablePerms, PhysAddr, PhysFrameNum, VirtAddr, VirtPageNum};
 
 const BOOTINFO_PT_PAGES: usize = 10;
 
@@ -41,8 +41,8 @@ pub fn paddr_to_physmap(paddr: PhysAddr) -> VirtAddr {
     PHYS_MAP_BASE.addr() + paddr.as_usize()
 }
 
-pub fn ppn_to_physmap(ppn: PhysPageNum) -> VirtPageNum {
-    PHYS_MAP_BASE + ppn.as_usize()
+pub fn pfn_to_physmap(pfn: PhysFrameNum) -> VirtPageNum {
+    PHYS_MAP_BASE + pfn.as_usize()
 }
 
 fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
@@ -53,7 +53,7 @@ fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
         .iter()
         .filter(|range| is_phys_mappable(range.kind))
         .map(|range| {
-            let range_start = PhysPageNum::new(range.start_page);
+            let range_start = PhysFrameNum::new(range.start_page);
             (range_start, range_start + range.page_count)
         })
         .coalesce(|(prev_start, prev_end), (cur_start, cur_end)| {
@@ -68,7 +68,7 @@ fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
         });
 
     for (range_start, range_end) in usable_map {
-        let virt = ppn_to_physmap(range_start);
+        let virt = pfn_to_physmap(range_start);
 
         println!(
             "physmap range {:#x}-{:#x}",
@@ -105,14 +105,14 @@ unsafe fn ident_map_bootinfo(
     mapper: &mut EarlyMapper<'_>,
     bootinfo_paddr: PhysAddr,
 ) -> View<'static> {
-    let ppn = bootinfo_paddr.containing_page();
-    let vpn = VirtPageNum::new(ppn.as_usize());
+    let pfn = bootinfo_paddr.containing_frame();
+    let vpn = VirtPageNum::new(pfn.as_usize());
 
     let header = bootinfo_paddr.as_usize() as *const ItemHeader;
 
     let mut pointer = MappingPointer::new(vpn, 1);
     mapper
-        .map(&mut pointer, ppn, PageTablePerms::READ)
+        .map(&mut pointer, pfn, PageTablePerms::READ)
         .expect("failed to map initial bootinfo page");
 
     let view = unsafe { View::new(header) }.expect("invalid bootinfo");
@@ -121,7 +121,7 @@ unsafe fn ident_map_bootinfo(
     pointer = MappingPointer::new(vpn, view_pages);
     pointer.advance(1); // Skip first mapped page
     mapper
-        .map(&mut pointer, ppn, PageTablePerms::READ)
+        .map(&mut pointer, pfn, PageTablePerms::READ)
         .expect("failed to map full bootinfo");
 
     view
@@ -132,7 +132,7 @@ unsafe fn ident_unmap_bootinfo(
     bootinfo_paddr: PhysAddr,
     view_size: usize,
 ) {
-    let vpn = VirtPageNum::new(bootinfo_paddr.containing_page().as_usize());
+    let vpn = VirtPageNum::new(bootinfo_paddr.containing_frame().as_usize());
     let pages = required_pages(view_size);
 
     mapper
