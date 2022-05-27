@@ -47,7 +47,7 @@ pub fn prepare_bootinfo(boot_table: &BootTable) -> Result<BootinfoCtx> {
     append_bootinfo(&mut bootinfo_builder, ItemKind::FRAMEBUFFER, framebuffer)?;
 
     Ok(BootinfoCtx {
-        mmap_buf: alloc_uninit_bytes(boot_services, mmap_size)?,
+        mmap_buf: alloc_uninit_bytes(boot_services, max_mmap_entries * desc_size)?,
         builder: bootinfo_builder,
     })
 }
