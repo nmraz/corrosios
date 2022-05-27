@@ -4,7 +4,7 @@ use bootinfo::{ItemHeader, ItemKind};
 use itertools::Itertools;
 
 use crate::arch;
-use crate::arch::kernel_vmspace::{PHYS_MAP_BASE, PHYS_MAP_PT_PAGES};
+use crate::arch::kernel_vmspace::{PHYS_MAP_BASE, PHYS_MAP_PAGES, PHYS_MAP_PT_PAGES};
 use crate::arch::mmu::{PageTable, PAGE_SIZE};
 
 use super::earlymap::{self, BumpPageTableAlloc, EarlyMapper, NoopGather};
@@ -68,6 +68,11 @@ fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
         });
 
     for (range_start, range_end) in usable_map {
+        assert!(
+            range_end.as_usize() < PHYS_MAP_PAGES,
+            "too much physical memory"
+        );
+
         let virt = pfn_to_physmap(range_start);
 
         println!(
