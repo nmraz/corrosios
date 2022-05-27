@@ -153,7 +153,7 @@ pub struct BootServices {
 }
 
 impl BootServices {
-    pub fn memory_map_size(&self) -> Result<usize> {
+    pub fn memory_map_size(&self) -> Result<(usize, usize)> {
         let mut mmap_size = 0;
         let mut key = MemoryMapKey(0);
         let mut desc_size = 0;
@@ -173,7 +173,7 @@ impl BootServices {
             status.to_result()?;
         }
 
-        Ok(mmap_size)
+        Ok((mmap_size, desc_size))
     }
 
     pub fn memory_map<'a>(

@@ -1,4 +1,3 @@
-use core::fmt::Write;
 use core::mem::{self, MaybeUninit};
 use core::slice;
 
@@ -11,11 +10,12 @@ use uefi::proto::fs::{OpenMode, SimpleFileSystem};
 use uefi::proto::gop::{self, GraphicsOutput};
 use uefi::proto::image::LoadedImage;
 use uefi::table::{BootServices, BootTable};
-use uefi::{u16cstr, Handle, MemoryDescriptor, Result, Status};
+use uefi::{u16cstr, Handle, Result, Status};
 
 use crate::{elfload, page};
 
 const BOOTINFO_FIXED_SIZE: usize = 0x1000;
+const MMAP_EXTRA_ENTRIES: usize = 8;
 
 pub struct BootinfoCtx {
     pub mmap_buf: &'static mut [MaybeUninit<u8>],
@@ -39,8 +39,8 @@ pub fn prepare_bootinfo(boot_table: &BootTable) -> Result<BootinfoCtx> {
 
     let framebuffer = get_framebuffer(boot_table)?;
 
-    let mmap_size = boot_services.memory_map_size()? + 0x200;
-    let max_mmap_entries = mmap_size / mem::size_of::<MemoryDescriptor>();
+    let (mmap_size, desc_size) = boot_services.memory_map_size()?;
+    let max_mmap_entries = mmap_size / desc_size + MMAP_EXTRA_ENTRIES;
 
     let mut bootinfo_builder = make_bootinfo_builder(boot_services, max_mmap_entries)?;
 
