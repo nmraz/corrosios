@@ -9,6 +9,7 @@ use crate::arch::mmu::{PageTable, PAGE_SIZE};
 use super::earlymap::{self, BumpPageTableAlloc, EarlyMapper, NoopGather};
 use super::pt::MappingPointer;
 use super::types::{PageTablePerms, PhysAddr, PhysFrameNum, VirtAddr, VirtPageNum};
+use super::utils::align_up;
 
 const BOOTINFO_PT_PAGES: usize = 10;
 
@@ -47,6 +48,7 @@ pub fn pfn_to_physmap(pfn: PhysFrameNum) -> VirtPageNum {
 fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
     let mem_map = get_mem_map(bootinfo);
 
+    println!();
     for range in mem_map {
         display_range(range);
     }
@@ -56,9 +58,10 @@ fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
         .iter()
         .filter(|range| range.kind == MemoryKind::USABLE);
 
+    println!();
     for range in usable_map {
         println!(
-            "physmap range {:#x}-{:#x}",
+            "physmap pages {:#x}-{:#x}",
             range.start_page,
             range.start_page + range.page_count
         );
@@ -79,6 +82,7 @@ fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
             )
             .expect("failed to map physmap region");
     }
+    println!();
 }
 
 fn display_range(range: &MemoryRange) {
@@ -92,9 +96,9 @@ fn display_range(range: &MemoryRange) {
     };
 
     println!(
-        "{:#x}-{:#x}: {}",
-        range.start_page,
-        range.start_page + range.page_count,
+        "{:#012x}-{:#012x}: {}",
+        range.start_page * PAGE_SIZE,
+        (range.start_page + range.page_count) * PAGE_SIZE,
         kind
     );
 }
@@ -124,7 +128,7 @@ unsafe fn ident_map_bootinfo(
         .expect("failed to map initial bootinfo page");
 
     let view = unsafe { View::new(header) }.expect("invalid bootinfo");
-    let view_pages = required_pages(view.total_size());
+    let view_pages = align_up(view.total_size(), PAGE_SIZE);
 
     pointer = MappingPointer::new(vpn, view_pages);
     pointer.advance(1); // Skip first mapped page
@@ -141,15 +145,11 @@ unsafe fn ident_unmap_bootinfo(
     view_size: usize,
 ) {
     let vpn = VirtPageNum::new(bootinfo_paddr.containing_frame().as_usize());
-    let pages = required_pages(view_size);
+    let pages = align_up(view_size, PAGE_SIZE);
 
     mapper
         .unmap(&mut MappingPointer::new(vpn, pages), &mut NoopGather)
         .expect("failed to unmap early bootinfo");
 
     // TODO: TLB flush
-}
-
-fn required_pages(size: usize) -> usize {
-    (size + PAGE_SIZE - 1) / PAGE_SIZE
 }

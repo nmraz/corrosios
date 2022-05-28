@@ -11,6 +11,10 @@ macro_rules! print {
 }
 
 macro_rules! println {
+    () => {
+        println!("")
+    };
+
     ($($args:tt)*) => {
         $crate::console::writeln_fmt(format_args!($($args)*))
     };
