@@ -7,13 +7,13 @@
 extern crate alloc;
 
 use core::arch::asm;
-use core::mem;
+use core::mem::{self, MaybeUninit};
 use core::panic::PanicInfo;
 
 use uninit::extension_traits::AsOut;
 
 use bootinfo::builder::Builder;
-use bootinfo::item::{self as bootitem, MemoryRange};
+use bootinfo::item as bootitem;
 use bootinfo::ItemKind;
 use uefi::table::BootTable;
 use uefi::{Handle, MemoryDescriptor, MemoryType, Result, Status};
@@ -51,14 +51,14 @@ fn run(image_handle: Handle, boot_table: BootTable) -> Result<()> {
     let bootinfo_ctx = setup::prepare_bootinfo(&boot_table)?;
 
     let (runtime_table, mmap) =
-        boot_table.exit_boot_services(image_handle, bootinfo_ctx.mmap_buf.as_out())?;
+        boot_table.exit_boot_services(image_handle, bootinfo_ctx.efi_mmap_buf.as_out())?;
 
     let mut builder = bootinfo_ctx.builder;
     builder
         .append(ItemKind::EFI_SYSTEM_TABLE, runtime_table)
         .unwrap();
 
-    append_mmap(&mut builder, mmap);
+    append_mmap(&mut builder, mmap, bootinfo_ctx.mmap_scratch);
 
     let bootinfo_header = builder.finish();
     let entry: extern "sysv64" fn(usize) -> ! = unsafe { mem::transmute(kernel_entry) };
@@ -68,22 +68,55 @@ fn run(image_handle: Handle, boot_table: BootTable) -> Result<()> {
 
 fn append_mmap<'a>(
     builder: &mut Builder,
-    mmap: impl ExactSizeIterator<Item = &'a MemoryDescriptor>,
+    efi_mmap: impl ExactSizeIterator<Item = &'a MemoryDescriptor>,
+    scratch: &mut [MaybeUninit<bootitem::MemoryRange>],
 ) {
-    // Safety: the loop below initializes all `mmap.len()` elements.
-    let buf = unsafe { builder.reserve(ItemKind::MEMORY_MAP, mmap.len()) }.unwrap();
-
-    for (efi_desc, range) in mmap.zip(buf.iter_mut()) {
-        range.write(bootitem::MemoryRange {
+    let tmp_mmap = scratch[..efi_mmap.len()]
+        .as_out()
+        .init_with(efi_mmap.map(|efi_desc| bootitem::MemoryRange {
             start_page: efi_desc.phys_start as usize / PAGE_SIZE,
             page_count: efi_desc.page_count as usize,
             kind: mem_kind_from_efi(efi_desc.mem_type),
-        });
+        }));
+
+    tmp_mmap.sort_unstable_by_key(|range| range.start_page);
+    let tmp_mmap = coalesce_mmap(tmp_mmap);
+
+    builder
+        .append_slice(ItemKind::MEMORY_MAP, tmp_mmap)
+        .unwrap();
+}
+
+fn coalesce_mmap(mmap: &mut [bootitem::MemoryRange]) -> &mut [bootitem::MemoryRange] {
+    if mmap.is_empty() {
+        return mmap;
     }
 
-    // Safety: entire buffer is initialized.
-    let mmap_data = unsafe { &mut *(buf as *mut _ as *mut [MemoryRange]) };
-    mmap_data.sort_unstable_by_key(|range| range.start_page);
+    let mut base = 0;
+
+    for cur in 1..mmap.len() {
+        let base_range = &mmap[base];
+        let cur_range = &mmap[cur];
+
+        let base_end = base_range.start_page + base_range.page_count;
+
+        assert!(
+            base_end <= cur_range.start_page,
+            "intersecting memory map entries"
+        );
+
+        if base_range.kind == cur_range.kind && base_end == cur_range.start_page {
+            // Entries can be merged, update our base entry in place and try to merge it with the
+            // next entry.
+            mmap[base].page_count += cur_range.page_count;
+        } else {
+            // Entries cannot be merged, move our base up and try again.
+            base += 1;
+            mmap[base] = *cur_range;
+        }
+    }
+
+    &mut mmap[..base + 1]
 }
 
 fn mem_kind_from_efi(efi_type: MemoryType) -> bootitem::MemoryKind {

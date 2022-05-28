@@ -18,7 +18,8 @@ const BOOTINFO_FIXED_SIZE: usize = 0x1000;
 const MMAP_EXTRA_ENTRIES: usize = 8;
 
 pub struct BootinfoCtx {
-    pub mmap_buf: &'static mut [MaybeUninit<u8>],
+    pub efi_mmap_buf: &'static mut [MaybeUninit<u8>],
+    pub mmap_scratch: &'static mut [MaybeUninit<bootitem::MemoryRange>],
     pub builder: Builder<'static>,
 }
 
@@ -43,11 +44,11 @@ pub fn prepare_bootinfo(boot_table: &BootTable) -> Result<BootinfoCtx> {
     let max_mmap_entries = mmap_size / desc_size + MMAP_EXTRA_ENTRIES;
 
     let mut bootinfo_builder = make_bootinfo_builder(boot_services, max_mmap_entries)?;
-
     append_bootinfo(&mut bootinfo_builder, ItemKind::FRAMEBUFFER, framebuffer)?;
 
     Ok(BootinfoCtx {
-        mmap_buf: alloc_uninit_bytes(boot_services, max_mmap_entries * desc_size)?,
+        efi_mmap_buf: alloc_uninit_data(boot_services, max_mmap_entries * desc_size)?,
+        mmap_scratch: alloc_uninit_data(boot_services, max_mmap_entries)?,
         builder: bootinfo_builder,
     })
 }
@@ -89,7 +90,7 @@ fn make_bootinfo_builder(
 ) -> Result<Builder<'static>> {
     let buf = alloc_uninit_pages(
         boot_services,
-        BOOTINFO_FIXED_SIZE + max_mmap_entries / mem::size_of::<bootitem::MemoryRange>(),
+        BOOTINFO_FIXED_SIZE + max_mmap_entries * mem::size_of::<bootitem::MemoryRange>(),
     )?;
     Ok(Builder::new(buf.as_out()).expect("buffer should be large and aligned"))
 }
@@ -102,10 +103,10 @@ fn alloc_uninit_pages(
     Ok(unsafe { &mut *(p.as_ptr() as *mut _) })
 }
 
-fn alloc_uninit_bytes(
+fn alloc_uninit_data<T>(
     boot_services: &BootServices,
-    bytes: usize,
-) -> Result<&'static mut [MaybeUninit<u8>]> {
-    let p = boot_services.alloc(bytes)?;
-    Ok(unsafe { slice::from_raw_parts_mut(p.cast(), bytes) })
+    len: usize,
+) -> Result<&'static mut [MaybeUninit<T>]> {
+    let p = boot_services.alloc(len * mem::size_of::<T>())?;
+    Ok(unsafe { slice::from_raw_parts_mut(p.cast(), len) })
 }
