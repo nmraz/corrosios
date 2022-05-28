@@ -48,17 +48,11 @@ pub fn pfn_to_physmap(pfn: PhysFrameNum) -> VirtPageNum {
 fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
     let mem_map = get_mem_map(bootinfo);
 
-    println!();
-    for range in mem_map {
-        display_range(range);
-    }
-
     // Note: the bootloader is responsible for sorting/coalescing the memory map
     let usable_map = mem_map
         .iter()
         .filter(|range| range.kind == MemoryKind::USABLE);
 
-    println!();
     for range in usable_map {
         println!(
             "physmap pages {:#x}-{:#x}",
@@ -82,25 +76,6 @@ fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
             )
             .expect("failed to map physmap region");
     }
-    println!();
-}
-
-fn display_range(range: &MemoryRange) {
-    let kind = match range.kind {
-        MemoryKind::RESERVED => "reserved",
-        MemoryKind::USABLE => "usable",
-        MemoryKind::FIRMWARE => "firmware",
-        MemoryKind::ACPI_TABLES => "ACPI tables",
-        MemoryKind::UNUSABLE => "unusable",
-        _ => "other",
-    };
-
-    println!(
-        "{:#012x}-{:#012x}: {}",
-        range.start_page * PAGE_SIZE,
-        (range.start_page + range.page_count) * PAGE_SIZE,
-        kind
-    );
 }
 
 fn get_mem_map(bootinfo: View<'_>) -> &[MemoryRange] {

@@ -3,7 +3,6 @@
 #![no_std]
 #![no_main]
 
-use bootinfo::item::Framebuffer;
 use bootinfo::view::View;
 use bootinfo::ItemKind;
 use mm::physmap;
@@ -21,16 +20,18 @@ mod panic;
 fn kernel_main(bootinfo_paddr: PhysAddr) -> ! {
     arch::earlyconsole::init_install();
 
-    println!("corrosios starting");
-
     unsafe { physmap::init(bootinfo_paddr) };
 
     let bootinfo = unsafe { View::new(paddr_to_physmap(bootinfo_paddr).as_ptr()) }.unwrap();
-    for item in bootinfo.items() {
-        if item.kind() == ItemKind::FRAMEBUFFER {
-            let framebuffer = unsafe { item.get::<Framebuffer>() }.unwrap();
-            println!("framebuffer: {:#x?}", framebuffer);
-        }
+
+    let mem_map_view = bootinfo
+        .items()
+        .find(|item| item.kind() == ItemKind::MEMORY_MAP)
+        .unwrap();
+    let mem_map = unsafe { mem_map_view.get_slice() }.unwrap();
+
+    unsafe {
+        mm::pmm::init(mem_map);
     }
 
     arch::irq::idle_loop();
