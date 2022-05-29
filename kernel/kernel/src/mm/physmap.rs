@@ -9,7 +9,7 @@ use crate::arch::mmu::{PageTable, PAGE_SIZE};
 use super::earlymap::{self, BumpPageTableAlloc, EarlyMapper, NoopGather};
 use super::pt::MappingPointer;
 use super::types::{PageTablePerms, PhysAddr, PhysFrameNum, VirtAddr, VirtPageNum};
-use super::utils::align_up;
+use super::utils::div_ceil;
 
 const BOOTINFO_PT_PAGES: usize = 10;
 
@@ -103,7 +103,7 @@ unsafe fn ident_map_bootinfo(
         .expect("failed to map initial bootinfo page");
 
     let view = unsafe { View::new(header) }.expect("invalid bootinfo");
-    let view_pages = align_up(view.total_size(), PAGE_SIZE);
+    let view_pages = div_ceil(view.total_size(), PAGE_SIZE);
 
     pointer = MappingPointer::new(vpn, view_pages);
     pointer.advance(1); // Skip first mapped page
@@ -120,7 +120,7 @@ unsafe fn ident_unmap_bootinfo(
     view_size: usize,
 ) {
     let vpn = VirtPageNum::new(bootinfo_paddr.containing_frame().as_usize());
-    let pages = align_up(view_size, PAGE_SIZE);
+    let pages = div_ceil(view_size, PAGE_SIZE);
 
     mapper
         .unmap(&mut MappingPointer::new(vpn, pages), &mut NoopGather)
