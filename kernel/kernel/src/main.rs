@@ -3,6 +3,7 @@
 #![no_std]
 #![no_main]
 
+use arch::cpu;
 use bootinfo::view::View;
 use bootinfo::ItemKind;
 use mm::physmap;
@@ -34,5 +35,5 @@ fn kernel_main(bootinfo_paddr: PhysAddr) -> ! {
         mm::pmm::init(mem_map);
     }
 
-    arch::irq::idle_loop();
+    cpu::halt();
 }
