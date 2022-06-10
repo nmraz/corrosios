@@ -1,7 +1,15 @@
-.macro initial_kernel_pt_index reg level
-    lea \reg, [__virt_start]
+.macro pt_index reg level virt
+    lea \reg, [\virt]
     shr \reg, \level * {PT_LEVEL_SHIFT} + {PAGE_SHIFT}
     and \reg, {PT_ENTRY_COUNT} - 1
+.endm
+
+.macro boottext_pt_index reg level
+    pt_index \reg \level __boottext_start
+.endm
+
+.macro initial_kernel_pt_index reg level
+    pt_index \reg \level __virt_start
 .endm
 
 
@@ -30,16 +38,16 @@ early_gdtr:
 .section .boot.bss, "aw", @nobits
 
 .align {PAGE_SIZE}
-.type early_low_pdpt, @object
-early_low_pdpt:
+.type boottext_pdpt, @object
+boottext_pdpt:
     .skip {PAGE_SIZE}
-.size early_low_pdpt, . - early_low_pdpt
+.size boottext_pdpt, . - boottext_pdpt
 
 .align {PAGE_SIZE}
-.type early_low_pd, @object
-early_low_pd:
+.type boottext_pd, @object
+boottext_pd:
     .skip {PAGE_SIZE}
-.size early_low_pd, . - early_low_pd
+.size boottext_pd, . - boottext_pd
 
 
 .section .boot.text, "ax"
@@ -52,20 +60,32 @@ boot_main:
     # NOTE: We must avoid clobbering `rdi` here as it contains the physical
     # address of the data provided by the bootloader.
 
-    # Initialize early low 8MiB mapping
-    # Note: keep size in sync with check in linker script and `kernel_tables.rs`
+    # Initialize a temporary 8MiB identity mapping of the kernel so that
+    # pivoting to our new page table doesn't cause an irrecoverable page fault.
+    # NOTE: keep size in sync with check in linker script and `kernel_tables.rs`
 
     # Present, writable, executable
-    lea rax, [early_low_pdpt + 0x3]
-    mov [KERNEL_PML4 - {KERNEL_OFFSET}], rax
-    lea rax, [early_low_pd + 0x3]
-    mov [early_low_pdpt], rax
+    lea rax, [boottext_pdpt + 0x3]
+    boottext_pt_index rbx 3
+    mov [KERNEL_PML4 - {KERNEL_OFFSET} + 8 * rbx], rax
 
-    # Present, writable, executable, large: cover 0x000000-0x800000
-    mov qword ptr [early_low_pd], 0x83
-    mov qword ptr [early_low_pd + 0x8], 0x200083
-    mov qword ptr [early_low_pd + 0x10], 0x400083
-    mov qword ptr [early_low_pd + 0x18], 0x600083
+    lea rax, [boottext_pd + 0x3]
+    boottext_pt_index rbx 2
+    mov [boottext_pdpt + 8 * rbx], rax
+
+    lea rax, [__boottext_start]
+    and rax, -0x200000
+    # Present, writable, executable, large
+    or rax, 0x83
+    boottext_pt_index rbx 1
+
+    # Map with 4 large 2MiB pages
+    mov rcx, 4
+.Lfill_low_pd:
+    mov [boottext_pd + 8 * rbx], rax
+    add rax, 0x200000
+    add rbx, 1
+    loop .Lfill_low_pd
 
     # Initialize kernel mapping at -2GiB
 
@@ -78,21 +98,13 @@ boot_main:
     mov [KERNEL_PDPT - {KERNEL_OFFSET} + 8 * rbx], rax
 
     # Compute number of aligned 2MiB ranges intersected by kernel
-    lea rcx, [__phys_end + ({PAGE_SIZE} << {PT_LEVEL_SHIFT}) - 1]
+    lea rcx, [__virt_end + ({PAGE_SIZE} << {PT_LEVEL_SHIFT}) - 1]
     shr rcx, {PT_LEVEL_SHIFT} + {PAGE_SHIFT}
-    lea rax, [__phys_start]
+    lea rax, [__virt_start]
     shr rax, {PT_LEVEL_SHIFT} + {PAGE_SHIFT}
     sub rcx, rax
 
-    # Find offset in `KERNEL_PTS` of first page table needed to cover kernel,
-    # assuming that they start covering at physical address 0. This is
-    # effectively a division by 2MiB followed by a multiplication by 4KiB.
-    lea rax, [__phys_start]
-    shr rax, {PT_LEVEL_SHIFT}
-    and rax, -{PAGE_SIZE}
-
-    lea rax, [KERNEL_PTS - {KERNEL_OFFSET} + rax]
-    or rax, 3
+    lea rax, [KERNEL_PTS - {KERNEL_OFFSET} + 0x3]
 
     initial_kernel_pt_index rdx 1
     lea rsi, [KERNEL_PD - {KERNEL_OFFSET} + 8 * rdx]
@@ -140,7 +152,7 @@ high_entry:
     mov fs, ax
     mov gs, ax
 
-    # Remove low mapping
+    # Remove boot code mapping
     mov qword ptr [KERNEL_PML4], 0
 
     # Flush TLB

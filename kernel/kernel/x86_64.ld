@@ -3,6 +3,8 @@ ENTRY(boot_main)
 SECTIONS {
     . = 1M;
 
+    __boottext_start = .;
+
     .boot.text : {
         *(.boot.text)
     }
@@ -22,21 +24,19 @@ SECTIONS {
 
     . = ALIGN(4K);
 
-    __bootseg_end = .;
-
     __phys_start = .;
     . += 0xFFFFFFFF80000000; /* -2GiB */
     __virt_start = .;
 
     __code_start = .;
-    .text : AT(ADDR(.text) - __virt_start + __bootseg_end) {
+    .text : AT(ADDR(.text) - __virt_start + __phys_start) {
         *(.text*)
     }
     . = ALIGN(4K);
     __code_end = .;
 
     __rodata_start = .;
-    .rodata : AT(ADDR(.rodata) - __virt_start + __bootseg_end) {
+    .rodata : AT(ADDR(.rodata) - __virt_start + __phys_start) {
         *(.rodata*)
         /* For some reason, a GOT is created for certain global variable
            accesses; make sure it gets included. */
@@ -46,14 +46,14 @@ SECTIONS {
     __rodata_end = .;
 
     __data_start = .;
-    .data : AT(ADDR(.data) - __virt_start + __bootseg_end) {
+    .data : AT(ADDR(.data) - __virt_start + __phys_start) {
         *(.data*)
     }
     . = ALIGN(4K);
     __data_end = .;
 
     __bss_start = .;
-    .bss : AT(ADDR(.bss) - __virt_start + __bootseg_end) {
+    .bss : AT(ADDR(.bss) - __virt_start + __phys_start) {
         *(COMMON)
         *(.bss*)
     }
@@ -61,9 +61,8 @@ SECTIONS {
     __bss_end = .;
 
     __virt_end = .;
-    __phys_end = . - __virt_start + __bootseg_end;
+    __phys_end = . - __virt_start + __phys_start;
 
-    /* Keep in sync with size reserved in `kernel_tables.rs` and early mapping
-       created in `boot.s` */
-    ASSERT(__phys_end < 8M, "Kernel too large")
+    /* Keep in sync with size reserved in `kernel_tables.rs` and early mapping */
+    ASSERT(__phys_end - __boottext_start < 8M, "Kernel too large")
 }
