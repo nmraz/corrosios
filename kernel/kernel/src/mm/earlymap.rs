@@ -1,5 +1,5 @@
 use crate::arch::kernel_vmspace::KERNEL_IMAGE_SPACE_BASE;
-use crate::arch::mmu::PageTable;
+use crate::arch::mmu::PageTableSpace;
 
 use super::pt::{GatherInvalidations, Mapper, PageTableAlloc, PageTableAllocError, TranslatePhys};
 use super::types::{PhysFrameNum, VirtAddr, VirtPageNum};
@@ -10,10 +10,10 @@ pub type EarlyMapper<'a> = Mapper<'a, BumpPageTableAlloc, KernelPfnTranslator>;
 ///
 /// The provided root table must be correctly structured, and all referenced/allocated page tables
 /// must lie in the kernel image.
-pub unsafe fn make_early_mapper<'a>(
-    root_pt: &'a PageTable,
-    alloc: &'a mut BumpPageTableAlloc,
-) -> EarlyMapper<'a> {
+pub unsafe fn make_early_mapper(
+    root_pt: PhysFrameNum,
+    alloc: &mut BumpPageTableAlloc,
+) -> EarlyMapper<'_> {
     // Safety: function contract
     unsafe { EarlyMapper::new(root_pt, alloc, KernelPfnTranslator) }
 }
@@ -24,7 +24,7 @@ pub struct BumpPageTableAlloc {
 }
 
 impl BumpPageTableAlloc {
-    pub fn from_kernel_space(space: &'static [PageTable]) -> Self {
+    pub fn from_kernel_space(space: &'static [PageTableSpace]) -> Self {
         let addr = VirtAddr::from_ptr(space.as_ptr());
 
         let start = pfn_from_kernel_vaddr(addr);

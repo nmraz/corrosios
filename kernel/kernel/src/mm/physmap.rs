@@ -4,7 +4,7 @@ use bootinfo::{ItemHeader, ItemKind};
 
 use crate::arch;
 use crate::arch::kernel_vmspace::{PHYS_MAP_BASE, PHYS_MAP_PAGES, PHYS_MAP_PT_PAGES};
-use crate::arch::mmu::{PageTable, PAGE_SIZE};
+use crate::arch::mmu::{PageTableSpace, PAGE_SIZE};
 
 use super::earlymap::{self, BumpPageTableAlloc, EarlyMapper, NoopGather};
 use super::pt::MappingPointer;
@@ -13,8 +13,8 @@ use super::utils::div_ceil;
 
 const BOOTINFO_PT_PAGES: usize = 10;
 
-static PHYS_MAP_PT_SPACE: [PageTable; PHYS_MAP_PT_PAGES + BOOTINFO_PT_PAGES] =
-    [PageTable::EMPTY; PHYS_MAP_PT_PAGES + BOOTINFO_PT_PAGES];
+static PHYS_MAP_PT_SPACE: [PageTableSpace; PHYS_MAP_PT_PAGES + BOOTINFO_PT_PAGES] =
+    [PageTableSpace::NEW; PHYS_MAP_PT_PAGES + BOOTINFO_PT_PAGES];
 
 /// # Safety
 ///

@@ -1,5 +1,5 @@
 use core::fmt;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::AtomicU64;
 
 use bitflags::bitflags;
 
@@ -113,28 +113,20 @@ impl fmt::Debug for PageTableEntry {
 }
 
 #[repr(C, align(0x1000))]
-pub struct PageTable {
+pub struct PageTableSpace {
     entries: [AtomicU64; PT_ENTRY_COUNT],
 }
 
-impl PageTable {
+impl PageTableSpace {
     #[allow(clippy::declare_interior_mutable_const)]
-    pub const EMPTY: Self = Self::empty();
+    pub const NEW: Self = Self::new();
 
-    pub const fn empty() -> Self {
+    pub const fn new() -> Self {
         #[allow(clippy::declare_interior_mutable_const)]
         const INIT_ENTRY: AtomicU64 = AtomicU64::new(PageTableEntry::empty().0);
         Self {
             entries: [INIT_ENTRY; PT_ENTRY_COUNT],
         }
-    }
-
-    pub fn get(&self, index: usize) -> PageTableEntry {
-        PageTableEntry(self.entries[index].load(Ordering::Relaxed))
-    }
-
-    pub fn set(&self, index: usize, entry: PageTableEntry) {
-        self.entries[index].store(entry.0, Ordering::Relaxed)
     }
 }
 
