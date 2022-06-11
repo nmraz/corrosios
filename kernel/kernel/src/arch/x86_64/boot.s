@@ -79,24 +79,26 @@ boot_main:
     # in case the kernel isn't physically aligned to a 2MiB boundary.
 
     # Present, writable, executable
-    lea rax, [boottext_pdpt + 0x3]
+    lea rax, [rip + boottext_pdpt + 0x3]
     boottext_pt_index rbx, 3
     mov [KERNEL_PML4 + r9 + 8 * rbx], rax
 
-    lea rax, [boottext_pd + 0x3]
+    lea rax, [rip + boottext_pd + 0x3]
     boottext_pt_index rbx, 2
-    mov [boottext_pdpt + 8 * rbx], rax
+    lea rsi, [rip + boottext_pdpt]
+    mov [rsi + 8 * rbx], rax
 
-    lea rax, [__boottext_start]
+    lea rax, [rip + __boottext_start]
     and rax, -({PAGE_SIZE} << {PT_LEVEL_SHIFT})
     # Present, writable, executable, large
     or rax, 0x83
     boottext_pt_index rbx, 1
 
     # Map with 5 large 2MiB pages
+    lea rsi, [rip + boottext_pd]
     mov rcx, 5
 .Lfill_boottext_pd:
-    mov [boottext_pd + 8 * rbx], rax
+    mov [rsi + 8 * rbx], rax
     add rax, {PAGE_SIZE} << {PT_LEVEL_SHIFT}
     add rbx, 1
     loop .Lfill_boottext_pd
@@ -129,8 +131,8 @@ boot_main:
     add rax, {PAGE_SIZE}
     loop .Lfill_kernel_pd
 
-    lea rax, [__phys_start + 0x3]
-    lea rbx, [__phys_end]
+    lea rax, [rip + __phys_start + 0x3]
+    lea rbx, [rip + __phys_end]
 
     initial_kernel_pt_index rdx, 0
     lea rsi, [KERNEL_PTS + r9 + 8 * rdx]
@@ -145,7 +147,7 @@ boot_main:
     lea rax, [KERNEL_PML4 + r9]
     mov cr3, rax
 
-    lgdt [early_gdtr]
+    lgdt [rip + early_gdtr]
 
     mov rsi, rdi
     mov rdi, r8

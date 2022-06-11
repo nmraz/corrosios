@@ -88,19 +88,11 @@ fn make_bootinfo_builder(
     boot_services: &BootServices,
     max_mmap_entries: usize,
 ) -> Result<Builder<'static>> {
-    let buf = alloc_uninit_pages(
+    let buf = page::alloc_uninit_pages(
         boot_services,
         BOOTINFO_FIXED_SIZE + max_mmap_entries * mem::size_of::<bootitem::MemoryRange>(),
     )?;
     Ok(Builder::new(buf.as_out()).expect("buffer should be large and aligned"))
-}
-
-fn alloc_uninit_pages(
-    boot_services: &BootServices,
-    bytes: usize,
-) -> Result<&'static mut [MaybeUninit<u8>]> {
-    let p = page::alloc_pages(boot_services, bytes)?;
-    Ok(unsafe { &mut *(p.as_ptr() as *mut _) })
 }
 
 fn alloc_uninit_data<T>(

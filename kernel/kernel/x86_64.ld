@@ -1,7 +1,7 @@
 ENTRY(boot_main)
 
 SECTIONS {
-    . = 1M;
+    . = 0;
 
     __boottext_start = .;
 

@@ -1,15 +1,15 @@
 use alloc::vec::Vec;
 use core::mem::{self, MaybeUninit};
-use core::{iter, slice};
+use core::{cmp, iter, slice};
 
 use minielf::{Header, ProgramHeader, SEGMENT_TYPE_LOAD};
 use uefi::proto::fs::File;
-use uefi::table::{AllocMode, BootServices};
+use uefi::table::BootServices;
 use uefi::{BootAlloc, Result, Status};
 
 use uninit::extension_traits::AsOut;
 
-use crate::page::{to_page_count, PAGE_SIZE};
+use crate::page::{self, PAGE_SIZE};
 
 pub fn load_elf(boot_services: &BootServices, file: &mut File<'_>) -> Result<u64> {
     let header = read_header(file)?;
@@ -27,34 +27,49 @@ pub fn load_elf(boot_services: &BootServices, file: &mut File<'_>) -> Result<u64
         return Err(Status::LOAD_ERROR);
     }
 
-    for pheader in loadable {
-        load_segment(boot_services, pheader, file)?;
+    let (min_paddr, max_paddr, align) = loadable
+        .clone()
+        .map(|pheader| {
+            (
+                pheader.phys_addr,
+                pheader.phys_addr + pheader.mem_size,
+                pheader.align,
+            )
+        })
+        .reduce(|(start1, end1, align1), (start2, end2, align2)| {
+            (
+                cmp::min(start1, start2),
+                cmp::max(end1, end2),
+                cmp::max(align1, align2),
+            )
+        })
+        .ok_or(Status::LOAD_ERROR)?;
+
+    if align > PAGE_SIZE as u64 {
+        return Err(Status::LOAD_ERROR);
     }
 
-    Ok(header.entry)
+    let buf = page::alloc_uninit_pages(boot_services, (max_paddr - min_paddr) as usize)?;
+
+    for pheader in loadable {
+        load_segment(buf, min_paddr, file, pheader)?;
+    }
+
+    Ok(header.entry - min_paddr + buf.as_ptr() as u64)
 }
 
 fn load_segment(
-    boot_services: &BootServices,
-    pheader: &ProgramHeader,
+    buf: &mut [MaybeUninit<u8>],
+    base_paddr: u64,
     file: &mut File<'_>,
+    pheader: &ProgramHeader,
 ) -> Result<()> {
     if pheader.phys_addr as usize % PAGE_SIZE != 0 || pheader.file_size > pheader.mem_size {
         return Err(Status::LOAD_ERROR);
     }
 
-    boot_services.alloc_pages(
-        AllocMode::At(pheader.phys_addr),
-        to_page_count(pheader.mem_size as usize),
-    )?;
-
-    // Safety: memory range has been reserved via call to `alloc_pages` above.
-    let buf = unsafe {
-        slice::from_raw_parts_mut(
-            pheader.phys_addr as *mut MaybeUninit<u8>,
-            pheader.mem_size as usize,
-        )
-    };
+    let phys_off = (pheader.phys_addr - base_paddr) as usize;
+    let buf = &mut buf[phys_off..phys_off + pheader.mem_size as usize];
 
     let file_size = pheader.file_size as usize;
     let (file_part, bss_part) = buf.as_out().split_at_out(file_size);
