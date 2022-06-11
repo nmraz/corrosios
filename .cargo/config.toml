@@ -10,3 +10,6 @@ image = "hosttools image"
 qemu = "hosttools qemu"
 gdb-attach = "hosttools gdb-attach"
 gdbmux = "hosttools gdbmux"
+
+[profile.release]
+lto = "thin"
