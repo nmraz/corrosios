@@ -38,9 +38,6 @@ SECTIONS {
     __rodata_start = .;
     .rodata : AT(ADDR(.rodata) - __virt_start + __phys_start) {
         *(.rodata*)
-        /* For some reason, a GOT is created for certain global variable
-           accesses; make sure it gets included. */
-        *(.got)
     }
     . = ALIGN(4K);
     __rodata_end = .;
