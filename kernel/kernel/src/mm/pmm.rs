@@ -36,9 +36,9 @@ pub unsafe fn init(mem_map: &[MemoryRange]) {
     let bootheap_pages = bootheap_range.end - bootheap_range.start;
 
     println!(
-        "selected bootheap range: {:#x}-{:#x} ({} pages, ~{}M)",
-        bootheap_range.start.as_usize(),
-        bootheap_range.end.as_usize(),
+        "selected bootheap range: {}-{} ({} pages, ~{}M)",
+        bootheap_range.start,
+        bootheap_range.end,
         bootheap_pages,
         bootheap_pages / 0x100
     );

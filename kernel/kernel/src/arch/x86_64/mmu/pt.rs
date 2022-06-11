@@ -105,7 +105,7 @@ impl PageTableEntry {
 impl fmt::Debug for PageTableEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PageTableEntry")
-            .field("page", &self.page().as_usize())
+            .field("page", &self.page())
             .field("perms", &self.perms())
             .field("flags", &self.flags())
             .finish()

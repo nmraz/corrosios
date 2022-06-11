@@ -27,13 +27,11 @@ extern "C" fn kernel_main(kernel_paddr: PhysAddr, bootinfo_paddr: PhysAddr) -> !
     }
 
     println!(
-        "kernel loaded at {:#x}-{:#x}, mapped at {:#x}-{:#x}",
-        kimage::phys_base().addr().as_usize(),
-        (kimage::phys_base() + kimage::total_pages())
-            .addr()
-            .as_usize(),
-        kimage::virt_base().addr().as_usize(),
-        kimage::virt_end().addr().as_usize()
+        "kernel loaded at {}-{}, mapped at {}-{}",
+        kimage::phys_base().addr(),
+        (kimage::phys_base() + kimage::total_pages()).addr(),
+        kimage::virt_base().addr(),
+        kimage::virt_end().addr()
     );
 
     unsafe {

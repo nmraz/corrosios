@@ -1,3 +1,5 @@
+use core::{fmt, ops};
+
 use bitflags::bitflags;
 
 use crate::arch::mmu::{PAGE_SHIFT, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
@@ -20,7 +22,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct PhysAddr(usize);
 
@@ -42,7 +44,7 @@ impl PhysAddr {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct VirtAddr(usize);
 
@@ -80,7 +82,7 @@ impl VirtAddr {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct PhysFrameNum(usize);
 
@@ -102,7 +104,7 @@ impl PhysFrameNum {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct VirtPageNum(usize);
 
@@ -140,7 +142,19 @@ macro_rules! impl_arith_helpers {
             }
         }
 
-        impl core::ops::Add<usize> for $t {
+        impl fmt::Display for $t {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                core::write!(f, "{:#x}", self.as_usize())
+            }
+        }
+
+        impl fmt::Debug for $t {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                fmt::Display::fmt(self, f)
+            }
+        }
+
+        impl ops::Add<usize> for $t {
             type Output = $t;
 
             fn add(self, rhs: usize) -> $t {
@@ -148,7 +162,7 @@ macro_rules! impl_arith_helpers {
             }
         }
 
-        impl core::ops::Add<$t> for usize {
+        impl ops::Add<$t> for usize {
             type Output = $t;
 
             fn add(self, rhs: $t) -> $t {
@@ -156,13 +170,13 @@ macro_rules! impl_arith_helpers {
             }
         }
 
-        impl core::ops::AddAssign<usize> for $t {
+        impl ops::AddAssign<usize> for $t {
             fn add_assign(&mut self, rhs: usize) {
                 self.0 += rhs;
             }
         }
 
-        impl core::ops::Sub<usize> for $t {
+        impl ops::Sub<usize> for $t {
             type Output = $t;
 
             fn sub(self, rhs: usize) -> $t {
@@ -170,7 +184,7 @@ macro_rules! impl_arith_helpers {
             }
         }
 
-        impl core::ops::Sub for $t {
+        impl ops::Sub for $t {
             type Output = usize;
 
             fn sub(self, rhs: $t) -> usize {
@@ -178,7 +192,7 @@ macro_rules! impl_arith_helpers {
             }
         }
 
-        impl core::ops::SubAssign<usize> for $t {
+        impl ops::SubAssign<usize> for $t {
             fn sub_assign(&mut self, rhs: usize) {
                 self.0 -= rhs;
             }
