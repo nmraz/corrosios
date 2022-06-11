@@ -14,14 +14,31 @@ use crate::mm::physmap::paddr_to_physmap;
 mod arch;
 #[macro_use]
 mod console;
+mod kimage;
 mod mm;
 mod panic;
 
 #[no_mangle]
-fn kernel_main(bootinfo_paddr: PhysAddr) -> ! {
+extern "C" fn kernel_main(kernel_paddr: PhysAddr, bootinfo_paddr: PhysAddr) -> ! {
     arch::earlyconsole::init_install();
 
-    unsafe { physmap::init(bootinfo_paddr) };
+    unsafe {
+        kimage::init(kernel_paddr);
+    }
+
+    println!(
+        "kernel loaded at {:#x}-{:#x}, mapped at {:#x}-{:#x}",
+        kimage::phys_base().addr().as_usize(),
+        (kimage::phys_base() + kimage::total_pages())
+            .addr()
+            .as_usize(),
+        kimage::virt_base().addr().as_usize(),
+        kimage::virt_end().addr().as_usize()
+    );
+
+    unsafe {
+        physmap::init(bootinfo_paddr);
+    }
 
     let bootinfo = unsafe { View::new(paddr_to_physmap(bootinfo_paddr).as_ptr()) }.unwrap();
 

@@ -1,5 +1,5 @@
-use crate::arch::kernel_vmspace::KERNEL_IMAGE_SPACE_BASE;
 use crate::arch::mmu::PageTableSpace;
+use crate::kimage;
 
 use super::pt::{GatherInvalidations, Mapper, PageTableAlloc, PageTableAllocError, TranslatePhys};
 use super::types::{PhysFrameNum, VirtAddr, VirtPageNum};
@@ -27,7 +27,7 @@ impl BumpPageTableAlloc {
     pub fn from_kernel_space(space: &'static [PageTableSpace]) -> Self {
         let addr = VirtAddr::from_ptr(space.as_ptr());
 
-        let start = pfn_from_kernel_vaddr(addr);
+        let start = kimage::pfn_from_kernel_vpn(addr.containing_page());
         let pages = space.len();
 
         Self {
@@ -61,14 +61,6 @@ pub struct KernelPfnTranslator;
 
 impl TranslatePhys for KernelPfnTranslator {
     fn translate(&self, phys: PhysFrameNum) -> VirtPageNum {
-        vpn_from_kernel_pfn(phys)
+        kimage::vpn_from_kernel_pfn(phys)
     }
-}
-
-fn pfn_from_kernel_vaddr(vaddr: VirtAddr) -> PhysFrameNum {
-    PhysFrameNum::new(vaddr.containing_page() - KERNEL_IMAGE_SPACE_BASE)
-}
-
-fn vpn_from_kernel_pfn(pfn: PhysFrameNum) -> VirtPageNum {
-    KERNEL_IMAGE_SPACE_BASE + pfn.as_usize()
 }

@@ -1,4 +1,4 @@
-use crate::arch::kernel_vmspace::KERNEL_IMAGE_SPACE_BASE;
+use crate::kimage;
 use crate::mm::types::{PhysFrameNum, VirtAddr};
 
 use super::{PageTableSpace, PAGE_SHIFT, PT_LEVEL_SHIFT};
@@ -25,5 +25,5 @@ static KERNEL_PD: PageTableSpace = PageTableSpace::NEW;
 static KERNEL_PTS: [PageTableSpace; KERNEL_PT_COUNT] = [PageTableSpace::NEW; KERNEL_PT_COUNT];
 
 pub fn kernel_pt_root() -> PhysFrameNum {
-    PhysFrameNum::new(VirtAddr::from_ptr(&KERNEL_PML4).containing_page() - KERNEL_IMAGE_SPACE_BASE)
+    kimage::pfn_from_kernel_vpn(VirtAddr::from_ptr(&KERNEL_PML4).containing_page())
 }

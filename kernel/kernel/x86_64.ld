@@ -25,7 +25,7 @@ SECTIONS {
     . = ALIGN(4K);
 
     __phys_start = .;
-    . += 0xFFFFFFFF80000000; /* -2GiB */
+    . = 0xFFFFFFFF80000000; /* -2GiB */
     __virt_start = .;
 
     __code_start = .;
