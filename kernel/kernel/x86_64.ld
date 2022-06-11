@@ -5,18 +5,11 @@ SECTIONS {
 
     __boottext_start = .;
 
-    .boot.text : {
+    .boot : {
         *(.boot.text)
-    }
-
-    . = ALIGN(4K);
-
-    .boot.data : {
         *(.boot.rodata)
         *(.boot.data)
     }
-
-    . = ALIGN(4K);
 
     .boot.bss : {
         *(.boot.bss)
