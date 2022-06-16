@@ -1,5 +1,12 @@
 ENTRY(boot_main)
 
+PHDRS {
+    boot PT_LOAD;
+    text PT_LOAD;
+    rodata PT_LOAD;
+    data PT_LOAD;
+}
+
 SECTIONS {
     . = 0;
 
@@ -9,11 +16,11 @@ SECTIONS {
         *(.boot.text)
         *(.boot.rodata)
         *(.boot.data)
-    }
+    } :boot
 
     .boot.bss : {
         *(.boot.bss)
-    }
+    } :boot
 
     . = ALIGN(4K);
 
@@ -24,31 +31,28 @@ SECTIONS {
     __code_start = .;
     .text : AT(ADDR(.text) - __virt_start + __phys_start) {
         *(.text*)
-    }
+    } :text
     . = ALIGN(4K);
     __code_end = .;
 
     __rodata_start = .;
     .rodata : AT(ADDR(.rodata) - __virt_start + __phys_start) {
         *(.rodata*)
-    }
+    } :rodata
     . = ALIGN(4K);
     __rodata_end = .;
 
     __data_start = .;
     .data : AT(ADDR(.data) - __virt_start + __phys_start) {
         *(.data*)
-    }
-    . = ALIGN(4K);
-    __data_end = .;
+    } :data
 
-    __bss_start = .;
     .bss : AT(ADDR(.bss) - __virt_start + __phys_start) {
         *(COMMON)
         *(.bss*)
-    }
+    } :data
     . = ALIGN(4K);
-    __bss_end = .;
+    __data_end = .;
 
     __virt_end = .;
     __phys_end = . - __virt_start + __phys_start;
