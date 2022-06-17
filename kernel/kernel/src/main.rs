@@ -17,6 +17,7 @@ mod console;
 mod kimage;
 mod mm;
 mod panic;
+mod sync;
 
 #[no_mangle]
 extern "C" fn kernel_main(kernel_paddr: PhysAddr, bootinfo_paddr: PhysAddr) -> ! {
@@ -47,7 +48,7 @@ extern "C" fn kernel_main(kernel_paddr: PhysAddr, bootinfo_paddr: PhysAddr) -> !
     let mem_map = unsafe { mem_map_view.get_slice() }.unwrap();
 
     unsafe {
-        mm::pmm::init(mem_map);
+        mm::pmm::init(mem_map, bootinfo_paddr, bootinfo.total_size());
     }
 
     cpu::halt();
