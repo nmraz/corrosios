@@ -4,10 +4,13 @@ use bootinfo::item::{MemoryKind, MemoryRange};
 
 use crate::arch::mmu::PAGE_SIZE;
 use crate::arch::pmm::BOOTHEAP_BASE;
+use crate::kimage;
 use crate::mm::bootheap::BootHeap;
 use crate::mm::types::PhysFrameNum;
 
-pub unsafe fn init(mem_map: &[MemoryRange]) {
+use super::types::PhysAddr;
+
+pub unsafe fn init(mem_map: &[MemoryRange], bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
     let mut usable_pages = 0;
 
     println!("\nfirmware memory map:");
@@ -24,12 +27,12 @@ pub unsafe fn init(mem_map: &[MemoryRange]) {
         usable_pages / 0x100
     );
 
-    let kernel_base = PhysFrameNum::new(0x104);
     let bootheap_range = largest_usable_range(
         mem_map,
         &[
             PhysFrameNum::new(0)..BOOTHEAP_BASE,
-            kernel_base..kernel_base + 0x100,
+            kimage::phys_base()..kimage::phys_base() + kimage::total_pages(),
+            bootinfo_paddr.containing_frame()..(bootinfo_paddr + bootinfo_size).containing_frame(),
         ],
     );
 
