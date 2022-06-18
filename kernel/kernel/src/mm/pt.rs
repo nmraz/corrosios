@@ -19,6 +19,10 @@ impl From<PageTableAllocError> for MapError {
     }
 }
 
+pub trait TranslatePhys {
+    fn translate(&self, phys: PhysFrameNum) -> VirtPageNum;
+}
+
 /// # Safety
 ///
 /// The implementation must ensure that it returns memory usable as a page table along with its true
@@ -27,13 +31,8 @@ pub unsafe trait PageTableAlloc {
     fn allocate(&mut self) -> Result<PhysFrameNum, PageTableAllocError>;
 }
 
-pub trait TranslatePhys {
-    fn translate(&self, phys: PhysFrameNum) -> VirtPageNum;
-}
-
 pub trait GatherInvalidations {
     fn add_tlb_flush(&mut self, vpn: VirtPageNum);
-    fn add_pt_dealloc(&mut self, pt: PhysFrameNum);
 }
 
 pub struct MappingPointer {
@@ -69,40 +68,48 @@ impl MappingPointer {
     }
 }
 
-pub struct Mapper<'a, A, T> {
-    root_pt: PhysFrameNum,
-    inner: MapperInner<'a, A, T>,
+pub struct PageTable<T> {
+    root: PhysFrameNum,
+    inner: PageTableInner<T>,
 }
 
-impl<'a, A: PageTableAlloc, T: TranslatePhys> Mapper<'a, A, T> {
+impl<T: TranslatePhys> PageTable<T> {
     /// # Safety
     ///
     /// The caller must guarantee that the provided table is correctly structured and that
     /// `translator` provides correct virtual page numbers for any queried physical pages.
-    pub unsafe fn new(root_pt: PhysFrameNum, alloc: &'a mut A, translator: T) -> Self {
+    pub unsafe fn new(root_pt: PhysFrameNum, translator: T) -> Self {
         Self {
-            root_pt,
-            inner: MapperInner::new(alloc, translator),
+            root: root_pt,
+            inner: PageTableInner::new(translator),
         }
     }
 
     pub fn map(
         &mut self,
+        alloc: &mut impl PageTableAlloc,
         pointer: &mut MappingPointer,
         phys_base: PhysFrameNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
-        self.inner
-            .map(self.root_pt, PT_LEVEL_COUNT - 1, pointer, phys_base, perms)
+        self.inner.map(
+            alloc,
+            pointer,
+            self.root,
+            PT_LEVEL_COUNT - 1,
+            phys_base,
+            perms,
+        )
     }
 
     pub fn unmap(
         &mut self,
-        pointer: &mut MappingPointer,
+        alloc: &mut impl PageTableAlloc,
         gather: &mut impl GatherInvalidations,
+        pointer: &mut MappingPointer,
     ) -> Result<(), PageTableAllocError> {
         self.inner
-            .unmap(self.root_pt, PT_LEVEL_COUNT - 1, pointer, gather)
+            .unmap(alloc, gather, pointer, self.root, PT_LEVEL_COUNT - 1)
     }
 }
 
@@ -111,30 +118,31 @@ enum NextTableError {
     LargePage(PageTableEntry),
 }
 
-struct MapperInner<'a, A, T> {
-    alloc: &'a mut A,
+struct PageTableInner<T> {
     translator: T,
 }
 
-impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
-    fn new(alloc: &'a mut A, translator: T) -> Self {
-        Self { alloc, translator }
+impl<T: TranslatePhys> PageTableInner<T> {
+    fn new(translator: T) -> Self {
+        Self { translator }
     }
 
     fn map(
         &mut self,
+        alloc: &mut impl PageTableAlloc,
+        pointer: &mut MappingPointer,
         table: PhysFrameNum,
         level: usize,
-        pointer: &mut MappingPointer,
         phys_base: PhysFrameNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
         walk_level(level, pointer, |pointer| {
             if mmu::supports_page_size(level) && can_use_level_page(level, pointer, phys_base) {
-                self.map_terminal(table, level, pointer, phys_base, perms)?;
+                self.map_terminal(pointer, table, level, phys_base, perms)?;
             } else {
-                let next = self.next_table_or_create(table, pointer.virt().pt_index(level))?;
-                self.map(next, level - 1, pointer, phys_base, perms)?;
+                let next =
+                    self.next_table_or_create(alloc, table, pointer.virt().pt_index(level))?;
+                self.map(alloc, pointer, next, level - 1, phys_base, perms)?;
             }
 
             Ok(())
@@ -143,14 +151,15 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
 
     fn unmap(
         &mut self,
+        alloc: &mut impl PageTableAlloc,
+        gather: &mut impl GatherInvalidations,
+        pointer: &mut MappingPointer,
         table: PhysFrameNum,
         level: usize,
-        pointer: &mut MappingPointer,
-        gather: &mut dyn GatherInvalidations,
     ) -> Result<(), PageTableAllocError> {
         walk_level(level, pointer, |pointer| {
             if level == 0 {
-                self.unmap_terminal(table, level, pointer, gather);
+                self.unmap_terminal(gather, pointer, table, level);
             } else {
                 let index = pointer.virt().pt_index(level);
                 let next = match self.next_table(table, index) {
@@ -162,7 +171,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
                         if aligned_for_level(pointer.virt().as_usize(), level)
                             && pointer.remaining_pages() >= page_count
                         {
-                            self.unmap_terminal(table, level, pointer, gather);
+                            self.unmap_terminal(gather, pointer, table, level);
                             return Ok(());
                         } else {
                             todo!("Split large page")
@@ -175,17 +184,16 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
                     }
                 };
 
-                self.unmap(next, level - 1, pointer, gather)?;
+                self.unmap(alloc, gather, pointer, next, level - 1)?;
             }
 
             Ok(())
         })
-
-        // TODO: free table if possible
     }
 
     fn next_table_or_create(
         &mut self,
+        alloc: &mut impl PageTableAlloc,
         table: PhysFrameNum,
         index: usize,
     ) -> Result<PhysFrameNum, MapError> {
@@ -200,7 +208,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
             Err(NextTableError::NotPresent) => {}
         };
 
-        let new_table = self.alloc.allocate()?;
+        let new_table = alloc.allocate()?;
         self.set(
             table,
             index,
@@ -230,10 +238,10 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
     }
 
     fn map_terminal(
-        &self,
+        &mut self,
+        pointer: &mut MappingPointer,
         table: PhysFrameNum,
         level: usize,
-        pointer: &mut MappingPointer,
         phys_base: PhysFrameNum,
         perms: PageTablePerms,
     ) -> Result<(), MapError> {
@@ -264,11 +272,11 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
     }
 
     fn unmap_terminal(
-        &self,
+        &mut self,
+        gather: &mut impl GatherInvalidations,
+        pointer: &mut MappingPointer,
         table: PhysFrameNum,
         level: usize,
-        pointer: &mut MappingPointer,
-        gather: &mut dyn GatherInvalidations,
     ) {
         self.set(
             table,
@@ -284,7 +292,7 @@ impl<'a, A: PageTableAlloc, T: TranslatePhys> MapperInner<'a, A, T> {
         unsafe { entry_ptr.read() }
     }
 
-    fn set(&self, table: PhysFrameNum, index: usize, entry: PageTableEntry) {
+    fn set(&mut self, table: PhysFrameNum, index: usize, entry: PageTableEntry) {
         let entry_ptr = self.entry(table, index);
         unsafe {
             entry_ptr.write_volatile(entry);

@@ -1,21 +1,20 @@
 use crate::arch::mmu::PageTableSpace;
-use crate::kimage;
+use crate::{arch, kimage};
 
-use super::pt::{GatherInvalidations, Mapper, PageTableAlloc, PageTableAllocError, TranslatePhys};
+use super::pt::{
+    GatherInvalidations, PageTable, PageTableAlloc, PageTableAllocError, TranslatePhys,
+};
 use super::types::{PhysFrameNum, VirtAddr, VirtPageNum};
 
-pub type EarlyMapper<'a> = Mapper<'a, BumpPageTableAlloc, KernelPfnTranslator>;
+pub type EarlyPageTable = PageTable<KernelPfnTranslator>;
 
 /// # Safety
 ///
-/// The provided root table must be correctly structured, and all referenced/allocated page tables
-/// must lie in the kernel image.
-pub unsafe fn make_early_mapper(
-    root_pt: PhysFrameNum,
-    alloc: &mut BumpPageTableAlloc,
-) -> EarlyMapper<'_> {
+/// All page tables referenced by the kernel root page table must lie in the kernel image for the
+/// duration of this object's lifetime.
+pub unsafe fn get_early_page_table() -> EarlyPageTable {
     // Safety: function contract
-    unsafe { EarlyMapper::new(root_pt, alloc, KernelPfnTranslator) }
+    unsafe { EarlyPageTable::new(arch::mmu::kernel_pt_root(), KernelPfnTranslator) }
 }
 
 pub struct BumpPageTableAlloc {
@@ -54,7 +53,6 @@ pub struct NoopGather;
 
 impl GatherInvalidations for NoopGather {
     fn add_tlb_flush(&mut self, _vpn: VirtPageNum) {}
-    fn add_pt_dealloc(&mut self, _pt: PhysFrameNum) {}
 }
 
 pub struct KernelPfnTranslator;

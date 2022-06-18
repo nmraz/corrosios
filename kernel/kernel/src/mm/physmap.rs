@@ -2,11 +2,10 @@ use bootinfo::item::{MemoryKind, MemoryRange};
 use bootinfo::view::View;
 use bootinfo::{ItemHeader, ItemKind};
 
-use crate::arch;
 use crate::arch::kernel_vmspace::{PHYS_MAP_BASE, PHYS_MAP_PAGES, PHYS_MAP_PT_PAGES};
 use crate::arch::mmu::{PageTableSpace, PAGE_SIZE};
 
-use super::earlymap::{self, BumpPageTableAlloc, EarlyMapper, NoopGather};
+use super::earlymap::{self, BumpPageTableAlloc, EarlyPageTable, NoopGather};
 use super::pt::MappingPointer;
 use super::types::{PageTablePerms, PhysAddr, PhysFrameNum, VirtAddr, VirtPageNum};
 use super::utils::div_ceil;
@@ -25,16 +24,15 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr) {
     let mut alloc = BumpPageTableAlloc::from_kernel_space(&PHYS_MAP_PT_SPACE);
 
     // Safety: function contract
-    let mut mapper =
-        unsafe { earlymap::make_early_mapper(arch::mmu::kernel_pt_root(), &mut alloc) };
+    let mut pt = unsafe { earlymap::get_early_page_table() };
 
     let view_size = {
-        let view = unsafe { ident_map_bootinfo(&mut mapper, bootinfo_paddr) };
-        init_inner(&mut mapper, view);
+        let view = unsafe { ident_map_bootinfo(&mut pt, &mut alloc, bootinfo_paddr) };
+        init_inner(&mut pt, &mut alloc, view);
         view.total_size()
     };
 
-    unsafe { ident_unmap_bootinfo(&mut mapper, bootinfo_paddr, view_size) };
+    unsafe { ident_unmap_bootinfo(&mut pt, &mut alloc, bootinfo_paddr, view_size) };
 }
 
 pub fn paddr_to_physmap(paddr: PhysAddr) -> VirtAddr {
@@ -45,7 +43,7 @@ pub fn pfn_to_physmap(pfn: PhysFrameNum) -> VirtPageNum {
     PHYS_MAP_BASE + pfn.as_usize()
 }
 
-fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
+fn init_inner(pt: &mut EarlyPageTable, alloc: &mut BumpPageTableAlloc, bootinfo: View<'_>) {
     let mem_map = get_mem_map(bootinfo);
 
     // Note: the bootloader is responsible for sorting/coalescing the memory map
@@ -68,13 +66,13 @@ fn init_inner(mapper: &mut EarlyMapper<'_>, bootinfo: View<'_>) {
         let pfn = PhysFrameNum::new(range.start_page);
         let mut pointer = MappingPointer::new(pfn_to_physmap(pfn), range.page_count);
 
-        mapper
-            .map(
-                &mut pointer,
-                pfn,
-                PageTablePerms::READ | PageTablePerms::WRITE,
-            )
-            .expect("failed to map physmap region");
+        pt.map(
+            alloc,
+            &mut pointer,
+            pfn,
+            PageTablePerms::READ | PageTablePerms::WRITE,
+        )
+        .expect("failed to map physmap region");
     }
 }
 
@@ -89,7 +87,8 @@ fn get_mem_map(bootinfo: View<'_>) -> &[MemoryRange] {
 }
 
 unsafe fn ident_map_bootinfo(
-    mapper: &mut EarlyMapper<'_>,
+    pt: &mut EarlyPageTable,
+    alloc: &mut BumpPageTableAlloc,
     bootinfo_paddr: PhysAddr,
 ) -> View<'static> {
     let pfn = bootinfo_paddr.containing_frame();
@@ -98,8 +97,7 @@ unsafe fn ident_map_bootinfo(
     let header = bootinfo_paddr.as_usize() as *const ItemHeader;
 
     let mut pointer = MappingPointer::new(vpn, 1);
-    mapper
-        .map(&mut pointer, pfn, PageTablePerms::READ)
+    pt.map(alloc, &mut pointer, pfn, PageTablePerms::READ)
         .expect("failed to map initial bootinfo page");
 
     let view = unsafe { View::new(header) }.expect("invalid bootinfo");
@@ -107,23 +105,22 @@ unsafe fn ident_map_bootinfo(
 
     pointer = MappingPointer::new(vpn, view_pages);
     pointer.advance(1); // Skip first mapped page
-    mapper
-        .map(&mut pointer, pfn, PageTablePerms::READ)
+    pt.map(alloc, &mut pointer, pfn, PageTablePerms::READ)
         .expect("failed to map full bootinfo");
 
     view
 }
 
 unsafe fn ident_unmap_bootinfo(
-    mapper: &mut EarlyMapper<'_>,
+    pt: &mut EarlyPageTable,
+    alloc: &mut BumpPageTableAlloc,
     bootinfo_paddr: PhysAddr,
     view_size: usize,
 ) {
     let vpn = VirtPageNum::new(bootinfo_paddr.containing_frame().as_usize());
     let pages = div_ceil(view_size, PAGE_SIZE);
 
-    mapper
-        .unmap(&mut MappingPointer::new(vpn, pages), &mut NoopGather)
+    pt.unmap(alloc, &mut NoopGather, &mut MappingPointer::new(vpn, pages))
         .expect("failed to unmap early bootinfo");
 
     // TODO: TLB flush
