@@ -12,7 +12,7 @@ pub fn init_install() {
 }
 
 pub fn init() {
-    set_divisor(3);
+    set_divisor(1);
     set_line_control(LineControlFlags::WORD_LENGTH_8);
     set_fifo_control(0);
     unsafe { set_interrupt_enable(0) };
