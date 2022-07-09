@@ -1,9 +1,10 @@
+use core::arch::asm;
 use core::fmt;
 use core::sync::atomic::AtomicU64;
 
 use bitflags::bitflags;
 
-use crate::mm::types::{PageTableFlags, PageTablePerms, PhysFrameNum};
+use crate::mm::types::{PageTableFlags, PageTablePerms, PhysFrameNum, VirtPageNum};
 
 pub const PAGE_SHIFT: usize = 12;
 pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
@@ -18,6 +19,14 @@ const PADDR_MASK: u64 = (1u64 << 52) - 1;
 
 pub fn supports_page_size(level: usize) -> bool {
     matches!(level, 0 | 1)
+}
+
+pub fn flush_tlb() {
+    let old_cr3: u64;
+    unsafe {
+        asm!("mov {}, cr3", out(reg) old_cr3);
+        asm!("mov cr3, {}", in(reg) old_cr3);
+    }
 }
 
 #[derive(Clone, Copy)]

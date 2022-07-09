@@ -3,7 +3,7 @@ use bootinfo::view::View;
 use bootinfo::{ItemHeader, ItemKind};
 
 use crate::arch::kernel_vmspace::{PHYS_MAP_BASE, PHYS_MAP_PAGES, PHYS_MAP_PT_PAGES};
-use crate::arch::mmu::{PageTableSpace, PAGE_SIZE};
+use crate::arch::mmu::{flush_tlb, PageTableSpace, PAGE_SIZE};
 
 use super::earlymap::{self, BumpPageTableAlloc, EarlyPageTable, NoopGather};
 use super::pt::MappingPointer;
@@ -123,5 +123,5 @@ unsafe fn ident_unmap_bootinfo(
     pt.unmap(alloc, &mut NoopGather, &mut MappingPointer::new(vpn, pages))
         .expect("failed to unmap early bootinfo");
 
-    // TODO: TLB flush
+    flush_tlb();
 }
