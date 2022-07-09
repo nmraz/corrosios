@@ -4,7 +4,7 @@ use core::sync::atomic::AtomicU64;
 
 use bitflags::bitflags;
 
-use crate::mm::types::{PageTableFlags, PageTablePerms, PhysFrameNum, VirtPageNum};
+use crate::mm::types::{PageTableFlags, PageTablePerms, PhysFrameNum};
 
 pub const PAGE_SHIFT: usize = 12;
 pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
