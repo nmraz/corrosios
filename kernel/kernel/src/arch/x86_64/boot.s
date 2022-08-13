@@ -149,9 +149,19 @@ boot_main:
 
     lgdt [rip + early_gdtr]
 
+    # Bootdata physical address
     mov rsi, rdi
+
+    # Kernel physical address
     mov rdi, r8
-    boottext_pt_index rdx, 3
+
+    # Bootdata size
+    mov edx, [rsi + 4]
+    # Account for container header
+    add edx, 8
+
+    # Top-level page table index of boot code
+    boottext_pt_index rcx, 3
 
     push {KERNEL_CS_SELECTOR}
     lea rax, [high_entry]
@@ -167,7 +177,8 @@ high_entry:
     # Parameters:
     # 1 (rdi) - Kernel physical address
     # 2 (rsi) - Bootdata physical address
-    # 3 (rdx) - Level-3 page table index of early boot code mapping
+    # 3 (rdx) - Bootdata size
+    # 4 (rcx) - Top-level page table index of early boot code mapping
 
     xor eax, eax
     mov ss, ax
@@ -177,7 +188,7 @@ high_entry:
     mov gs, ax
 
     # Remove boot code mapping
-    mov qword ptr [KERNEL_PML4 + 8 * rdx], 0
+    mov qword ptr [KERNEL_PML4 + 8 * rcx], 0
 
     # Flush TLB
     mov rax, cr3
@@ -185,7 +196,7 @@ high_entry:
 
     lea rsp, [boot_stack_top]
 
-    # NOTE: parameters 1 and 2 carry over into `kernel_main`. We perform a
+    # NOTE: parameters 1, 2 and 3 carry over into `kernel_main`. We perform a
     # `call` here to ensure that `rsp - 8` is 16-byte aligned upon function
     # entry, as mandated by the ABI.
     call kernel_main

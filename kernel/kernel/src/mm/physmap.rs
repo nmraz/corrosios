@@ -21,18 +21,18 @@ static PHYS_MAP_PT_SPACE: [PageTableSpace; PHYS_MAP_PT_PAGES + BOOTINFO_PT_PAGES
 /// * The kernel root page table should refer only to page tables allocated from within the kernel
 /// image
 pub unsafe fn init(bootinfo_paddr: PhysAddr) {
-    let mut alloc = BumpPageTableAlloc::from_kernel_space(&PHYS_MAP_PT_SPACE);
+    // let mut alloc = BumpPageTableAlloc::from_kernel_space(&PHYS_MAP_PT_SPACE);
 
-    // Safety: function contract
-    let mut pt = unsafe { earlymap::get_early_page_table() };
+    // // Safety: function contract
+    // let mut pt = unsafe { earlymap::get_early_page_table() };
 
-    let view_size = {
-        let view = unsafe { ident_map_bootinfo(&mut pt, &mut alloc, bootinfo_paddr) };
-        init_inner(&mut pt, &mut alloc, view);
-        view.total_size()
-    };
+    // let view_size = {
+    //     let view = unsafe { ident_map_bootinfo(&mut pt, &mut alloc, bootinfo_paddr) };
+    //     init_inner(&mut pt, &mut alloc, view);
+    //     view.total_size()
+    // };
 
-    unsafe { ident_unmap_bootinfo(&mut pt, &mut alloc, bootinfo_paddr, view_size) };
+    // unsafe { ident_unmap_bootinfo(&mut pt, &mut alloc, bootinfo_paddr, view_size) };
 }
 
 pub fn paddr_to_physmap(paddr: PhysAddr) -> VirtAddr {

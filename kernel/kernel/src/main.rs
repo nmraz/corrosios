@@ -20,7 +20,11 @@ mod panic;
 mod sync;
 
 #[no_mangle]
-extern "C" fn kernel_main(kernel_paddr: PhysAddr, bootinfo_paddr: PhysAddr) -> ! {
+extern "C" fn kernel_main(
+    kernel_paddr: PhysAddr,
+    bootinfo_paddr: PhysAddr,
+    bootinfo_size: usize,
+) -> ! {
     arch::earlyconsole::init_install();
 
     unsafe {
@@ -35,9 +39,13 @@ extern "C" fn kernel_main(kernel_paddr: PhysAddr, bootinfo_paddr: PhysAddr) -> !
         kimage::virt_end().addr()
     );
 
+    println!("bootinfo at {}, size {:#x}", bootinfo_paddr, bootinfo_size);
+
     unsafe {
         physmap::init(bootinfo_paddr);
     }
+
+    todo!();
 
     let bootinfo = unsafe { View::new(paddr_to_physmap(bootinfo_paddr).as_ptr()) }.unwrap();
 

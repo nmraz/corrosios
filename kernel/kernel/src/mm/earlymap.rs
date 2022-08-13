@@ -1,10 +1,13 @@
-use crate::arch::mmu::PageTableSpace;
+use arrayvec::ArrayVec;
+
+use crate::arch::mmu::{flush_tlb, PageTableSpace};
 use crate::{arch, kimage};
 
 use super::pt::{
-    GatherInvalidations, PageTable, PageTableAlloc, PageTableAllocError, TranslatePhys,
+    GatherInvalidations, MappingPointer, PageTable, PageTableAlloc, PageTableAllocError,
+    TranslatePhys,
 };
-use super::types::{PhysFrameNum, VirtAddr, VirtPageNum};
+use super::types::{PageTablePerms, PhysFrameNum, VirtAddr, VirtPageNum};
 
 pub type EarlyPageTable = PageTable<KernelPfnTranslator>;
 
@@ -17,23 +20,72 @@ pub unsafe fn get_early_page_table() -> EarlyPageTable {
     unsafe { EarlyPageTable::new(arch::mmu::kernel_pt_root(), KernelPfnTranslator) }
 }
 
+pub unsafe fn get_early_mapper() -> EarlyMapper {
+    let addr = VirtAddr::from_ptr(EARLY_MAP_PTS.as_ptr());
+    let start = kimage::pfn_from_kernel_vpn(addr.containing_page());
+    let alloc = BumpPageTableAlloc {
+        cur: start,
+        end: start + EARLY_MAP_PTS.len(),
+    };
+
+    let pt = unsafe { EarlyPageTable::new(arch::mmu::kernel_pt_root(), KernelPfnTranslator) };
+
+    EarlyMapper {
+        slots: ArrayVec::new(),
+        pt,
+        alloc,
+    }
+}
+
+const EARLY_MAP_MAX_SLOTS: usize = 5;
+const EARLY_MAP_PT_PAGES: usize = 10;
+
+static EARLY_MAP_PTS: [PageTableSpace; EARLY_MAP_PT_PAGES] =
+    [PageTableSpace::NEW; EARLY_MAP_PT_PAGES];
+
+pub struct EarlyMapper {
+    slots: ArrayVec<EarlyMapperSlot, EARLY_MAP_MAX_SLOTS>,
+    pt: PageTable<KernelPfnTranslator>,
+    alloc: BumpPageTableAlloc,
+}
+
+impl EarlyMapper {
+    pub fn map(&mut self, base: PhysFrameNum, pages: usize) {
+        self.pt
+            .map(
+                &mut self.alloc,
+                &mut MappingPointer::new(VirtPageNum::new(base.as_usize()), pages),
+                base,
+                PageTablePerms::READ | PageTablePerms::WRITE,
+            )
+            .expect("early map failed");
+    }
+}
+
+impl Drop for EarlyMapper {
+    fn drop(&mut self) {
+        for slot in &self.slots {
+            self.pt
+                .unmap(
+                    &mut self.alloc,
+                    &mut NoopGather,
+                    &mut MappingPointer::new(VirtPageNum::new(slot.base.as_usize()), slot.pages),
+                )
+                .expect("early unmap failed");
+        }
+
+        flush_tlb();
+    }
+}
+
+struct EarlyMapperSlot {
+    base: PhysFrameNum,
+    pages: usize,
+}
+
 pub struct BumpPageTableAlloc {
     cur: PhysFrameNum,
     end: PhysFrameNum,
-}
-
-impl BumpPageTableAlloc {
-    pub fn from_kernel_space(space: &'static [PageTableSpace]) -> Self {
-        let addr = VirtAddr::from_ptr(space.as_ptr());
-
-        let start = kimage::pfn_from_kernel_vpn(addr.containing_page());
-        let pages = space.len();
-
-        Self {
-            cur: start,
-            end: start + pages,
-        }
-    }
 }
 
 unsafe impl PageTableAlloc for BumpPageTableAlloc {
