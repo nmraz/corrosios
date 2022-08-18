@@ -4,12 +4,7 @@
 #![no_main]
 
 use arch::cpu;
-use bootinfo::view::View;
-use bootinfo::ItemKind;
-use mm::physmap;
 use mm::types::PhysAddr;
-
-use crate::mm::physmap::paddr_to_physmap;
 
 mod arch;
 #[macro_use]
@@ -41,23 +36,7 @@ extern "C" fn kernel_main(
 
     println!("bootinfo at {}, size {:#x}", bootinfo_paddr, bootinfo_size);
 
-    unsafe {
-        physmap::init(bootinfo_paddr);
-    }
-
-    todo!();
-
-    let bootinfo = unsafe { View::new(paddr_to_physmap(bootinfo_paddr).as_ptr()) }.unwrap();
-
-    let mem_map_view = bootinfo
-        .items()
-        .find(|item| item.kind() == ItemKind::MEMORY_MAP)
-        .unwrap();
-    let mem_map = unsafe { mem_map_view.get_slice() }.unwrap();
-
-    unsafe {
-        mm::pmm::init(mem_map, bootinfo_paddr, bootinfo.total_size());
-    }
+    unsafe { mm::init(bootinfo_paddr, bootinfo_size) };
 
     cpu::halt();
 }

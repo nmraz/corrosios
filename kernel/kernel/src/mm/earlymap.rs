@@ -9,17 +9,9 @@ use super::pt::{
 };
 use super::types::{PageTablePerms, PhysFrameNum, VirtAddr, VirtPageNum};
 
-pub type EarlyPageTable = PageTable<KernelPfnTranslator>;
-
 /// # Safety
 ///
-/// All page tables referenced by the kernel root page table must lie in the kernel image for the
-/// duration of this object's lifetime.
-pub unsafe fn get_early_page_table() -> EarlyPageTable {
-    // Safety: function contract
-    unsafe { EarlyPageTable::new(arch::mmu::kernel_pt_root(), KernelPfnTranslator) }
-}
-
+/// * This function must be called only once during initialization
 pub unsafe fn get_early_mapper() -> EarlyMapper {
     let addr = VirtAddr::from_ptr(EARLY_MAP_PTS.as_ptr());
     let start = kimage::pfn_from_kernel_vpn(addr.containing_page());
@@ -28,7 +20,7 @@ pub unsafe fn get_early_mapper() -> EarlyMapper {
         end: start + EARLY_MAP_PTS.len(),
     };
 
-    let pt = unsafe { EarlyPageTable::new(arch::mmu::kernel_pt_root(), KernelPfnTranslator) };
+    let pt = unsafe { PageTable::new(arch::mmu::kernel_pt_root(), KernelPfnTranslator) };
 
     EarlyMapper {
         slots: ArrayVec::new(),
@@ -50,15 +42,17 @@ pub struct EarlyMapper {
 }
 
 impl EarlyMapper {
-    pub fn map(&mut self, base: PhysFrameNum, pages: usize) {
+    pub fn map(&mut self, base: PhysFrameNum, pages: usize) -> VirtPageNum {
+        let virt = VirtPageNum::new(base.as_usize());
         self.pt
             .map(
                 &mut self.alloc,
-                &mut MappingPointer::new(VirtPageNum::new(base.as_usize()), pages),
+                &mut MappingPointer::new(virt, pages),
                 base,
                 PageTablePerms::READ | PageTablePerms::WRITE,
             )
             .expect("early map failed");
+        virt
     }
 }
 
