@@ -19,6 +19,8 @@ use super::utils::div_ceil;
 /// # Safety
 ///
 /// * This function must be called only once during initialization
+/// * The physical address range passed in `bootinfo_paddr` and `bootinfo_size` must contain a valid
+///   bootinfo structure
 pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
     // Safety: function contract
     let mut mapper = unsafe { earlymap::get_early_mapper() };
@@ -29,7 +31,7 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
         .addr()
         .as_ptr();
 
-    // Safety: the bootinfo has now been identity mapped
+    // Safety: the bootinfo has now been identity mapped and is valid by the function contract
     let bootinfo_view = unsafe { View::new(bootinfo_ptr) }.expect("bad bootinfo");
     let mem_map = get_mem_map(bootinfo_view);
 
