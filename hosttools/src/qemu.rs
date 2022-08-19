@@ -42,7 +42,7 @@ pub fn run_qemu(sh: &Shell, opts: &QemuOptions<'_>) -> Result<()> {
 
     cmd!(
         sh,
-        "qemu-system-x86_64 -accel kvm -m 1G -drive {uefi_flash} -drive {uefi_vars} -drive {disk} {extra_args...}"
+        "qemu-system-x86_64 -m 1G -drive {uefi_flash} -drive {uefi_vars} -drive {disk} {extra_args...}"
     )
     .run()
     .context("failed to start QEMU")
