@@ -1,7 +1,7 @@
 use bootinfo::item::{MemoryKind, MemoryRange};
 
 use crate::arch;
-use crate::arch::kernel_vmspace::{PHYS_MAP_BASE, PHYS_MAP_PAGES};
+use crate::arch::kernel_vmspace::{PHYS_MAP_BASE, PHYS_MAP_MAX_PAGES};
 
 use super::pt::{MappingPointer, PageTable, PageTableAlloc, TranslatePhys};
 use super::types::{PageTablePerms, PhysAddr, PhysFrameNum, VirtAddr, VirtPageNum};
@@ -36,7 +36,7 @@ pub unsafe fn init(
         );
 
         assert!(
-            range.start_page + range.page_count < PHYS_MAP_PAGES,
+            range.start_page + range.page_count < PHYS_MAP_MAX_PAGES,
             "too much physical memory"
         );
 
