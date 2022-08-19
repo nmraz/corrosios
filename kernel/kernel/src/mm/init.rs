@@ -9,6 +9,7 @@ use crate::arch::mmu::PAGE_SIZE;
 use crate::arch::pmm::{BOOTHEAP_BASE, BOOTHEAP_EARLYMAP_MAX_PAGES};
 use crate::kimage;
 use crate::mm::bootheap::BootHeap;
+use crate::mm::earlymap::EarlyMapPfnTranslator;
 use crate::mm::physmap;
 
 use super::earlymap;
@@ -61,13 +62,14 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
         bootheap_earlymap_pages
     );
 
-    mapper.map(bootheap_range.start, bootheap_earlymap_pages);
-
     unsafe {
+        mapper.map(bootheap_range.start, bootheap_earlymap_pages);
         physmap::init(
             mem_map,
             &mut bootheap,
-            bootheap_range.start..bootheap_range.start + bootheap_earlymap_pages,
+            EarlyMapPfnTranslator::new(
+                bootheap_range.start..bootheap_range.start + bootheap_earlymap_pages,
+            ),
         );
     }
 

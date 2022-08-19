@@ -1,3 +1,5 @@
+use core::ops::Range;
+
 use arrayvec::ArrayVec;
 
 use crate::arch::mmu::{flush_tlb, PageTableSpace};
@@ -9,9 +11,38 @@ use super::pt::{
 };
 use super::types::{PageTablePerms, PhysFrameNum, VirtAddr, VirtPageNum};
 
+const EARLY_MAP_MAX_SLOTS: usize = 5;
+const EARLY_MAP_PT_PAGES: usize = 10;
+
+static EARLY_MAP_PTS: [PageTableSpace; EARLY_MAP_PT_PAGES] =
+    [PageTableSpace::NEW; EARLY_MAP_PT_PAGES];
+
+pub struct EarlyMapPfnTranslator(Range<PhysFrameNum>);
+
+impl EarlyMapPfnTranslator {
+    pub fn new(phys_range: Range<PhysFrameNum>) -> Self {
+        Self(phys_range)
+    }
+}
+
+impl TranslatePhys for EarlyMapPfnTranslator {
+    fn translate(&self, phys: PhysFrameNum) -> VirtPageNum {
+        if kimage::contains_phys(phys) {
+            return kimage::vpn_from_kernel_pfn(phys);
+        }
+
+        assert!(
+            self.0.contains(&phys),
+            "page not covered by early identity map"
+        );
+        VirtPageNum::new(phys.as_usize())
+    }
+}
+
 /// # Safety
 ///
-/// * This function must be called only once during initialization
+/// * This function must be called only once during initialization on the BSP
+/// * The returned object must be accessed only on the BSP
 pub unsafe fn get_early_mapper() -> EarlyMapper {
     let addr = VirtAddr::from_ptr(EARLY_MAP_PTS.as_ptr());
     let start = kimage::pfn_from_kernel_vpn(addr.containing_page());
@@ -29,12 +60,6 @@ pub unsafe fn get_early_mapper() -> EarlyMapper {
     }
 }
 
-const EARLY_MAP_MAX_SLOTS: usize = 5;
-const EARLY_MAP_PT_PAGES: usize = 10;
-
-static EARLY_MAP_PTS: [PageTableSpace; EARLY_MAP_PT_PAGES] =
-    [PageTableSpace::NEW; EARLY_MAP_PT_PAGES];
-
 pub struct EarlyMapper {
     slots: ArrayVec<EarlyMapperSlot, EARLY_MAP_MAX_SLOTS>,
     pt: PageTable<KernelPfnTranslator>,
@@ -44,14 +69,20 @@ pub struct EarlyMapper {
 impl EarlyMapper {
     pub fn map(&mut self, base: PhysFrameNum, pages: usize) -> VirtPageNum {
         let virt = VirtPageNum::new(base.as_usize());
-        self.pt
-            .map(
-                &mut self.alloc,
-                &mut MappingPointer::new(virt, pages),
-                base,
-                PageTablePerms::READ | PageTablePerms::WRITE,
-            )
-            .expect("early map failed");
+
+        // Safety: our allocator allocates directly out of the kernel image, and we are guaranteed
+        // not to reuse existing allocations by the safety contract of `get_early_mapper`.
+        unsafe {
+            self.pt
+                .map(
+                    &mut self.alloc,
+                    &mut MappingPointer::new(virt, pages),
+                    base,
+                    PageTablePerms::READ | PageTablePerms::WRITE,
+                )
+                .expect("early map failed");
+        }
+
         virt
     }
 }
@@ -59,13 +90,20 @@ impl EarlyMapper {
 impl Drop for EarlyMapper {
     fn drop(&mut self) {
         for slot in &self.slots {
-            self.pt
-                .unmap(
-                    &mut self.alloc,
-                    &mut NoopGather,
-                    &mut MappingPointer::new(VirtPageNum::new(slot.base.as_usize()), slot.pages),
-                )
-                .expect("early unmap failed");
+            // Safety: we should have exclusive access to the page tables at this point
+            // (single-core), our callers need unsafe to access the mapped pages anyway.
+            unsafe {
+                self.pt
+                    .unmap(
+                        &mut self.alloc,
+                        &mut NoopGather,
+                        &mut MappingPointer::new(
+                            VirtPageNum::new(slot.base.as_usize()),
+                            slot.pages,
+                        ),
+                    )
+                    .expect("early unmap failed");
+            }
         }
 
         flush_tlb();
@@ -77,12 +115,12 @@ struct EarlyMapperSlot {
     pages: usize,
 }
 
-pub struct BumpPageTableAlloc {
+struct BumpPageTableAlloc {
     cur: PhysFrameNum,
     end: PhysFrameNum,
 }
 
-unsafe impl PageTableAlloc for BumpPageTableAlloc {
+impl PageTableAlloc for BumpPageTableAlloc {
     fn allocate(&mut self) -> Result<PhysFrameNum, PageTableAllocError> {
         if self.cur >= self.end {
             return Err(PageTableAllocError);

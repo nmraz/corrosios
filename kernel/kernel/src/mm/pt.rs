@@ -23,11 +23,7 @@ pub trait TranslatePhys {
     fn translate(&self, phys: PhysFrameNum) -> VirtPageNum;
 }
 
-/// # Safety
-///
-/// The implementation must ensure that it returns memory usable as a page table along with its true
-/// physical address.
-pub unsafe trait PageTableAlloc {
+pub trait PageTableAlloc {
     fn allocate(&mut self) -> Result<PhysFrameNum, PageTableAllocError>;
 }
 
@@ -77,7 +73,7 @@ impl<T: TranslatePhys> PageTable<T> {
     /// # Safety
     ///
     /// The caller must guarantee that the provided table is correctly structured and that
-    /// `translator` provides correct virtual page numbers for any queried physical pages.
+    /// `translator` provides correct virtual page numbers for any queried physical frames.
     pub unsafe fn new(root_pt: PhysFrameNum, translator: T) -> Self {
         Self {
             root: root_pt,
@@ -85,7 +81,12 @@ impl<T: TranslatePhys> PageTable<T> {
         }
     }
 
-    pub fn map(
+    /// # Safety
+    ///
+    /// * The page table must not be accessed concurrently by other cores/interrupts during the
+    ///   mapping
+    /// * The provided allocator must return physical frames usable as page tables
+    pub unsafe fn map(
         &mut self,
         alloc: &mut impl PageTableAlloc,
         pointer: &mut MappingPointer,
@@ -102,7 +103,14 @@ impl<T: TranslatePhys> PageTable<T> {
         )
     }
 
-    pub fn unmap(
+    /// # Safety
+    ///
+    /// * The page table must not be accessed concurrently by other cores/interrupts during the
+    ///   unmapping
+    /// * The provided allocator must return physical frames usable as page tables
+    /// * Any cores on which the page table is active must not access the virtual addresses unmapped
+    ///   by the call
+    pub unsafe fn unmap(
         &mut self,
         alloc: &mut impl PageTableAlloc,
         gather: &mut impl GatherInvalidations,

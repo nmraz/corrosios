@@ -3,7 +3,6 @@ use core::ops::Range;
 
 use crate::arch::mmu::PageTableSpace;
 
-use super::physmap::paddr_to_physmap;
 use super::pt::{PageTableAlloc, PageTableAllocError};
 use super::types::{PhysAddr, PhysFrameNum};
 
@@ -26,10 +25,6 @@ impl BootHeap {
         self.base..self.cur
     }
 
-    pub fn alloc(&mut self, layout: Layout) -> *mut u8 {
-        paddr_to_physmap(self.alloc_phys(layout)).as_mut_ptr()
-    }
-
     pub fn alloc_phys(&mut self, layout: Layout) -> PhysAddr {
         let base = self.cur.align_up(layout.align());
         if base > self.end || layout.size() > self.end - base {
@@ -41,7 +36,7 @@ impl BootHeap {
     }
 }
 
-unsafe impl PageTableAlloc for BootHeap {
+impl PageTableAlloc for BootHeap {
     fn allocate(&mut self) -> Result<PhysFrameNum, PageTableAllocError> {
         Ok(self
             .alloc_phys(Layout::new::<PageTableSpace>())
