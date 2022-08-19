@@ -46,6 +46,8 @@ pub fn create_disk_image(sh: &Shell, build_args: &[String]) -> Result<PathBuf> {
     format_efi_partition(efi_part_data, &kernel_path, &bootloader_path)
         .context("failed to write EFI system partition")?;
 
+    println!("Created UEFI image: {}", image_path.display());
+
     Ok(image_path)
 }
 

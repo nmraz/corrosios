@@ -94,8 +94,7 @@ fn main() -> Result<()> {
     match &args.command {
         Command::Cross(cross) => cross_run_all(&sh, &cross.subcommand, &cross.additional_args),
         Command::Image(image) => {
-            let image_path = create_disk_image(&sh, &image.additional_build_args)?;
-            println!("Created UEFI image: {}", image_path.display());
+            create_disk_image(&sh, &image.additional_build_args)?;
             Ok(())
         }
 
