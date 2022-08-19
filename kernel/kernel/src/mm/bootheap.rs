@@ -1,10 +1,11 @@
 use core::alloc::Layout;
-use core::mem::MaybeUninit;
 use core::ops::Range;
-use core::slice;
+
+use crate::arch::mmu::PageTableSpace;
 
 use super::physmap::paddr_to_physmap;
-use super::types::PhysAddr;
+use super::pt::{PageTableAlloc, PageTableAllocError};
+use super::types::{PhysAddr, PhysFrameNum};
 
 pub struct BootHeap {
     base: PhysAddr,
@@ -18,16 +19,6 @@ impl BootHeap {
             base: range.start,
             cur: range.start,
             end: range.end,
-        }
-    }
-
-    pub fn alloc_slice<T>(&mut self, count: usize) -> &'static mut [MaybeUninit<T>] {
-        unsafe {
-            slice::from_raw_parts_mut(
-                self.alloc(Layout::array::<T>(count).expect("bootheap allocation too large"))
-                    .cast(),
-                count,
-            )
         }
     }
 
@@ -47,5 +38,13 @@ impl BootHeap {
 
         self.cur = base + layout.size();
         base
+    }
+}
+
+unsafe impl PageTableAlloc for BootHeap {
+    fn allocate(&mut self) -> Result<PhysFrameNum, PageTableAllocError> {
+        Ok(self
+            .alloc_phys(Layout::new::<PageTableSpace>())
+            .containing_frame())
     }
 }

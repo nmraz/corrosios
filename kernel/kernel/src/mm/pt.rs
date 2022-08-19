@@ -209,6 +209,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         };
 
         let new_table = alloc.allocate()?;
+        self.clear_table(new_table);
         self.set(
             table,
             index,
@@ -290,6 +291,15 @@ impl<T: TranslatePhys> PageTableInner<T> {
     fn get(&self, table: PhysFrameNum, index: usize) -> PageTableEntry {
         let entry_ptr = self.entry(table, index);
         unsafe { entry_ptr.read() }
+    }
+
+    fn clear_table(&mut self, table: PhysFrameNum) {
+        let table_virt: *mut PageTableEntry = self.translator.translate(table).addr().as_mut_ptr();
+        unsafe {
+            for i in 0..PT_ENTRY_COUNT {
+                table_virt.add(i).write(PageTableEntry::empty());
+            }
+        }
     }
 
     fn set(&mut self, table: PhysFrameNum, index: usize, entry: PageTableEntry) {

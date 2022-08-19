@@ -91,17 +91,19 @@ unsafe impl PageTableAlloc for BumpPageTableAlloc {
         let ret = self.cur;
         self.cur += 1;
 
+        println!("allocating earlymap page table");
+
         Ok(ret)
     }
 }
 
-pub struct NoopGather;
+struct NoopGather;
 
 impl GatherInvalidations for NoopGather {
     fn add_tlb_flush(&mut self, _vpn: VirtPageNum) {}
 }
 
-pub struct KernelPfnTranslator;
+struct KernelPfnTranslator;
 
 impl TranslatePhys for KernelPfnTranslator {
     fn translate(&self, phys: PhysFrameNum) -> VirtPageNum {

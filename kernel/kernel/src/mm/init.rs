@@ -1,3 +1,4 @@
+use core::cmp;
 use core::ops::Range;
 
 use bootinfo::item::{MemoryKind, MemoryRange};
@@ -5,6 +6,10 @@ use bootinfo::view::View;
 use bootinfo::ItemKind;
 
 use crate::arch::mmu::PAGE_SIZE;
+use crate::arch::pmm::{BOOTHEAP_BASE, BOOTHEAP_EARLYMAP_MAX_PAGES};
+use crate::kimage;
+use crate::mm::bootheap::BootHeap;
+use crate::mm::physmap;
 
 use super::earlymap;
 use super::types::{PhysAddr, PhysFrameNum};
@@ -28,6 +33,45 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
     let mem_map = get_mem_map(bootinfo_view);
 
     print_mem_info(mem_map);
+
+    let bootheap_range = largest_usable_range(
+        mem_map,
+        &[
+            PhysFrameNum::new(0)..BOOTHEAP_BASE,
+            kimage::phys_base()..kimage::phys_base() + kimage::total_pages(),
+            bootinfo_paddr.containing_frame()..(bootinfo_paddr + bootinfo_size).containing_frame(),
+        ],
+    );
+
+    let bootheap_pages = bootheap_range.end - bootheap_range.start;
+
+    println!(
+        "selected bootheap range: {}-{} ({} pages, ~{}M)",
+        bootheap_range.start,
+        bootheap_range.end,
+        bootheap_pages,
+        bootheap_pages / 0x100
+    );
+
+    let mut bootheap = BootHeap::new(bootheap_range.start.addr()..bootheap_range.end.addr());
+    let bootheap_earlymap_pages = cmp::min(bootheap_pages, BOOTHEAP_EARLYMAP_MAX_PAGES);
+
+    println!(
+        "mapping {} bootheap pages for physmap initialization",
+        bootheap_earlymap_pages
+    );
+
+    mapper.map(bootheap_range.start, bootheap_earlymap_pages);
+
+    unsafe {
+        physmap::init(
+            mem_map,
+            &mut bootheap,
+            bootheap_range.start..bootheap_range.start + bootheap_earlymap_pages,
+        );
+    }
+
+    todo!()
 }
 
 fn print_mem_info(mem_map: &[MemoryRange]) {
