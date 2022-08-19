@@ -29,7 +29,7 @@ extern "C" fn kernel_main(
     println!(
         "kernel loaded at {}-{}, mapped at {}-{}",
         kimage::phys_base().addr(),
-        (kimage::phys_base() + kimage::total_pages()).addr(),
+        kimage::phys_end().addr(),
         kimage::virt_base().addr(),
         kimage::virt_end().addr()
     );
