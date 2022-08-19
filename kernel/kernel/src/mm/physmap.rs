@@ -43,7 +43,7 @@ pub unsafe fn init(
         let pfn = PhysFrameNum::new(range.start_page);
         let mut pointer = MappingPointer::new(pfn_to_physmap(pfn), range.page_count);
 
-        // Safety:
+        // Safety: function contract
         unsafe {
             pt.map(
                 pt_alloc,
