@@ -131,7 +131,7 @@ fn main() -> Result<()> {
             let cargo = env!("CARGO");
             cmd!(
                 sh,
-                "tmux split-pane -v {cargo} gdb-attach -- {build_args...}"
+                "tmux split-pane -h {cargo} gdb-attach -- {build_args...}"
             )
             .quiet()
             .run()?;
