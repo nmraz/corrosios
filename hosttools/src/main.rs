@@ -58,6 +58,10 @@ struct GdbmuxSubcommand {
 
 #[derive(Args)]
 struct QemuArgs {
+    /// Enable KVM acceleration
+    #[clap(long)]
+    kvm: bool,
+
     /// Run in headless mode
     #[clap(long)]
     headless: bool,
@@ -100,8 +104,9 @@ fn main() -> Result<()> {
             let opts = QemuOptions {
                 image_path: &image_path,
                 enable_gdbserver: qemu.gdbserver,
-                serial: &qemu.common.serial,
+                use_kvm: qemu.common.kvm,
                 headless: qemu.common.headless,
+                serial: &qemu.common.serial,
             };
 
             run_qemu(&sh, &opts)
@@ -124,8 +129,9 @@ fn main() -> Result<()> {
             let opts = QemuOptions {
                 image_path: &image_path,
                 enable_gdbserver: true,
-                serial: &gdbmux.qemu.serial,
+                use_kvm: gdbmux.qemu.kvm,
                 headless: gdbmux.qemu.headless,
+                serial: &gdbmux.qemu.serial,
             };
 
             let cargo = env!("CARGO");

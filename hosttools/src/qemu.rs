@@ -9,8 +9,9 @@ use crate::config;
 pub struct QemuOptions<'a> {
     pub image_path: &'a Path,
     pub enable_gdbserver: bool,
-    pub serial: &'a str,
+    pub use_kvm: bool,
     pub headless: bool,
+    pub serial: &'a str,
 }
 
 pub fn run_qemu(sh: &Shell, opts: &QemuOptions<'_>) -> Result<()> {
@@ -30,6 +31,10 @@ pub fn run_qemu(sh: &Shell, opts: &QemuOptions<'_>) -> Result<()> {
 
     if opts.enable_gdbserver {
         extra_args.extend(["-s", "-S"]);
+    }
+
+    if opts.use_kvm {
+        extra_args.extend(["-accel", "kvm"]);
     }
 
     if opts.headless {
