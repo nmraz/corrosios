@@ -22,12 +22,24 @@ pub fn phys_base() -> PhysFrameNum {
     unsafe { KERNEL_PHYS }
 }
 
+pub fn phys_end() -> PhysFrameNum {
+    phys_base() + total_pages()
+}
+
+pub fn contains_phys(pfn: PhysFrameNum) -> bool {
+    (phys_base()..phys_end()).contains(&pfn)
+}
+
 pub fn virt_base() -> VirtPageNum {
     VirtAddr::from_ptr(unsafe { &__virt_start }).containing_page()
 }
 
 pub fn virt_end() -> VirtPageNum {
     VirtAddr::from_ptr(unsafe { &__virt_end }).containing_page()
+}
+
+pub fn contains_virt(vpn: VirtPageNum) -> bool {
+    (virt_base()..virt_end()).contains(&vpn)
 }
 
 pub fn total_pages() -> usize {
