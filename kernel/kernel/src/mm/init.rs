@@ -64,6 +64,7 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
 
     unsafe {
         mapper.map(bootheap_range.start, bootheap_earlymap_pages);
+        println!();
         physmap::init(
             mem_map,
             &mut bootheap,
@@ -72,6 +73,12 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
             ),
         );
     }
+
+    let bootheap_used_range = bootheap.used_range();
+    println!(
+        "\nbootheap usage: {}K",
+        (bootheap_used_range.end - bootheap_used_range.start) / 1024
+    );
 
     todo!()
 }
