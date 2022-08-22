@@ -88,7 +88,7 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
 fn print_mem_info(mem_map: &[MemoryRange]) {
     let mut usable_pages = 0;
 
-    println!("\nfirmware memory map:");
+    println!("\nphysical memory map:");
     for range in mem_map {
         display_range(range);
         if range.kind == MemoryKind::USABLE {
