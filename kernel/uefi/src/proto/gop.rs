@@ -85,7 +85,7 @@ impl GraphicsOutput {
         let framebuffer = info
             .pixel_format
             .has_framebuffer()
-            .then(|| FramebufferInfo {
+            .then_some(FramebufferInfo {
                 base: mode.framebuffer_base,
                 size: mode.framebuffer_size,
             });
