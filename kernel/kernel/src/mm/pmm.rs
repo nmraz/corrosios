@@ -75,15 +75,17 @@ impl PhysManager {
         }
 
         let pfn = pfn?;
-        self.toggle_split(pfn, found_order);
+        self.toggle_parent_split(pfn, found_order);
 
         // If we've found a block of a larger order, split it all the way down to the desired order.
+        let mut cur_pfn = pfn;
         for cur_order in order..found_order {
-            // Note: this will always set split, as we started with a larger (unsplit) block
-            self.toggle_split(pfn, cur_order);
+            // Note: this will always set the bit, as we started with a larger (unsplit) block
+            self.toggle_parent_split(cur_pfn, cur_order);
             unsafe {
-                self.levels[cur_order].push_free(buddy(pfn, cur_order));
+                self.levels[cur_order].push_free(buddy(cur_pfn, cur_order));
             }
+            cur_pfn = parent(cur_pfn, cur_order);
         }
 
         Some(pfn)
@@ -91,8 +93,8 @@ impl PhysManager {
 
     unsafe fn deallocate(&mut self, mut pfn: PhysFrameNum, mut order: usize) {
         while order < MAX_ORDER {
-            self.toggle_split(pfn, order);
-            if self.is_split(pfn, order) {
+            self.toggle_parent_split(pfn, order);
+            if self.is_parent_split(pfn, order) {
                 // Our parent is now split, meaning that our buddy is allocated, so we can't merge.
                 break;
             }
@@ -107,14 +109,14 @@ impl PhysManager {
         }
     }
 
-    fn toggle_split(&mut self, pfn: PhysFrameNum, order: usize) {
+    fn toggle_parent_split(&mut self, pfn: PhysFrameNum, order: usize) {
         let index = splitmap_index(pfn, order);
-        self.levels[order].toggle_split(index);
+        self.levels[order].toggle_parent_split(index);
     }
 
-    fn is_split(&self, pfn: PhysFrameNum, order: usize) -> bool {
+    fn is_parent_split(&self, pfn: PhysFrameNum, order: usize) -> bool {
         let index = splitmap_index(pfn, order);
-        self.levels[order].is_split(index)
+        self.levels[order].is_parent_split(index)
     }
 }
 
@@ -143,14 +145,14 @@ struct BuddyLevel {
 }
 
 impl BuddyLevel {
-    fn toggle_split(&mut self, index: usize) {
+    fn toggle_parent_split(&mut self, index: usize) {
         let byte = index / 8;
         let bit = index % 8;
 
         self.splitmap[byte] ^= 1 << bit;
     }
 
-    fn is_split(&self, index: usize) -> bool {
+    fn is_parent_split(&self, index: usize) -> bool {
         let byte = index / 8;
         let bit = index % 8;
 
