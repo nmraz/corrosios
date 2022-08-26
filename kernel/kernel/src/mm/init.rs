@@ -20,7 +20,7 @@ use super::{earlymap, utils};
 ///
 /// * This function must be called only once during initialization
 /// * The physical address range passed in `bootinfo_paddr` and `bootinfo_size` must contain a valid
-///   bootinfo structure
+///   bootinfo structure, with correct memory map information
 pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
     // Safety: function contract
     let mut mapper = unsafe { earlymap::get_early_mapper() };
@@ -70,7 +70,6 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
 
     mapper.map(bootheap_range.start, bootheap_earlymap_pages);
 
-    println!();
     unsafe {
         physmap::init(
             mem_map,
@@ -79,10 +78,6 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
                 bootheap_range.start..bootheap_range.start + bootheap_earlymap_pages,
             ),
         );
-    }
-    println!();
-
-    unsafe {
         pmm::init(
             mem_map,
             &[kimage_frame_range, bootinfo_frame_range],
@@ -94,18 +89,14 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
 fn print_mem_info(mem_map: &[MemoryRange]) {
     let mut usable_pages = 0;
 
-    println!("\nphysical memory map:");
+    println!("physical memory map:");
     for range in mem_map {
         display_range(range);
         if range.kind == MemoryKind::USABLE {
             usable_pages += range.page_count;
         }
     }
-    println!(
-        "\n{} pages (~{}M) usable\n",
-        usable_pages,
-        usable_pages / 0x100
-    );
+    println!("{} pages (~{}M) usable", usable_pages, usable_pages / 0x100);
 }
 
 fn get_mem_map(bootinfo: View<'_>) -> &[MemoryRange] {
