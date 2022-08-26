@@ -1,12 +1,14 @@
 use core::alloc::Layout;
-use core::{array, ptr, slice};
+use core::ops::Range;
+use core::{array, cmp, ptr, slice};
 
+use arrayvec::ArrayVec;
 use bootinfo::item::{MemoryKind, MemoryRange};
 
 use crate::mm::bootheap::BootHeap;
 use crate::mm::physmap::paddr_to_physmap;
 use crate::mm::types::PhysFrameNum;
-use crate::mm::utils::div_ceil;
+use crate::mm::utils::{self, div_ceil};
 use crate::sync::SpinLock;
 
 use super::physmap::pfn_to_physmap;
@@ -15,19 +17,48 @@ const MAX_ORDER: usize = 15;
 
 static PHYS_MANAGER: SpinLock<Option<PhysManager>> = SpinLock::new(None);
 
-pub unsafe fn init(mem_map: &[MemoryRange], mut bootheap: BootHeap) {
+/// Initializes the physical memory manager (PMM) for all usable ranges in `mem_map`, carving out
+/// holes as specified in `reserved_ranges`. `bootheap` will be used for any necessary metadata
+/// allocations, the page range covered by it will also be marked as reserved when the manager is
+/// initialized.
+///
+/// # Safety
+///
+/// * `mem_map` must contain non-overlapping entries
+/// * Entries marked as usable in `mem_map` must point to valid, usable memory
+/// * Frames in entries marked as usable in `mem_map` should no longer be accessed directly, as they
+///   are now owned by the PMM
+pub unsafe fn init(
+    mem_map: &[MemoryRange],
+    reserved_ranges: &[Range<PhysFrameNum>],
+    mut bootheap: BootHeap,
+) {
     let mut manager_ref = PHYS_MANAGER.lock();
     assert!(manager_ref.is_none(), "PMM already initialized");
 
     let max_pfn = highest_usable_frame(mem_map);
     println!("max pfn: {}", max_pfn);
-    let manager = PhysManager::new(max_pfn, &mut bootheap);
+    let mut manager = PhysManager::new(max_pfn, &mut bootheap);
 
     let bootheap_used_range = bootheap.used_range();
     println!(
         "bootheap usage: {}K",
         (bootheap_used_range.end - bootheap_used_range.start + 1023) / 1024
     );
+
+    let bootheap_used_frames = bootheap_used_range.start.containing_frame()
+        ..bootheap_used_range.end.containing_tail_frame();
+
+    let reserved_ranges = {
+        let mut final_reserved_ranges: ArrayVec<_, 5> = ArrayVec::new();
+        final_reserved_ranges.extend(reserved_ranges.iter().cloned());
+        final_reserved_ranges.push(bootheap_used_frames);
+        final_reserved_ranges
+    };
+
+    utils::iter_usable_ranges(mem_map, &reserved_ranges, |start, end| {
+        manager.add_free_range(start, end);
+    });
 
     *manager_ref = Some(manager);
 }
@@ -88,6 +119,16 @@ impl PhysManager {
         });
 
         Self { levels }
+    }
+
+    fn add_free_range(&mut self, mut start: PhysFrameNum, end: PhysFrameNum) {
+        while start < end {
+            let order = cmp::min(start.as_usize().trailing_zeros() as usize, MAX_ORDER);
+            unsafe {
+                self.deallocate(start, order);
+            }
+            start += 1 << order;
+        }
     }
 
     fn allocate(&mut self, order: usize) -> Option<PhysFrameNum> {

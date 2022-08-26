@@ -12,9 +12,9 @@ use crate::mm::bootheap::BootHeap;
 use crate::mm::earlymap::EarlyMapPfnTranslator;
 use crate::mm::{physmap, pmm};
 
-use super::earlymap;
 use super::types::{PhysAddr, PhysFrameNum};
 use super::utils::div_ceil;
+use super::{earlymap, utils};
 
 /// # Safety
 ///
@@ -37,12 +37,16 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
 
     print_mem_info(mem_map);
 
+    let bootinfo_frame_range =
+        bootinfo_paddr.containing_frame()..(bootinfo_paddr + bootinfo_size).containing_tail_frame();
+    let kimage_frame_range = kimage::phys_base()..kimage::phys_base() + kimage::total_pages();
+
     let bootheap_range = largest_usable_range(
         mem_map,
         &[
             PhysFrameNum::new(0)..BOOTHEAP_BASE,
-            kimage::phys_base()..kimage::phys_base() + kimage::total_pages(),
-            bootinfo_paddr.containing_frame()..(bootinfo_paddr + bootinfo_size).containing_frame(),
+            kimage_frame_range.clone(),
+            bootinfo_frame_range.clone(),
         ],
     );
 
@@ -76,10 +80,14 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
             ),
         );
     }
-
     println!();
+
     unsafe {
-        pmm::init(mem_map, bootheap);
+        pmm::init(
+            mem_map,
+            &[kimage_frame_range, bootinfo_frame_range],
+            bootheap,
+        );
     }
 }
 
@@ -116,7 +124,7 @@ fn largest_usable_range(
 ) -> Range<PhysFrameNum> {
     let mut largest: Option<Range<PhysFrameNum>> = None;
 
-    iter_usable_ranges(mem_map, reserved_ranges, |start, end| match &largest {
+    utils::iter_usable_ranges(mem_map, reserved_ranges, |start, end| match &largest {
         Some(cur_largest) => {
             if end - start > cur_largest.end - cur_largest.start {
                 largest = Some(start..end);
@@ -128,63 +136,6 @@ fn largest_usable_range(
     });
 
     largest.expect("no usable memory")
-}
-
-fn iter_usable_ranges(
-    mem_map: &[MemoryRange],
-    reserved_ranges: &[Range<PhysFrameNum>],
-    mut func: impl FnMut(PhysFrameNum, PhysFrameNum),
-) {
-    let mut reserved_ranges = reserved_ranges.iter().peekable();
-
-    'outer: for Range { mut start, end } in usable_ranges(mem_map) {
-        // Chop up our usable range based on the reserved ranges that intersect it. This loop should
-        // always consume all reserved ranges contained in `[0, end)`.
-        while let Some(reserved) = reserved_ranges.peek().copied() {
-            assert!(reserved.start <= reserved.end);
-
-            if reserved.start >= end || reserved.end < start {
-                // The next reserved range doesn't intersect us at all, so we're done here; just
-                // make sure to report the remaining usable range below.
-                break;
-            }
-
-            // Beyond this point: `reserved.start < end && reserved.end >= start`.
-
-            if reserved.start > start {
-                // We have a gap before the reserved range, report it.
-                func(start, reserved.start);
-            }
-            start = reserved.end;
-
-            if start <= end {
-                // We're done with this reserved range now.
-                reserved_ranges.next();
-            }
-
-            if start >= end {
-                // We've covered all of the original usable range, try the next one.
-                continue 'outer;
-            }
-        }
-
-        // Deal with the tail/non-intersecting portion of the range.
-        if start < end {
-            func(start, end);
-        }
-    }
-}
-
-fn usable_ranges(
-    mem_map: &[MemoryRange],
-) -> impl DoubleEndedIterator<Item = Range<PhysFrameNum>> + '_ {
-    mem_map
-        .iter()
-        .filter(|range| range.kind == MemoryKind::USABLE)
-        .map(|range| {
-            let start = PhysFrameNum::new(range.start_page);
-            start..start + range.page_count
-        })
 }
 
 fn display_range(range: &MemoryRange) {
