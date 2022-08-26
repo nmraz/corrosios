@@ -129,8 +129,6 @@ impl PageTableAlloc for BumpPageTableAlloc {
         let ret = self.cur;
         self.cur += 1;
 
-        println!("allocating earlymap page table");
-
         Ok(ret)
     }
 }
