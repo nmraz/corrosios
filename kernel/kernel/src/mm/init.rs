@@ -10,7 +10,7 @@ use crate::arch::pmm::{BOOTHEAP_BASE, BOOTHEAP_EARLYMAP_MAX_PAGES};
 use crate::kimage;
 use crate::mm::bootheap::BootHeap;
 use crate::mm::earlymap::EarlyMapPfnTranslator;
-use crate::mm::physmap;
+use crate::mm::{physmap, pmm};
 
 use super::earlymap;
 use super::types::{PhysAddr, PhysFrameNum};
@@ -76,13 +76,9 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
         );
     }
 
-    let bootheap_used_range = bootheap.used_range();
-    println!(
-        "\nbootheap usage: {}K",
-        (bootheap_used_range.end - bootheap_used_range.start) / 1024
-    );
-
-    todo!()
+    unsafe {
+        pmm::init(mem_map, bootheap);
+    }
 }
 
 fn print_mem_info(mem_map: &[MemoryRange]) {
