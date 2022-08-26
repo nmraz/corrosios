@@ -9,7 +9,7 @@ pub struct SpinLock<T> {
 }
 
 impl<T> SpinLock<T> {
-    pub fn new(value: T) -> Self {
+    pub const fn new(value: T) -> Self {
         Self {
             data: UnsafeCell::new(value),
             flag: AtomicBool::new(false),
