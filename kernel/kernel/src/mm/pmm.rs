@@ -13,7 +13,7 @@ use crate::sync::SpinLock;
 
 use super::physmap::pfn_to_physmap;
 
-const MAX_ORDER: usize = 15;
+const ORDER_LIMIT: usize = 15;
 
 static PHYS_MANAGER: SpinLock<Option<PhysManager>> = SpinLock::new(None);
 
@@ -91,7 +91,7 @@ fn highest_usable_frame(mem_map: &[MemoryRange]) -> PhysFrameNum {
 }
 
 struct PhysManager {
-    levels: [BuddyLevel; MAX_ORDER],
+    levels: [BuddyLevel; ORDER_LIMIT],
 }
 
 impl PhysManager {
@@ -123,7 +123,7 @@ impl PhysManager {
 
     fn add_free_range(&mut self, mut start: PhysFrameNum, end: PhysFrameNum) {
         while start < end {
-            let order = cmp::min(start.as_usize().trailing_zeros() as usize, MAX_ORDER);
+            let order = cmp::min(start.as_usize().trailing_zeros() as usize, ORDER_LIMIT - 1);
             unsafe {
                 self.deallocate(start, order);
             }
@@ -132,13 +132,13 @@ impl PhysManager {
     }
 
     fn allocate(&mut self, order: usize) -> Option<PhysFrameNum> {
-        if order >= MAX_ORDER {
+        if order >= ORDER_LIMIT {
             return None;
         }
 
         let mut pfn = None;
         let mut found_order = order;
-        while found_order < MAX_ORDER {
+        while found_order < ORDER_LIMIT {
             if let Some(found) = self.levels[found_order].pop_free() {
                 pfn = Some(found);
                 break;
@@ -164,7 +164,7 @@ impl PhysManager {
     }
 
     unsafe fn deallocate(&mut self, mut pfn: PhysFrameNum, mut order: usize) {
-        while order < MAX_ORDER {
+        while order < ORDER_LIMIT {
             self.toggle_parent_split(pfn, order);
             if self.is_parent_split(pfn, order) {
                 // Our parent is now split, meaning that our buddy is allocated, so we can't merge.
