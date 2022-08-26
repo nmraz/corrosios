@@ -64,9 +64,10 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
         bootheap_earlymap_pages
     );
 
+    mapper.map(bootheap_range.start, bootheap_earlymap_pages);
+
+    println!();
     unsafe {
-        mapper.map(bootheap_range.start, bootheap_earlymap_pages);
-        println!();
         physmap::init(
             mem_map,
             &mut bootheap,
@@ -76,6 +77,7 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
         );
     }
 
+    println!();
     unsafe {
         pmm::init(mem_map, bootheap);
     }

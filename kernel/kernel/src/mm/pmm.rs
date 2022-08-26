@@ -1,30 +1,35 @@
-use core::ops::Range;
-use core::ptr::NonNull;
+use core::alloc::Layout;
+use core::{array, ptr, slice};
 
 use bootinfo::item::{MemoryKind, MemoryRange};
 
-use crate::arch::mmu::PAGE_SIZE;
-use crate::arch::pmm::BOOTHEAP_BASE;
-use crate::kimage;
 use crate::mm::bootheap::BootHeap;
+use crate::mm::physmap::paddr_to_physmap;
 use crate::mm::types::PhysFrameNum;
+use crate::mm::utils::div_ceil;
 use crate::sync::SpinLock;
 
 use super::physmap::pfn_to_physmap;
-use super::types::PhysAddr;
 
 const MAX_ORDER: usize = 15;
 
 static PHYS_MANAGER: SpinLock<Option<PhysManager>> = SpinLock::new(None);
 
-pub unsafe fn init(mem_map: &[MemoryRange], bootheap: BootHeap) {
+pub unsafe fn init(mem_map: &[MemoryRange], mut bootheap: BootHeap) {
+    let mut manager_ref = PHYS_MANAGER.lock();
+    assert!(manager_ref.is_none(), "PMM already initialized");
+
+    let max_pfn = highest_usable_frame(mem_map);
+    println!("max pfn: {}", max_pfn);
+    let manager = PhysManager::new(max_pfn, &mut bootheap);
+
     let bootheap_used_range = bootheap.used_range();
     println!(
-        "\nbootheap usage: {}K",
-        (bootheap_used_range.end - bootheap_used_range.start) / 1024
+        "bootheap usage: {}K",
+        (bootheap_used_range.end - bootheap_used_range.start + 1023) / 1024
     );
 
-    todo!()
+    *manager_ref = Some(manager);
 }
 
 pub fn alloc_pages(order: usize) -> Option<PhysFrameNum> {
@@ -59,6 +64,32 @@ struct PhysManager {
 }
 
 impl PhysManager {
+    fn new(max_pfn: PhysFrameNum, bootheap: &mut BootHeap) -> Self {
+        let levels = array::from_fn(|order| {
+            // Note: the bitmap in each level tracks *pairs* of blocks on that level
+            let splitmap_bits = div_ceil(max_pfn.as_usize(), 1 << (order + 1));
+            let splitmap_bytes = div_ceil(splitmap_bits, 8);
+
+            let splitmap_ptr: *mut u8 = paddr_to_physmap(bootheap.alloc_phys(
+                Layout::from_size_align(splitmap_bytes, 1).expect("buddy bitmap too large"),
+            ))
+            .as_mut_ptr();
+
+            let splitmap = unsafe {
+                ptr::write_bytes(splitmap_ptr, 0, splitmap_bytes);
+                slice::from_raw_parts_mut(splitmap_ptr, splitmap_bytes)
+            };
+
+            BuddyLevel {
+                free_list: None,
+                free_blocks: 0,
+                splitmap,
+            }
+        });
+
+        Self { levels }
+    }
+
     fn allocate(&mut self, order: usize) -> Option<PhysFrameNum> {
         if order >= MAX_ORDER {
             return None;
