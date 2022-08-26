@@ -2,7 +2,7 @@ use core::{fmt, ops};
 
 use bitflags::bitflags;
 
-use crate::arch::mmu::{PAGE_SHIFT, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
+use crate::arch::mmu::{PAGE_SHIFT, PAGE_SIZE, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
 
 use super::utils::{align_down, align_up};
 
@@ -42,6 +42,10 @@ impl PhysAddr {
     pub const fn containing_frame(self) -> PhysFrameNum {
         PhysFrameNum::new(self.0 >> PAGE_SHIFT)
     }
+
+    pub const fn containing_tail_frame(self) -> PhysFrameNum {
+        PhysFrameNum::new((self.0 + PAGE_SIZE - 1) >> PAGE_SHIFT)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -79,6 +83,10 @@ impl VirtAddr {
 
     pub const fn containing_page(self) -> VirtPageNum {
         VirtPageNum::new(self.0 >> PAGE_SHIFT)
+    }
+
+    pub const fn containing_tail_page(self) -> VirtPageNum {
+        VirtPageNum::new((self.0 + PAGE_SIZE - 1) >> PAGE_SHIFT)
     }
 }
 
