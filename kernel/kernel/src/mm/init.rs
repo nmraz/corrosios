@@ -1,18 +1,19 @@
 use core::cmp;
 use core::ops::Range;
 
+use arrayvec::ArrayVec;
 use bootinfo::item::{MemoryKind, MemoryRange};
 use bootinfo::view::View;
 use bootinfo::ItemKind;
 use num_utils::div_ceil;
 
-use crate::arch::mm::{BOOTHEAP_BASE, BOOTHEAP_EARLYMAP_MAX_PAGES};
+use crate::arch::mm::BOOTHEAP_EARLYMAP_MAX_PAGES;
 use crate::arch::mmu::PAGE_SIZE;
-use crate::kimage;
 use crate::mm::bootheap::BootHeap;
 use crate::mm::earlymap::EarlyMapPfnTranslator;
 use crate::mm::utils::display_byte_size;
 use crate::mm::{physmap, pmm};
+use crate::{arch, kimage};
 
 use super::types::{PhysAddr, PhysFrameNum};
 use super::{earlymap, utils};
@@ -40,17 +41,9 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
 
     let bootinfo_frame_range =
         bootinfo_paddr.containing_frame()..(bootinfo_paddr + bootinfo_size).containing_tail_frame();
-    let kimage_frame_range = kimage::phys_base()..kimage::phys_base() + kimage::total_pages();
+    let reserved_ranges = gather_reserved_ranges(bootinfo_frame_range);
 
-    let bootheap_range = largest_usable_range(
-        mem_map,
-        &[
-            PhysFrameNum::new(0)..BOOTHEAP_BASE,
-            kimage_frame_range.clone(),
-            bootinfo_frame_range.clone(),
-        ],
-    );
-
+    let bootheap_range = largest_usable_range(mem_map, &reserved_ranges);
     let bootheap_pages = bootheap_range.end - bootheap_range.start;
 
     println!(
@@ -79,11 +72,7 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
                 bootheap_range.start..bootheap_range.start + bootheap_earlymap_pages,
             ),
         );
-        pmm::init(
-            mem_map,
-            &[kimage_frame_range, bootinfo_frame_range],
-            bootheap,
-        );
+        pmm::init(mem_map, &reserved_ranges, bootheap);
     }
 }
 
@@ -112,6 +101,14 @@ fn get_mem_map(bootinfo: View<'_>) -> &[MemoryRange] {
 
     // Safety: we trust the bootinfo
     unsafe { mem_map_item.get_slice() }.expect("invalid bootinfo memory map")
+}
+
+fn gather_reserved_ranges(bootinfo_range: Range<PhysFrameNum>) -> ArrayVec<Range<PhysFrameNum>, 5> {
+    let mut ret = ArrayVec::new();
+    ret.extend([kimage::phys_base()..kimage::phys_end(), bootinfo_range]);
+    ret.extend(arch::mm::RESERVED_RANGES);
+    ret.sort_unstable_by_key(|range| range.start);
+    ret
 }
 
 fn largest_usable_range(
