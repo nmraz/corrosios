@@ -6,8 +6,8 @@ use bootinfo::view::View;
 use bootinfo::ItemKind;
 use num_utils::div_ceil;
 
+use crate::arch::mm::{BOOTHEAP_BASE, BOOTHEAP_EARLYMAP_MAX_PAGES};
 use crate::arch::mmu::PAGE_SIZE;
-use crate::arch::pmm::{BOOTHEAP_BASE, BOOTHEAP_EARLYMAP_MAX_PAGES};
 use crate::kimage;
 use crate::mm::bootheap::BootHeap;
 use crate::mm::earlymap::EarlyMapPfnTranslator;
