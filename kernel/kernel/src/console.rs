@@ -4,12 +4,6 @@ use core::sync::atomic::Ordering;
 use arrayvec::ArrayString;
 use atomic_ref::AtomicRef;
 
-macro_rules! print {
-    ($($args:tt)*) => {
-        $crate::console::write_fmt(format_args!($($args)*))
-    };
-}
-
 macro_rules! println {
     () => {
         println!("")
@@ -35,13 +29,6 @@ pub fn set_console(console: &'static ConsoleDesc) {
 pub fn write(msg: &str) {
     if let Some(console) = CONSOLE.load(Ordering::Acquire) {
         console.console.write(msg);
-    }
-}
-
-pub fn write_fmt(args: Arguments<'_>) {
-    let mut msg = ArrayString::<512>::new();
-    if write!(msg, "{}", args).is_ok() {
-        write(&msg);
     }
 }
 

@@ -173,7 +173,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
                 let next = match self.next_table(table, index) {
                     Ok(next_ptr) => next_ptr,
 
-                    Err(NextTableError::LargePage(entry)) => {
+                    Err(NextTableError::LargePage(_entry)) => {
                         let page_count = level_page_count(level);
 
                         if aligned_for_level(pointer.virt().as_usize(), level)

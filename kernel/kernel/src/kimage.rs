@@ -38,10 +38,6 @@ pub fn virt_end() -> VirtPageNum {
     VirtAddr::from_ptr(unsafe { &__virt_end }).containing_page()
 }
 
-pub fn contains_virt(vpn: VirtPageNum) -> bool {
-    (virt_base()..virt_end()).contains(&vpn)
-}
-
 pub fn total_pages() -> usize {
     virt_end() - virt_base()
 }
