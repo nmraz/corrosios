@@ -1,3 +1,4 @@
+use core::fmt;
 use core::ops::Range;
 
 use bootinfo::item::{MemoryKind, MemoryRange};
@@ -64,4 +65,23 @@ pub fn usable_ranges(
             let start = PhysFrameNum::new(range.start_page);
             start..start + range.page_count
         })
+}
+
+pub fn display_byte_size(bytes: usize) -> impl fmt::Display {
+    struct DisplayByteSize(usize);
+    impl fmt::Display for DisplayByteSize {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            if self.0 < 1024 {
+                write!(f, "{}B", self.0)
+            } else if self.0 < 1024 * 1024 {
+                write!(f, "{}K", self.0 / 1024)
+            } else if self.0 < 1024 * 1024 * 1024 {
+                write!(f, "{}M", self.0 / (1024 * 1024))
+            } else {
+                write!(f, "{}G", self.0 / (1024 * 1024 * 1024))
+            }
+        }
+    }
+
+    DisplayByteSize(bytes)
 }

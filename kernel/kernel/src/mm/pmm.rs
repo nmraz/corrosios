@@ -10,7 +10,7 @@ use num_utils::{div_ceil, log2};
 use crate::mm::bootheap::BootHeap;
 use crate::mm::physmap::paddr_to_physmap;
 use crate::mm::types::PhysFrameNum;
-use crate::mm::utils;
+use crate::mm::utils::{self, display_byte_size};
 use crate::sync::SpinLock;
 
 use super::physmap::pfn_to_physmap;
@@ -124,10 +124,10 @@ pub unsafe fn init(
 
     let bootheap_used_range = bootheap.used_range();
     println!(
-        "pmm: final bootheap usage: {}-{} (~{}K)",
+        "pmm: final bootheap usage: {}-{} ({})",
         bootheap_used_range.start,
         bootheap_used_range.end,
-        div_ceil(bootheap_used_range.end - bootheap_used_range.start, 1024)
+        display_byte_size(bootheap_used_range.end - bootheap_used_range.start)
     );
 
     let bootheap_used_frames = bootheap_used_range.start.containing_frame()

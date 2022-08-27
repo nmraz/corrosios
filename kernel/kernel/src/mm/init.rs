@@ -11,6 +11,7 @@ use crate::arch::mmu::PAGE_SIZE;
 use crate::kimage;
 use crate::mm::bootheap::BootHeap;
 use crate::mm::earlymap::EarlyMapPfnTranslator;
+use crate::mm::utils::display_byte_size;
 use crate::mm::{physmap, pmm};
 
 use super::types::{PhysAddr, PhysFrameNum};
@@ -53,11 +54,11 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
     let bootheap_pages = bootheap_range.end - bootheap_range.start;
 
     println!(
-        "selected bootheap range: {}-{} ({} pages, ~{}M)",
+        "selected bootheap range: {}-{} ({} pages, {})",
         bootheap_range.start,
         bootheap_range.end,
         bootheap_pages,
-        bootheap_pages / 0x100
+        display_byte_size(bootheap_pages * PAGE_SIZE)
     );
 
     let mut bootheap = BootHeap::new(bootheap_range.start.addr()..bootheap_range.end.addr());
@@ -96,7 +97,11 @@ fn print_mem_info(mem_map: &[MemoryRange]) {
             usable_pages += range.page_count;
         }
     }
-    println!("{} pages (~{}M) usable", usable_pages, usable_pages / 0x100);
+    println!(
+        "{} pages ({}) usable",
+        usable_pages,
+        display_byte_size(usable_pages * PAGE_SIZE)
+    );
 }
 
 fn get_mem_map(bootinfo: View<'_>) -> &[MemoryRange] {
