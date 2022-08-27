@@ -4,6 +4,7 @@ use core::ops::Range;
 use bootinfo::item::{MemoryKind, MemoryRange};
 use bootinfo::view::View;
 use bootinfo::ItemKind;
+use num_utils::div_ceil;
 
 use crate::arch::mmu::PAGE_SIZE;
 use crate::arch::pmm::{BOOTHEAP_BASE, BOOTHEAP_EARLYMAP_MAX_PAGES};
@@ -13,7 +14,6 @@ use crate::mm::earlymap::EarlyMapPfnTranslator;
 use crate::mm::{physmap, pmm};
 
 use super::types::{PhysAddr, PhysFrameNum};
-use super::utils::div_ceil;
 use super::{earlymap, utils};
 
 /// # Safety

@@ -9,6 +9,7 @@ edition = "2021"
 arrayvec = { version = "0.7.2", default-features = false }
 atomic_ref = "0.2.1"
 bitflags = "1.2.1"
+itertools = { version = "0.10.3", default-features = false }
 
 bootinfo = { path = "../bootinfo" }
-itertools = { version = "0.10.3", default-features = false }
+num-utils = { path = "../../lib/num-utils" }

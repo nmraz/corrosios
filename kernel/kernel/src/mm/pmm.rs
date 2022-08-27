@@ -5,11 +5,12 @@ use core::{array, cmp, ptr, slice};
 use arrayvec::ArrayVec;
 use bootinfo::item::{MemoryKind, MemoryRange};
 use itertools::Itertools;
+use num_utils::{div_ceil, log2};
 
 use crate::mm::bootheap::BootHeap;
 use crate::mm::physmap::paddr_to_physmap;
 use crate::mm::types::PhysFrameNum;
-use crate::mm::utils::{self, div_ceil, log2};
+use crate::mm::utils;
 use crate::sync::SpinLock;
 
 use super::physmap::pfn_to_physmap;

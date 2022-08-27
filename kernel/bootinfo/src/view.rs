@@ -1,7 +1,9 @@
 use core::marker::PhantomData;
 use core::{iter, mem, slice};
 
-use crate::{ItemHeader, ItemKind};
+use num_utils::align_up;
+
+use crate::{ItemHeader, ItemKind, ITEM_ALIGN};
 
 #[derive(Debug, Clone, Copy)]
 pub struct BadMagic;
@@ -58,8 +60,9 @@ impl<'a> View<'a> {
             // Safety: per the safety contract of `new`, this offset should still point into the
             // allocation and point to a valid `ItemHeader`.
             let header = unsafe { &*(base.add(off) as *const ItemHeader) };
-            off = crate::align_item_offset(
+            off = align_up(
                 off + mem::size_of::<ItemHeader>() + header.payload_len as usize,
+                ITEM_ALIGN,
             );
 
             Some(ItemView {

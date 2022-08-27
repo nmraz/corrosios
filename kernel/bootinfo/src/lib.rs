@@ -7,10 +7,6 @@ pub mod view;
 
 pub const ITEM_ALIGN: usize = 8;
 
-pub fn align_item_offset(off: usize) -> usize {
-    (off as usize + ITEM_ALIGN - 1) & 0usize.wrapping_sub(ITEM_ALIGN)
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct ItemKind(pub u32);

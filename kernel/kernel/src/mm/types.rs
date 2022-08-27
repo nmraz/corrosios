@@ -1,10 +1,9 @@
 use core::{fmt, ops};
 
 use bitflags::bitflags;
+use num_utils::{align_down, align_up};
 
 use crate::arch::mmu::{PAGE_SHIFT, PAGE_SIZE, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
-
-use super::utils::{align_down, align_up};
 
 bitflags! {
     pub struct PageTablePerms: u8 {

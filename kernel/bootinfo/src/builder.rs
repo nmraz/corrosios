@@ -1,10 +1,11 @@
 use core::mem::{self, MaybeUninit};
 use core::{ptr, slice};
 
+use num_utils::align_up;
 use uninit::extension_traits::AsOut;
 use uninit::out_ref::Out;
 
-use crate::{align_item_offset, ItemHeader, ItemKind, ITEM_ALIGN};
+use crate::{ItemHeader, ItemKind, ITEM_ALIGN};
 
 #[derive(Debug, Clone, Copy)]
 pub enum BuildError {
@@ -54,7 +55,7 @@ impl<'a> Builder<'a> {
             .checked_add(mem::size_of::<ItemHeader>())
             .ok_or(BuildError::BadSize)?;
 
-        let off = align_item_offset(self.off);
+        let off = align_up(self.off, ITEM_ALIGN);
         let next_off = off.checked_add(total_size).ok_or(BuildError::BadSize)?;
 
         if next_off > self.buf.len() {
