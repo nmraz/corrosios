@@ -1,6 +1,6 @@
 use core::alloc::Layout;
 use core::ops::Range;
-use core::{array, cmp, mem, ptr, slice};
+use core::{array, cmp, ptr, slice};
 
 use arrayvec::ArrayVec;
 use bootinfo::item::{MemoryKind, MemoryRange};
@@ -13,11 +13,12 @@ use crate::sync::SpinLock;
 
 use super::physmap::pfn_to_physmap;
 
-const ORDER_COUNT: usize = 15;
+const ORDER_COUNT: usize = 16;
 
 static PHYS_MANAGER: SpinLock<Option<PhysManager>> = SpinLock::new(None);
 
 pub struct PhysManager {
+    total_pages: usize,
     levels: [BuddyLevel; ORDER_COUNT],
 }
 
@@ -75,11 +76,17 @@ impl PhysManager {
     }
 
     pub fn dump_usage(&self) {
-        // println!("free pages: {}", self.free_pages());
-        // println!("free blocks by order:");
-        // for order in 0..ORDER_LIMIT {
-        //     println!("{}: {}", order, self.levels[order].free_blocks);
-        // }
+        let free_pages = self.free_pages();
+        println!(
+            "{} pages total, {} pages in use, {} pages free",
+            self.total_pages,
+            self.total_pages - free_pages,
+            free_pages,
+        );
+        println!("block counts by order:");
+        for order in 0..ORDER_COUNT {
+            println!("{}: {}", order, self.levels[order].free_blocks);
+        }
     }
 }
 
@@ -170,10 +177,15 @@ impl PhysManager {
             }
         });
 
-        Self { levels }
+        Self {
+            total_pages: 0,
+            levels,
+        }
     }
 
     fn add_free_range(&mut self, mut start: PhysFrameNum, end: PhysFrameNum) {
+        let size = end - start;
+
         while start < end {
             let remaining_order = prev_power_of_two(end - start);
             let alignment_order = start.as_usize().trailing_zeros() as usize;
@@ -188,7 +200,7 @@ impl PhysManager {
             start += 1 << order;
         }
 
-        assert_eq!(start, end);
+        self.total_pages += size;
     }
 
     fn free_pages(&self) -> usize {
