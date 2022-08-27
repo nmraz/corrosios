@@ -38,12 +38,20 @@ impl PhysAddr {
         self.0 as u64
     }
 
+    pub const fn frame_offset(self) -> usize {
+        self.0 % PAGE_SIZE
+    }
+
     pub const fn containing_frame(self) -> PhysFrameNum {
         PhysFrameNum::new(self.0 >> PAGE_SHIFT)
     }
 
     pub const fn containing_tail_frame(self) -> PhysFrameNum {
         PhysFrameNum::new((self.0 + PAGE_SIZE - 1) >> PAGE_SHIFT)
+    }
+
+    pub fn to_virt(self, f: impl FnOnce(PhysFrameNum) -> VirtPageNum) -> VirtAddr {
+        f(self.containing_frame()).addr() + self.frame_offset()
     }
 }
 
@@ -80,12 +88,20 @@ impl VirtAddr {
         self.0 as _
     }
 
+    pub const fn page_offset(self) -> usize {
+        self.0 % PAGE_SIZE
+    }
+
     pub const fn containing_page(self) -> VirtPageNum {
         VirtPageNum::new(self.0 >> PAGE_SHIFT)
     }
 
     pub const fn containing_tail_page(self) -> VirtPageNum {
         VirtPageNum::new((self.0 + PAGE_SIZE - 1) >> PAGE_SHIFT)
+    }
+
+    pub fn to_phys(self, f: impl FnOnce(VirtPageNum) -> PhysFrameNum) -> PhysAddr {
+        f(self.containing_page()).addr() + self.page_offset()
     }
 }
 

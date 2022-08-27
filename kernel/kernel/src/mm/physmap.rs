@@ -57,9 +57,18 @@ pub unsafe fn init(
 }
 
 pub fn paddr_to_physmap(paddr: PhysAddr) -> VirtAddr {
-    PHYS_MAP_BASE.addr() + paddr.as_usize()
+    paddr.to_virt(pfn_to_physmap)
 }
 
 pub fn pfn_to_physmap(pfn: PhysFrameNum) -> VirtPageNum {
     PHYS_MAP_BASE + pfn.as_usize()
+}
+
+pub fn physmap_to_paddr(vaddr: VirtAddr) -> PhysAddr {
+    vaddr.to_phys(physmap_to_pfn)
+}
+
+pub fn physmap_to_pfn(vpn: VirtPageNum) -> PhysFrameNum {
+    assert!((PHYS_MAP_BASE..PHYS_MAP_BASE + PHYS_MAP_MAX_PAGES).contains(&vpn));
+    PhysFrameNum::new(vpn - PHYS_MAP_BASE)
 }

@@ -15,3 +15,11 @@ pub const fn div_ceil(val: usize, divisor: usize) -> usize {
 pub const fn log2(val: usize) -> usize {
     (usize::BITS - val.leading_zeros() - 1) as usize
 }
+
+pub const fn log2_ceil(val: usize) -> usize {
+    if val <= 1 {
+        return 0;
+    }
+
+    log2(val - 1) + 1
+}
