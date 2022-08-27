@@ -9,7 +9,7 @@ use itertools::Itertools;
 use crate::mm::bootheap::BootHeap;
 use crate::mm::physmap::paddr_to_physmap;
 use crate::mm::types::PhysFrameNum;
-use crate::mm::utils::{self, div_ceil, prev_power_of_two};
+use crate::mm::utils::{self, div_ceil, log2};
 use crate::sync::SpinLock;
 
 use super::physmap::pfn_to_physmap;
@@ -195,7 +195,7 @@ impl PhysManager {
         let size = end - start;
 
         while start < end {
-            let remaining_order = prev_power_of_two(end - start);
+            let remaining_order = log2(end - start);
             let alignment_order = start.as_usize().trailing_zeros() as usize;
 
             let order = cmp::min(alignment_order, remaining_order);

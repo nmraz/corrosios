@@ -1,4 +1,3 @@
-use core::mem;
 use core::ops::Range;
 
 use bootinfo::item::{MemoryKind, MemoryRange};
@@ -17,8 +16,8 @@ pub const fn div_ceil(val: usize, divisor: usize) -> usize {
     (val + divisor - 1) / divisor
 }
 
-pub const fn prev_power_of_two(val: usize) -> usize {
-    mem::size_of::<usize>() * 8 - val.leading_zeros() as usize - 1
+pub const fn log2(val: usize) -> usize {
+    (usize::BITS - val.leading_zeros() - 1) as usize
 }
 
 /// Invoke `func` for every memory range reported as usable in `mem_map`, carving out holes for
