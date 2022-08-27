@@ -1,6 +1,6 @@
 use core::alloc::Layout;
 use core::ops::Range;
-use core::{array, cmp, ptr, slice};
+use core::{array, cmp, mem, ptr, slice};
 
 use arrayvec::ArrayVec;
 use bootinfo::item::{MemoryKind, MemoryRange};
@@ -8,14 +8,80 @@ use bootinfo::item::{MemoryKind, MemoryRange};
 use crate::mm::bootheap::BootHeap;
 use crate::mm::physmap::paddr_to_physmap;
 use crate::mm::types::PhysFrameNum;
-use crate::mm::utils::{self, div_ceil};
+use crate::mm::utils::{self, div_ceil, prev_power_of_two};
 use crate::sync::SpinLock;
 
 use super::physmap::pfn_to_physmap;
 
-const ORDER_LIMIT: usize = 15;
+const ORDER_COUNT: usize = 15;
 
 static PHYS_MANAGER: SpinLock<Option<PhysManager>> = SpinLock::new(None);
+
+pub struct PhysManager {
+    levels: [BuddyLevel; ORDER_COUNT],
+}
+
+impl PhysManager {
+    pub fn allocate(&mut self, order: usize) -> Option<PhysFrameNum> {
+        if order >= ORDER_COUNT {
+            return None;
+        }
+
+        let mut pfn = None;
+        let mut found_order = order;
+        while found_order < ORDER_COUNT {
+            if let Some(found) = self.levels[found_order].pop_free() {
+                pfn = Some(found);
+                break;
+            }
+            found_order += 1;
+        }
+
+        let pfn = pfn?;
+        self.toggle_parent_split(pfn, found_order);
+
+        // If we've found a block of a larger order, split it all the way down to the desired order.
+        let mut cur_pfn = pfn;
+        for cur_order in order..found_order {
+            // Note: this will always set the bit, as we started with a larger (unsplit) block
+            self.toggle_parent_split(cur_pfn, cur_order);
+            unsafe {
+                self.levels[cur_order].push_free(buddy(cur_pfn, cur_order));
+            }
+            cur_pfn = parent(cur_pfn, cur_order);
+        }
+
+        Some(pfn)
+    }
+
+    pub unsafe fn deallocate(&mut self, mut pfn: PhysFrameNum, mut order: usize) {
+        assert!(pfn.as_usize() & ((1 << order) - 1) == 0);
+
+        while order < ORDER_COUNT - 1 {
+            self.toggle_parent_split(pfn, order);
+            if self.is_parent_split(pfn, order) {
+                // Our parent is now split, meaning that our buddy is allocated, so we can't merge.
+                break;
+            }
+
+            // Merge with our buddy and keep checking higher orders
+            pfn = parent(pfn, order);
+            order += 1;
+        }
+
+        unsafe {
+            self.levels[order].push_free(pfn);
+        }
+    }
+
+    pub fn dump_usage(&self) {
+        // println!("free pages: {}", self.free_pages());
+        // println!("free blocks by order:");
+        // for order in 0..ORDER_LIMIT {
+        //     println!("{}: {}", order, self.levels[order].free_blocks);
+        // }
+    }
+}
 
 /// Initializes the physical memory manager (PMM) for all usable ranges in `mem_map`, carving out
 /// holes as specified in `reserved_ranges`. `bootheap` will be used for any necessary metadata
@@ -34,7 +100,7 @@ pub unsafe fn init(
     mut bootheap: BootHeap,
 ) {
     let mut manager_ref = PHYS_MANAGER.lock();
-    assert!(manager_ref.is_none(), "PMM already initialized");
+    assert!(manager_ref.is_none(), "pmm already initialized");
 
     let max_pfn = highest_usable_frame(mem_map);
     println!("max pfn: {}", max_pfn);
@@ -42,8 +108,10 @@ pub unsafe fn init(
 
     let bootheap_used_range = bootheap.used_range();
     println!(
-        "bootheap usage: {}K",
-        (bootheap_used_range.end - bootheap_used_range.start + 1023) / 1024
+        "bootheap usage: {}-{} ({}K)",
+        bootheap_used_range.start,
+        bootheap_used_range.end,
+        div_ceil(bootheap_used_range.end - bootheap_used_range.start, 1024)
     );
 
     let bootheap_used_frames = bootheap_used_range.start.containing_frame()
@@ -53,32 +121,20 @@ pub unsafe fn init(
         let mut final_reserved_ranges: ArrayVec<_, 5> = ArrayVec::new();
         final_reserved_ranges.extend(reserved_ranges.iter().cloned());
         final_reserved_ranges.push(bootheap_used_frames);
+        final_reserved_ranges.sort_unstable_by_key(|range| range.start);
         final_reserved_ranges
     };
 
     utils::iter_usable_ranges(mem_map, &reserved_ranges, |start, end| {
+        println!("pmm: adding free range {}-{}", start, end);
         manager.add_free_range(start, end);
     });
 
     *manager_ref = Some(manager);
 }
 
-pub fn alloc_pages(order: usize) -> Option<PhysFrameNum> {
-    PHYS_MANAGER
-        .lock()
-        .as_mut()
-        .expect("PMM not initialized")
-        .allocate(order)
-}
-
-pub unsafe fn dealloc_pages(pfn: PhysFrameNum, order: usize) {
-    unsafe {
-        PHYS_MANAGER
-            .lock()
-            .as_mut()
-            .expect("PMM not initialized")
-            .deallocate(pfn, order);
-    }
+pub fn with<R>(f: impl FnOnce(&mut PhysManager) -> R) -> R {
+    f(PHYS_MANAGER.lock().as_mut().expect("pmm not initialized"))
 }
 
 fn highest_usable_frame(mem_map: &[MemoryRange]) -> PhysFrameNum {
@@ -88,10 +144,6 @@ fn highest_usable_frame(mem_map: &[MemoryRange]) -> PhysFrameNum {
         .map(|range| PhysFrameNum::new(range.start_page) + range.page_count)
         .max()
         .expect("no usable memory")
-}
-
-struct PhysManager {
-    levels: [BuddyLevel; ORDER_LIMIT],
 }
 
 impl PhysManager {
@@ -123,62 +175,28 @@ impl PhysManager {
 
     fn add_free_range(&mut self, mut start: PhysFrameNum, end: PhysFrameNum) {
         while start < end {
-            let order = cmp::min(start.as_usize().trailing_zeros() as usize, ORDER_LIMIT - 1);
+            let remaining_order = prev_power_of_two(end - start);
+            let alignment_order = start.as_usize().trailing_zeros() as usize;
+
+            let order = cmp::min(alignment_order, remaining_order);
+            let order = cmp::min(order, ORDER_COUNT - 1);
+
             unsafe {
                 self.deallocate(start, order);
             }
+
             start += 1 << order;
         }
+
+        assert_eq!(start, end);
     }
 
-    fn allocate(&mut self, order: usize) -> Option<PhysFrameNum> {
-        if order >= ORDER_LIMIT {
-            return None;
-        }
-
-        let mut pfn = None;
-        let mut found_order = order;
-        while found_order < ORDER_LIMIT {
-            if let Some(found) = self.levels[found_order].pop_free() {
-                pfn = Some(found);
-                break;
-            }
-            found_order += 1;
-        }
-
-        let pfn = pfn?;
-        self.toggle_parent_split(pfn, found_order);
-
-        // If we've found a block of a larger order, split it all the way down to the desired order.
-        let mut cur_pfn = pfn;
-        for cur_order in order..found_order {
-            // Note: this will always set the bit, as we started with a larger (unsplit) block
-            self.toggle_parent_split(cur_pfn, cur_order);
-            unsafe {
-                self.levels[cur_order].push_free(buddy(cur_pfn, cur_order));
-            }
-            cur_pfn = parent(cur_pfn, cur_order);
-        }
-
-        Some(pfn)
-    }
-
-    unsafe fn deallocate(&mut self, mut pfn: PhysFrameNum, mut order: usize) {
-        while order < ORDER_LIMIT {
-            self.toggle_parent_split(pfn, order);
-            if self.is_parent_split(pfn, order) {
-                // Our parent is now split, meaning that our buddy is allocated, so we can't merge.
-                break;
-            }
-
-            // Merge with our buddy and keep checking higher orders
-            pfn = parent(pfn, order);
-            order += 1;
-        }
-
-        unsafe {
-            self.levels[order].push_free(pfn);
-        }
+    fn free_pages(&self) -> usize {
+        self.levels
+            .iter()
+            .enumerate()
+            .map(|(order, level)| level.free_blocks << order)
+            .sum()
     }
 
     fn toggle_parent_split(&mut self, pfn: PhysFrameNum, order: usize) {

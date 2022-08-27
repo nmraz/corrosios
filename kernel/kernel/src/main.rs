@@ -36,7 +36,13 @@ extern "C" fn kernel_main(
 
     println!("bootinfo at {}, size {:#x}", bootinfo_paddr, bootinfo_size);
 
+    println!("initializing memory manager");
     unsafe { mm::init(bootinfo_paddr, bootinfo_size) };
+    println!("memory manager initialized");
+
+    mm::pmm::with(|pmm| {
+        pmm.dump_usage();
+    });
 
     cpu::halt();
 }

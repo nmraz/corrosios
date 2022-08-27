@@ -1,3 +1,4 @@
+use core::mem;
 use core::ops::Range;
 
 use bootinfo::item::{MemoryKind, MemoryRange};
@@ -16,6 +17,15 @@ pub const fn div_ceil(val: usize, divisor: usize) -> usize {
     (val + divisor - 1) / divisor
 }
 
+pub const fn prev_power_of_two(val: usize) -> usize {
+    mem::size_of::<usize>() * 8 - val.leading_zeros() as usize - 1
+}
+
+/// Invoke `func` for every memory range reported as usable in `mem_map`, carving out holes for
+/// any ranges in `reserved_ranges`.
+///
+/// **Note**: This function assumes that both `mem_map` and `reserved_ranges` are sorted in
+/// ascending order, and that the ranges contained in each are disjoint.
 pub fn iter_usable_ranges(
     mem_map: &[MemoryRange],
     reserved_ranges: &[Range<PhysFrameNum>],
