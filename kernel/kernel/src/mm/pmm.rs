@@ -103,12 +103,12 @@ pub unsafe fn init(
     assert!(manager_ref.is_none(), "pmm already initialized");
 
     let max_pfn = highest_usable_frame(mem_map);
-    println!("max pfn: {}", max_pfn);
+    println!("pmm: reserving bitmaps up to frame {}", max_pfn);
     let mut manager = PhysManager::new(max_pfn, &mut bootheap);
 
     let bootheap_used_range = bootheap.used_range();
     println!(
-        "bootheap usage: {}-{} ({}K)",
+        "pmm: final bootheap usage: {}-{} (~{}K)",
         bootheap_used_range.start,
         bootheap_used_range.end,
         div_ceil(bootheap_used_range.end - bootheap_used_range.start, 1024)

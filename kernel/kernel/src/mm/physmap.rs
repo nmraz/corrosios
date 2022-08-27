@@ -30,7 +30,7 @@ pub unsafe fn init(
 
     for range in usable_map {
         println!(
-            "physmap pages {:#x}-{:#x}",
+            "physmap: mapping frames {:#x}-{:#x}",
             range.start_page,
             range.start_page + range.page_count
         );
