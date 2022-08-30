@@ -4,16 +4,18 @@ use core::{array, cmp, ptr, slice};
 
 use arrayvec::ArrayVec;
 use bootinfo::item::{MemoryKind, MemoryRange};
+use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink, UnsafeRef};
 use itertools::Itertools;
 use num_utils::{div_ceil, log2};
 
 use crate::mm::bootheap::BootHeap;
-use crate::mm::physmap::paddr_to_physmap;
+use crate::mm::physmap::{paddr_to_physmap, physmap_to_pfn};
 use crate::mm::types::PhysFrameNum;
 use crate::mm::utils::{self, display_byte_size};
 use crate::sync::SpinLock;
 
 use super::physmap::pfn_to_physmap;
+use super::types::VirtAddr;
 
 const ORDER_COUNT: usize = 16;
 
@@ -180,7 +182,7 @@ impl PhysManager {
             };
 
             BuddyLevel {
-                free_list: None,
+                free_list: LinkedList::new(FreePageAdapter::new()),
                 free_blocks: 0,
                 splitmap,
             }
@@ -244,13 +246,14 @@ fn parent(pfn: PhysFrameNum, order: usize) -> PhysFrameNum {
     PhysFrameNum::new(pfn.as_usize() & !(1usize << order))
 }
 
-struct FreeLink {
-    prev: PhysFrameNum,
-    next: PhysFrameNum,
+struct FreePage {
+    link: LinkedListLink,
 }
 
+intrusive_adapter!(FreePageAdapter = UnsafeRef<FreePage>: FreePage { link: LinkedListLink });
+
 struct BuddyLevel {
-    free_list: Option<PhysFrameNum>,
+    free_list: LinkedList<FreePageAdapter>,
     free_blocks: usize,
     splitmap: &'static mut [u8],
 }
@@ -270,82 +273,32 @@ impl BuddyLevel {
         (self.splitmap[byte] >> bit) & 1 != 0
     }
 
-    fn pop_free(&mut self) -> Option<PhysFrameNum> {
-        let head = self.free_list?;
-        unsafe {
-            self.detach_free(head);
-        }
-        Some(head)
-    }
-
-    unsafe fn detach_free(&mut self, pfn: PhysFrameNum) {
-        let next = unsafe { detach_free_link(pfn) };
-        self.free_blocks -= 1;
-        if self.free_list == Some(pfn) {
-            self.free_list = next;
-        }
-    }
-
     unsafe fn push_free(&mut self, pfn: PhysFrameNum) {
-        unsafe {
-            if let Some(head) = self.free_list {
-                push_free_link(head, pfn);
-            } else {
-                init_free_link(pfn);
-            }
-        }
+        let link = unsafe {
+            let ptr = free_link_from_pfn(pfn);
+            ptr.write(FreePage {
+                link: LinkedListLink::new(),
+            });
+            UnsafeRef::from_raw(ptr)
+        };
+
+        self.free_list.push_front(link);
         self.free_blocks += 1;
-        self.free_list = Some(pfn);
+    }
+
+    fn pop_free(&mut self) -> Option<PhysFrameNum> {
+        let link = self.free_list.pop_front()?;
+        self.free_blocks -= 1;
+        Some(pfn_from_free_link(UnsafeRef::into_raw(link)))
     }
 }
 
-unsafe fn init_free_link(pfn: PhysFrameNum) {
-    let link = free_link_from_pfn(pfn);
-
-    unsafe {
-        link.write(FreeLink {
-            prev: pfn,
-            next: pfn,
-        });
-    }
-}
-
-unsafe fn push_free_link(head: PhysFrameNum, new_head: PhysFrameNum) {
-    let head_link = free_link_from_pfn(head);
-    let new_head_link = free_link_from_pfn(new_head);
-
-    unsafe {
-        let prev = (*head_link).prev;
-        let prev_link = free_link_from_pfn(prev);
-
-        (*prev_link).next = new_head;
-        (*head_link).prev = new_head;
-
-        new_head_link.write(FreeLink { prev, next: head });
-    }
-}
-
-unsafe fn detach_free_link(pfn: PhysFrameNum) -> Option<PhysFrameNum> {
-    let link = free_link_from_pfn(pfn);
-
-    unsafe {
-        let prev = (*link).prev;
-        let next = (*link).next;
-
-        let prev_link = free_link_from_pfn(prev);
-        let next_link = free_link_from_pfn(next);
-
-        (*prev_link).next = next;
-        (*next_link).prev = prev;
-
-        if next != pfn {
-            Some(next)
-        } else {
-            None
-        }
-    }
-}
-
-fn free_link_from_pfn(pfn: PhysFrameNum) -> *mut FreeLink {
+fn free_link_from_pfn(pfn: PhysFrameNum) -> *mut FreePage {
     pfn_to_physmap(pfn).addr().as_mut_ptr()
+}
+
+fn pfn_from_free_link(link: *const FreePage) -> PhysFrameNum {
+    let vaddr = VirtAddr::from_ptr(link);
+    assert_eq!(vaddr.page_offset(), 0);
+    physmap_to_pfn(vaddr.containing_page())
 }
