@@ -41,6 +41,11 @@ extern "C" fn kernel_main(
     println!("memory manager initialized");
 
     mm::pmm::with(|pmm| {
+        for _ in 0..8 {
+            pmm.dump_usage();
+            let pfn = pmm.allocate(0).expect("failed to allocate frame");
+            println!("allocated {}", pfn);
+        }
         pmm.dump_usage();
     });
 
