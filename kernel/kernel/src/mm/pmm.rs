@@ -46,14 +46,12 @@ impl PhysManager {
         self.toggle_parent_split(pfn, found_order);
 
         // If we've found a block of a larger order, split it all the way down to the desired order.
-        let mut cur_pfn = pfn;
         for cur_order in order..found_order {
             // Note: this will always set the bit, as we started with a larger (unsplit) block
-            self.toggle_parent_split(cur_pfn, cur_order);
+            self.toggle_parent_split(pfn, cur_order);
             unsafe {
-                self.levels[cur_order].push_free(buddy(cur_pfn, cur_order));
+                self.levels[cur_order].push_free(buddy_of(pfn, cur_order));
             }
-            cur_pfn = parent(cur_pfn, cur_order);
         }
 
         Some(pfn)
@@ -70,7 +68,7 @@ impl PhysManager {
             }
 
             // Merge with our buddy and keep checking higher orders
-            pfn = parent(pfn, order);
+            pfn = parent_of(pfn, order);
             order += 1;
         }
 
@@ -238,11 +236,11 @@ fn splitmap_index(pfn: PhysFrameNum, order: usize) -> usize {
     pfn.as_usize() >> (order + 1)
 }
 
-fn buddy(pfn: PhysFrameNum, order: usize) -> PhysFrameNum {
+fn buddy_of(pfn: PhysFrameNum, order: usize) -> PhysFrameNum {
     PhysFrameNum::new(pfn.as_usize() ^ (1 << order))
 }
 
-fn parent(pfn: PhysFrameNum, order: usize) -> PhysFrameNum {
+fn parent_of(pfn: PhysFrameNum, order: usize) -> PhysFrameNum {
     PhysFrameNum::new(pfn.as_usize() & !(1usize << order))
 }
 
