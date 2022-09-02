@@ -6,6 +6,7 @@
 
 extern crate alloc;
 
+use alloc::boxed::Box;
 use arch::cpu;
 use mm::types::PhysAddr;
 
@@ -45,6 +46,11 @@ extern "C" fn kernel_main(
     println!("memory manager initialized");
 
     mm::heap::dump_size_classes();
+
+    let x = Box::new(5);
+    let y = Box::new(7);
+    println!("x: {} ({:p}), y: {} ({:p})", *x, x, *y, y);
+
     mm::pmm::dump_usage();
 
     cpu::halt();
