@@ -121,20 +121,6 @@ impl<const N: usize> Allocator<N> {
         }
     }
 
-    unsafe fn try_resize_in_place(
-        &self,
-        ptr: NonNull<u8>,
-        old_effective_size: usize,
-        new_effective_size: usize,
-    ) -> Result<usize, HeapAllocError> {
-        let old_usable_size = self.usable_size(old_effective_size);
-        if old_usable_size == self.usable_size(new_effective_size) {
-            return Ok(old_usable_size);
-        }
-
-        Err(HeapAllocError)
-    }
-
     fn usable_size(&self, effective_size: usize) -> usize {
         match self.get_size_class(effective_size) {
             Some(size_class) => size_class.size(),
@@ -238,7 +224,7 @@ struct SizeClassInner {
 impl SizeClassInner {
     fn allocate(&mut self, meta: &SizeClassMeta) -> Result<NonNull<u8>, HeapAllocError> {
         let slab = self
-            .take_partial_slab(meta)
+            .take_partial_slab()
             .or_else(|| self.alloc_slab(meta))
             .ok_or(HeapAllocError)?;
 
@@ -304,7 +290,7 @@ impl SizeClassInner {
         }
     }
 
-    fn take_partial_slab(&mut self, meta: &SizeClassMeta) -> Option<NonNull<SlabHeader>> {
+    fn take_partial_slab(&mut self) -> Option<NonNull<SlabHeader>> {
         self.partial_slabs
             .pop_front()
             .map(|slab| unsafe { NonNull::new_unchecked(UnsafeRef::into_raw(slab)) })
