@@ -53,6 +53,10 @@ pub unsafe fn resize(
     }
 }
 
+pub fn dump_size_classes() {
+    ALLOCATOR.dump_size_classes();
+}
+
 fn get_effective_size(layout: Layout) -> usize {
     align_up(layout.size(), layout.align())
 }
@@ -79,7 +83,7 @@ static ALLOCATOR: Allocator<23> = Allocator::new([
     SizeClass::new(1024, 2),
     SizeClass::new(1280, 2),
     SizeClass::new(1536, 2),
-    SizeClass::new(1792, 2),
+    SizeClass::new(1792, 3),
     SizeClass::new(2048, 3),
 ]);
 
@@ -125,6 +129,18 @@ impl<const N: usize> Allocator<N> {
         match self.get_size_class(effective_size) {
             Some(size_class) => size_class.size(),
             None => PAGE_SIZE << raw_page_order(effective_size),
+        }
+    }
+
+    fn dump_size_classes(&self) {
+        println!("heap size classes:");
+        for size_class in &self.size_classes {
+            println!(
+                "[{:6}] order {}, {:3} objects per slab",
+                size_class.size(),
+                size_class.meta.slab_order,
+                size_class.meta.objects_per_slab
+            );
         }
     }
 
