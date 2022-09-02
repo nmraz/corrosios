@@ -44,6 +44,7 @@ extern "C" fn kernel_main(
     unsafe { mm::init(bootinfo_paddr, bootinfo_size) };
     println!("memory manager initialized");
 
+    mm::heap::dump_size_classes();
     mm::pmm::dump_usage();
 
     cpu::halt();
