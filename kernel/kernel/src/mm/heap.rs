@@ -3,6 +3,7 @@ use core::cell::Cell;
 use core::ptr::NonNull;
 use core::{cmp, mem};
 
+use bitmap::BorrowedBitmapMut;
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink, UnsafeRef};
 use num_utils::{align_down, align_up, div_ceil, log2_ceil};
 
@@ -208,7 +209,8 @@ impl SizeClassMeta {
 
         let mut objects_per_slab = (slab_size - slab_header_size) / size;
 
-        while slab_header_size + align_up(objects_per_slab, 8) + objects_per_slab * size > slab_size
+        while slab_header_size + bitmap::bytes_required(objects_per_slab) + objects_per_slab * size
+            > slab_size
         {
             objects_per_slab -= 1;
         }
@@ -225,7 +227,7 @@ impl SizeClassMeta {
     }
 
     fn bitmap_bytes(&self) -> usize {
-        align_up(self.objects_per_slab, 8)
+        bitmap::bytes_required(self.objects_per_slab)
     }
 }
 
@@ -249,11 +251,12 @@ impl SizeClassInner {
             }
         }
 
-        let bitmap = unsafe { slab_bitmap_from_header(slab, meta) };
-        let offset =
-            scan_bitmap(bitmap, meta.objects_per_slab).expect("no objects free in non-full slab");
+        let mut bitmap = unsafe { slab_bitmap_from_header(slab, meta) };
+        let offset = bitmap
+            .first_zero(meta.objects_per_slab)
+            .expect("no objects free in non-full slab");
 
-        set_bit(bitmap, offset);
+        bitmap.set(offset);
 
         unsafe {
             let ptr = slab
@@ -293,11 +296,11 @@ impl SizeClassInner {
 
         // Mark the object as free in the bitmap
         unsafe {
-            let bitmap = slab_bitmap_from_header(slab, meta);
+            let mut bitmap = slab_bitmap_from_header(slab, meta);
             let slab_off = ptr.as_ptr().offset_from(slab.as_ptr().cast::<u8>());
             let index = (slab_off as usize - meta.first_object_offset()) / meta.size;
 
-            unset_bit(bitmap, index);
+            bitmap.unset(index);
         }
     }
 
@@ -327,42 +330,18 @@ impl SizeClassInner {
 unsafe fn slab_bitmap_from_header<'a>(
     header: NonNull<SlabHeader>,
     meta: &SizeClassMeta,
-) -> &'a mut [u8] {
-    unsafe {
+) -> BorrowedBitmapMut<'a> {
+    let bytes = unsafe {
         let bitmap_base = header.as_ptr().add(1).cast();
         core::slice::from_raw_parts_mut(bitmap_base, meta.bitmap_bytes())
-    }
+    };
+    BorrowedBitmapMut::new(bytes)
 }
 
 fn slab_header_from_obj(obj: NonNull<u8>, order: usize) -> NonNull<SlabHeader> {
     let addr = obj.as_ptr() as usize;
     let base_addr = align_down(addr, PAGE_SIZE << order);
     NonNull::new(base_addr as *mut _).expect("bad object pointer")
-}
-
-fn scan_bitmap(bitmap: &[u8], limit: usize) -> Option<usize> {
-    (0..limit).find(|&index| !get_bit(bitmap, index))
-}
-
-fn get_bit(bitmap: &[u8], index: usize) -> bool {
-    let byte = index / 8;
-    let bit = index % 8;
-
-    ((bitmap[byte] >> bit) & 1) != 0
-}
-
-fn set_bit(bitmap: &mut [u8], index: usize) {
-    let byte = index / 8;
-    let bit = index % 8;
-
-    bitmap[byte] |= 1 << bit;
-}
-
-fn unset_bit(bitmap: &mut [u8], index: usize) {
-    let byte = index / 8;
-    let bit = index % 8;
-
-    bitmap[byte] &= !(1u8 << bit);
 }
 
 fn alloc_virt_pages(order: usize) -> Option<NonNull<u8>> {
@@ -377,16 +356,5 @@ unsafe fn free_virt_pages(ptr: NonNull<u8>, order: usize) {
 
     unsafe {
         pmm::deallocate(physmap_to_pfn(vaddr.containing_page()), order);
-    }
-}
-
-fn large_alloc_order(layout: Layout) -> Option<usize> {
-    let effective_size = align_up(layout.size(), layout.align());
-
-    if effective_size >= PAGE_SIZE {
-        let pages = div_ceil(effective_size, PAGE_SIZE);
-        Some(log2_ceil(pages))
-    } else {
-        None
     }
 }

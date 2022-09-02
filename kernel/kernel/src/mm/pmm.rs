@@ -3,6 +3,7 @@ use core::ops::Range;
 use core::{array, cmp, ptr, slice};
 
 use arrayvec::ArrayVec;
+use bitmap::BorrowedBitmapMut;
 use bootinfo::item::{MemoryKind, MemoryRange};
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink, UnsafeRef};
 use itertools::Itertools;
@@ -106,14 +107,14 @@ impl PhysManager {
         let levels = array::from_fn(|order| {
             // Note: the bitmap in each level tracks *pairs* of blocks on that level
             let splitmap_bits = div_ceil(max_pfn.as_usize(), 1 << (order + 1));
-            let splitmap_bytes = div_ceil(splitmap_bits, 8);
+            let splitmap_bytes = bitmap::bytes_required(splitmap_bits);
 
             let splitmap_ptr: *mut u8 = paddr_to_physmap(bootheap.alloc_phys(
                 Layout::from_size_align(splitmap_bytes, 1).expect("buddy bitmap too large"),
             ))
             .as_mut_ptr();
 
-            let splitmap = unsafe {
+            let splitmap_slice = unsafe {
                 ptr::write_bytes(splitmap_ptr, 0, splitmap_bytes);
                 slice::from_raw_parts_mut(splitmap_ptr, splitmap_bytes)
             };
@@ -121,7 +122,7 @@ impl PhysManager {
             BuddyLevel {
                 free_list: LinkedList::new(FreePageAdapter::new()),
                 free_blocks: 0,
-                splitmap,
+                splitmap: BorrowedBitmapMut::new(splitmap_slice),
             }
         });
 
@@ -263,22 +264,16 @@ intrusive_adapter!(FreePageAdapter = UnsafeRef<FreePage>: FreePage { link: Linke
 struct BuddyLevel {
     free_list: LinkedList<FreePageAdapter>,
     free_blocks: usize,
-    splitmap: &'static mut [u8],
+    splitmap: BorrowedBitmapMut<'static>,
 }
 
 impl BuddyLevel {
     fn toggle_parent_split(&mut self, index: usize) {
-        let byte = index / 8;
-        let bit = index % 8;
-
-        self.splitmap[byte] ^= 1 << bit;
+        self.splitmap.toggle(index);
     }
 
     fn is_parent_split(&self, index: usize) -> bool {
-        let byte = index / 8;
-        let bit = index % 8;
-
-        (self.splitmap[byte] >> bit) & 1 != 0
+        self.splitmap.get(index)
     }
 
     unsafe fn push_free(&mut self, pfn: PhysFrameNum) {

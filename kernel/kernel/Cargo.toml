@@ -12,5 +12,6 @@ bitflags = "1.2.1"
 intrusive-collections = { version = "0.9.4", default-features = false, features = ["nightly"] }
 itertools = { version = "0.10.3", default-features = false }
 
+bitmap = { path = "../../lib/bitmap" }
 bootinfo = { path = "../bootinfo" }
 num-utils = { path = "../../lib/num-utils" }
