@@ -44,12 +44,6 @@ extern "C" fn kernel_main(
     unsafe { mm::init(bootinfo_paddr, bootinfo_size) };
     println!("memory manager initialized");
 
-    for _ in 0..8 {
-        mm::pmm::dump_usage();
-        let pfn = mm::pmm::allocate(0).expect("failed to allocate frame");
-        println!("allocated {}", pfn);
-    }
-
     mm::pmm::dump_usage();
 
     cpu::halt();
