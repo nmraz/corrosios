@@ -366,7 +366,7 @@ fn unset_bit(bitmap: &mut [u8], index: usize) {
 }
 
 fn alloc_virt_pages(order: usize) -> Option<NonNull<u8>> {
-    let pfn = pmm::with(|pmm| pmm.allocate(order))?;
+    let pfn = pmm::allocate(order)?;
     let ptr = unsafe { NonNull::new_unchecked(pfn_to_physmap(pfn).addr().as_mut_ptr()) };
     Some(ptr)
 }
@@ -375,7 +375,9 @@ unsafe fn free_virt_pages(ptr: NonNull<u8>, order: usize) {
     let vaddr = VirtAddr::from_ptr(ptr.as_ptr());
     assert_eq!(vaddr.page_offset(), 0);
 
-    pmm::with(|pmm| unsafe { pmm.deallocate(physmap_to_pfn(vaddr.containing_page()), order) });
+    unsafe {
+        pmm::deallocate(physmap_to_pfn(vaddr.containing_page()), order);
+    }
 }
 
 fn large_alloc_order(layout: Layout) -> Option<usize> {
