@@ -136,7 +136,7 @@ impl<const N: usize> Allocator<N> {
         println!("heap size classes:");
         for size_class in &self.size_classes {
             println!(
-                "[{:6}] order {}, {:3} objects per slab",
+                "[{:4}] order {}, {:3} objects per slab",
                 size_class.size(),
                 size_class.meta.slab_order,
                 size_class.meta.objects_per_slab
