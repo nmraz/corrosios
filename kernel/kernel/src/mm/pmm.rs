@@ -9,6 +9,7 @@ use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink, Unsaf
 use itertools::Itertools;
 use num_utils::{div_ceil, log2};
 
+use crate::arch::mmu::PAGE_SIZE;
 use crate::mm::bootheap::BootHeap;
 use crate::mm::physmap::{paddr_to_physmap, physmap_to_pfn};
 use crate::mm::types::PhysFrameNum;
@@ -184,11 +185,16 @@ impl PhysManager {
 
     fn dump_usage(&self) {
         let free_pages = self.free_pages();
+        let used_pages = self.total_pages - free_pages;
+
         println!(
-            "{} pages total, {} pages in use, {} pages free",
+            "{} pages ({}) total, {} pages ({}) in use, {} pages ({}) free",
             self.total_pages,
-            self.total_pages - free_pages,
+            display_byte_size(self.total_pages * PAGE_SIZE),
+            used_pages,
+            display_byte_size(used_pages * PAGE_SIZE),
             free_pages,
+            display_byte_size(free_pages * PAGE_SIZE)
         );
         println!("free blocks by order:");
         println!(
