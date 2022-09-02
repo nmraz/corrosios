@@ -15,7 +15,7 @@
 
 .bss
 
-.set BOOT_STACK_SIZE, 0x4000 // 16K
+.set BOOT_STACK_SIZE, 0x8000 // 32K
 .set BOOT_STACK_ALIGN, 0x10 // As per ABI
 
 .align BOOT_STACK_ALIGN
