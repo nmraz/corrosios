@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "cppdbg",
+            "request": "launch",
+            "name": "Launch QEMU gdbserver",
+            "miDebuggerPath": "rust-gdb",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceRoot}/target/x86_64-corrosios-kernel/debug/kernel",
+            "miDebuggerServerAddress": "localhost:1234",
+            "debugServerPath": "${workspaceFolder}/scripts/run_cargo.sh",
+            "debugServerArgs": "qemu --gdbserver --serial vc",
+            "postRemoteConnectCommands": [
+                {
+                    "text": "set disassembly-flavor intel",
+                }
+            ]
+        },
+        {
+            "type": "cppdbg",
+            "request": "launch",
+            "name": "Attach to QEMU gdbserver",
+            "miDebuggerPath": "rust-gdb",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceRoot}/target/x86_64-corrosios-kernel/debug/kernel",
+            "miDebuggerServerAddress": "localhost:1234",
+            "postRemoteConnectCommands": [
+                {
+                    "text": "set disassembly-flavor intel",
+                }
+            ]
+        }
+    ]
+}
