@@ -10,7 +10,7 @@
             "program": "${workspaceRoot}/target/x86_64-corrosios-kernel/debug/kernel",
             "miDebuggerServerAddress": "localhost:1234",
             "debugServerPath": "${workspaceFolder}/scripts/run_cargo.sh",
-            "debugServerArgs": "qemu --gdbserver --serial vc",
+            "debugServerArgs": "qemu --gdbserver --headless",
             "postRemoteConnectCommands": [
                 {
                     "text": "set disassembly-flavor intel",
