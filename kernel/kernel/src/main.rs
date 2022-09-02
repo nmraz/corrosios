@@ -1,7 +1,10 @@
+#![feature(alloc_error_handler)]
 #![feature(asm_const)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
 #![no_main]
+
+extern crate alloc;
 
 use arch::cpu;
 use mm::types::PhysAddr;
@@ -9,6 +12,7 @@ use mm::types::PhysAddr;
 mod arch;
 #[macro_use]
 mod console;
+mod global_alloc;
 mod kimage;
 mod mm;
 mod panic;
