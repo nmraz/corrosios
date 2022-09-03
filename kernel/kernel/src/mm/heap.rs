@@ -61,25 +61,35 @@ fn get_effective_size(layout: Layout) -> usize {
     align_up(layout.size(), layout.align())
 }
 
+// Note: the correctness of the alignment handling in the allocator above depends on the fact that
+// rounding any size up to its nearest size class below preserves the largest power of 2 dividing
+// the number; in other words, rounding a number up to its size class must not decrease its trailing
+// zero count. We ensure this by never adding a power of 2 to a size class not already divisible by
+// that power, which would cause us to "skip" a size class that was more strictly aligned.
 static ALLOCATOR: Allocator<23> = Allocator::new([
+    // 16-byte granularity
     SizeClass::new(16, 0),
     SizeClass::new(32, 0),
     SizeClass::new(48, 0),
     SizeClass::new(64, 0),
     SizeClass::new(80, 0),
     SizeClass::new(96, 0),
+    // 32-byte granularity
     SizeClass::new(128, 0),
     SizeClass::new(160, 0),
     SizeClass::new(192, 0),
     SizeClass::new(224, 0),
+    // 64-byte granularity
     SizeClass::new(256, 1),
     SizeClass::new(320, 1),
     SizeClass::new(384, 1),
     SizeClass::new(448, 1),
+    // 128-byte granularity
     SizeClass::new(512, 2),
     SizeClass::new(640, 2),
     SizeClass::new(768, 2),
     SizeClass::new(896, 2),
+    // 256-byte granularity
     SizeClass::new(1024, 3),
     SizeClass::new(1280, 3),
     SizeClass::new(1536, 3),
