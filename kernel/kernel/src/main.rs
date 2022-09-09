@@ -19,6 +19,10 @@ mod mm;
 mod panic;
 mod sync;
 
+#[derive(Debug, Clone, Copy)]
+#[repr(align(512))]
+struct AlignedU32(u32);
+
 #[no_mangle]
 extern "C" fn kernel_main(
     kernel_paddr: PhysAddr,
@@ -47,9 +51,9 @@ extern "C" fn kernel_main(
 
     mm::heap::dump_size_classes();
 
-    let x = Box::new(5);
-    let y = Box::new(7);
-    println!("x: {} ({:p}), y: {} ({:p})", *x, x, *y, y);
+    let x = Box::new(AlignedU32(5));
+    let y = Box::new(AlignedU32(7));
+    println!("x: {:?} ({:p}), y: {:?} ({:p})", *x, x, *y, y);
 
     mm::pmm::dump_usage();
 
