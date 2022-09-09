@@ -24,8 +24,8 @@ pub fn supports_page_size(level: usize) -> bool {
 pub fn flush_tlb() {
     let old_cr3: u64;
     unsafe {
-        asm!("mov {}, cr3", out(reg) old_cr3);
-        asm!("mov cr3, {}", in(reg) old_cr3);
+        asm!("mov {}, cr3", out(reg) old_cr3, options(nostack));
+        asm!("mov cr3, {}", in(reg) old_cr3, options(nostack));
     }
 }
 

@@ -2,9 +2,9 @@ use core::arch::asm;
 
 pub fn halt() -> ! {
     unsafe {
-        asm!("cli");
+        asm!("cli", options(nomem, nostack));
         loop {
-            asm!("hlt");
+            asm!("hlt", options(nomem, nostack));
         }
     }
 }
