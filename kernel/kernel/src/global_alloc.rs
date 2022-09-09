@@ -23,7 +23,11 @@ unsafe impl GlobalAlloc for KernelHeapAlloc {
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         unsafe {
             let ptr = NonNull::new_unchecked(ptr);
-            let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
+            let new_layout = match Layout::from_size_align(new_size, layout.align()) {
+                Ok(layout) => layout,
+                Err(_) => return core::ptr::null_mut(),
+            };
+
             match heap::resize(ptr, layout, new_layout) {
                 Ok(ptr) => ptr.as_ptr().cast(),
                 Err(_) => core::ptr::null_mut(),
