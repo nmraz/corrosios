@@ -144,6 +144,12 @@ boot_main:
     cmp rax, rbx
     jl .Lfill_kernel_pts
 
+    // Grab the bootdata size while we still can (when it is still guaranteed
+    // to be identity-mapped).
+    mov edx, [rdi + 4]
+    // Account for container header
+    add edx, 8
+
     lea rax, [KERNEL_PML4 + r9]
     mov cr3, rax
 
@@ -154,11 +160,6 @@ boot_main:
 
     // Kernel physical address
     mov rdi, r8
-
-    // Bootdata size
-    mov edx, [rsi + 4]
-    // Account for container header
-    add edx, 8
 
     // Top-level page table index of boot code
     boottext_pt_index rcx, 3
