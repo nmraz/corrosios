@@ -12,6 +12,7 @@ pub struct QemuOptions<'a> {
     pub use_kvm: bool,
     pub headless: bool,
     pub serial: &'a str,
+    pub additional_args: &'a [String],
 }
 
 pub fn run_qemu(sh: &Shell, opts: &QemuOptions<'_>) -> Result<()> {
@@ -44,6 +45,8 @@ pub fn run_qemu(sh: &Shell, opts: &QemuOptions<'_>) -> Result<()> {
     if !opts.serial.is_empty() {
         extra_args.extend(["-serial", opts.serial]);
     }
+
+    extra_args.extend(opts.additional_args.iter().map(|arg| arg.as_str()));
 
     cmd!(
         sh,

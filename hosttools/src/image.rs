@@ -22,11 +22,30 @@ const LB_SIZE: u64 = 512;
 const EFI_PARTITION_SIZE: u64 = 10 * MB;
 const DISK_SIZE: u64 = EFI_PARTITION_SIZE + 64 * KB;
 
-pub fn create_disk_image(sh: &Shell, build_args: &[String]) -> Result<PathBuf> {
-    cross_run_all(sh, "build", build_args)?;
+pub struct ImageOptions<'a> {
+    pub release: bool,
+    pub additional_build_args: &'a [String],
+}
 
-    let kernel_path = kernel_binary_path(sh, build_args)?;
-    let bootloader_path = bootloader_binary_path(sh, build_args)?;
+impl<'a> ImageOptions<'a> {
+    pub fn build_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+
+        if self.release {
+            args.push("--release".to_owned());
+        }
+
+        args.extend(self.additional_build_args.iter().cloned());
+        args
+    }
+}
+
+pub fn create_disk_image(sh: &Shell, opts: &ImageOptions<'_>) -> Result<PathBuf> {
+    let build_args = opts.build_args();
+    cross_run_all(sh, "build", &build_args)?;
+
+    let kernel_path = kernel_binary_path(sh, &build_args)?;
+    let bootloader_path = bootloader_binary_path(sh, &build_args)?;
 
     let image_path = bootloader_path.with_file_name(config::IMAGE_NAME);
 
