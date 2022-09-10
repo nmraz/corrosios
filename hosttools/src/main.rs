@@ -45,7 +45,7 @@ struct ImageArgs {
     release: bool,
 
     /// Additional arguments to use when building
-    #[clap(short = 'B')]
+    #[clap(short = 'B', allow_hyphen_values = true)]
     additional_build_args: Vec<String>,
 }
 
