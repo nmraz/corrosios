@@ -75,6 +75,10 @@ struct GdbmuxSubcommand {
 
 #[derive(Args)]
 struct QemuArgs {
+    /// Amount of memory to give guest
+    #[clap(short = 'm', long = "mem", default_value = "1G")]
+    mem: String,
+
     /// Enable KVM acceleration
     #[clap(long)]
     kvm: bool,
@@ -117,6 +121,7 @@ fn main() -> Result<()> {
 
             let opts = QemuOptions {
                 image_path: &image_path,
+                mem: &qemu.common.mem,
                 enable_gdbserver: qemu.gdbserver,
                 use_kvm: qemu.common.kvm,
                 headless: qemu.common.headless,
@@ -147,6 +152,7 @@ fn main() -> Result<()> {
 
             let qemu_opts = QemuOptions {
                 image_path: &image_path,
+                mem: &gdbmux.qemu.mem,
                 enable_gdbserver: true,
                 use_kvm: gdbmux.qemu.kvm,
                 headless: gdbmux.qemu.headless,

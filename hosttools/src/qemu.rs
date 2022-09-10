@@ -8,6 +8,7 @@ use crate::config;
 
 pub struct QemuOptions<'a> {
     pub image_path: &'a Path,
+    pub mem: &'a str,
     pub enable_gdbserver: bool,
     pub use_kvm: bool,
     pub headless: bool,
@@ -48,9 +49,11 @@ pub fn run_qemu(sh: &Shell, opts: &QemuOptions<'_>) -> Result<()> {
 
     extra_args.extend(opts.additional_args.iter().map(|arg| arg.as_str()));
 
+    let mem = opts.mem;
+
     cmd!(
         sh,
-        "qemu-system-x86_64 -m 1G -drive {uefi_flash} -drive {uefi_vars} -drive {disk} {extra_args...}"
+        "qemu-system-x86_64 -m {mem} -drive {uefi_flash} -drive {uefi_vars} -drive {disk} {extra_args...}"
     )
     .run()
     .context("failed to start QEMU")
