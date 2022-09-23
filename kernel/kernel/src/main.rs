@@ -29,7 +29,7 @@ extern "C" fn kernel_main(
     bootinfo_paddr: PhysAddr,
     bootinfo_size: usize,
 ) -> ! {
-    arch::earlyconsole::init_install();
+    console::init();
 
     unsafe {
         kimage::init(kernel_paddr);

@@ -1,7 +1,7 @@
 pub mod cpu;
-pub mod earlyconsole;
 pub mod mm;
 pub mod mmu;
+pub mod serial;
 
 mod boot;
 mod gdt;

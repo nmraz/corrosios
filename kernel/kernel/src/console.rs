@@ -1,8 +1,9 @@
 use core::fmt::{Arguments, Write};
-use core::sync::atomic::Ordering;
 
 use arrayvec::ArrayString;
-use atomic_ref::AtomicRef;
+
+use crate::arch::serial::Console;
+use crate::sync::SpinLock;
 
 macro_rules! println {
     () => {
@@ -14,21 +15,19 @@ macro_rules! println {
     };
 }
 
-pub trait Console {
-    fn write(&self, msg: &str);
-}
+static CONSOLE: SpinLock<Option<Console>> = SpinLock::new(None);
 
-pub struct ConsoleDesc {
-    pub console: &'static (dyn Console + Sync),
-}
-
-pub fn set_console(console: &'static ConsoleDesc) {
-    CONSOLE.store(Some(console), Ordering::Release);
+pub fn init() {
+    let mut console = CONSOLE.lock();
+    assert!(console.is_none());
+    unsafe {
+        *console = Some(Console::new());
+    }
 }
 
 pub fn write(msg: &str) {
-    if let Some(console) = CONSOLE.load(Ordering::Acquire) {
-        console.console.write(msg);
+    if let Some(console) = CONSOLE.lock().as_mut() {
+        console.write(msg);
     }
 }
 
@@ -38,5 +37,3 @@ pub fn writeln_fmt(args: Arguments<'_>) {
         write(&msg);
     }
 }
-
-static CONSOLE: AtomicRef<'static, ConsoleDesc> = AtomicRef::new(None);
