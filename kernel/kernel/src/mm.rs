@@ -3,8 +3,7 @@ pub mod physmap;
 pub mod pmm;
 pub mod types;
 
-mod bootheap;
-mod earlymap;
+mod early;
 mod init;
 mod pt;
 mod utils;

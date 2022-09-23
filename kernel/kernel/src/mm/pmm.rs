@@ -10,12 +10,12 @@ use itertools::Itertools;
 use num_utils::{div_ceil, log2};
 
 use crate::arch::mmu::PAGE_SIZE;
-use crate::mm::bootheap::BootHeap;
 use crate::mm::physmap::{paddr_to_physmap, physmap_to_pfn};
 use crate::mm::types::PhysFrameNum;
 use crate::mm::utils::{self, display_byte_size};
 use crate::sync::SpinLock;
 
+use super::early::BootHeap;
 use super::physmap::pfn_to_physmap;
 use super::types::VirtAddr;
 

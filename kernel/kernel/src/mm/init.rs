@@ -9,14 +9,13 @@ use num_utils::div_ceil;
 
 use crate::arch::mm::BOOTHEAP_EARLYMAP_MAX_PAGES;
 use crate::arch::mmu::PAGE_SIZE;
-use crate::mm::bootheap::BootHeap;
-use crate::mm::earlymap::EarlyMapPfnTranslator;
+use crate::mm::early::{BootHeap, EarlyMapPfnTranslator};
 use crate::mm::utils::display_byte_size;
 use crate::mm::{physmap, pmm};
 use crate::{arch, kimage};
 
 use super::types::{PhysAddr, PhysFrameNum};
-use super::{earlymap, utils};
+use super::{early, utils};
 
 /// # Safety
 ///
@@ -25,7 +24,7 @@ use super::{earlymap, utils};
 ///   bootinfo structure, with correct memory map information
 pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
     // Safety: function contract
-    let mut mapper = unsafe { earlymap::get_early_mapper() };
+    let mut mapper = unsafe { early::get_early_mapper() };
 
     let bootinfo_pages = div_ceil(bootinfo_size, PAGE_SIZE);
     let bootinfo_ptr = mapper

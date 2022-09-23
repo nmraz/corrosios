@@ -1,3 +1,4 @@
+use core::alloc::Layout;
 use core::ops::Range;
 
 use arrayvec::ArrayVec;
@@ -9,13 +10,51 @@ use super::pt::{
     GatherInvalidations, MappingPointer, PageTable, PageTableAlloc, PageTableAllocError,
     TranslatePhys,
 };
-use super::types::{PageTablePerms, PhysFrameNum, VirtAddr, VirtPageNum};
+use super::types::{PageTablePerms, PhysAddr, PhysFrameNum, VirtAddr, VirtPageNum};
 
 const EARLY_MAP_MAX_SLOTS: usize = 5;
 const EARLY_MAP_PT_PAGES: usize = 10;
 
 static EARLY_MAP_PTS: [PageTableSpace; EARLY_MAP_PT_PAGES] =
     [PageTableSpace::NEW; EARLY_MAP_PT_PAGES];
+
+pub struct BootHeap {
+    base: PhysAddr,
+    cur: PhysAddr,
+    end: PhysAddr,
+}
+
+impl BootHeap {
+    pub fn new(range: Range<PhysAddr>) -> Self {
+        Self {
+            base: range.start,
+            cur: range.start,
+            end: range.end,
+        }
+    }
+
+    pub fn used_range(&self) -> Range<PhysAddr> {
+        self.base..self.cur
+    }
+
+    pub fn alloc_phys(&mut self, layout: Layout) -> PhysAddr {
+        let base = self.cur.align_up(layout.align());
+        if base > self.end || layout.size() > self.end - base {
+            panic!("bootheap exhausted");
+        }
+
+        self.cur = base + layout.size();
+        base
+    }
+}
+
+impl PageTableAlloc for BootHeap {
+    fn allocate(&mut self) -> Result<PhysFrameNum, PageTableAllocError> {
+        Ok(self
+            .alloc_phys(Layout::new::<PageTableSpace>())
+            .containing_frame())
+    }
+}
 
 pub struct EarlyMapPfnTranslator(Range<PhysFrameNum>);
 
