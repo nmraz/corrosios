@@ -5,23 +5,19 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 pub struct SpinLock<T> {
     data: UnsafeCell<T>,
-    flag: AtomicBool,
+    locked: AtomicBool,
 }
 
 impl<T> SpinLock<T> {
     pub const fn new(value: T) -> Self {
         Self {
             data: UnsafeCell::new(value),
-            flag: AtomicBool::new(false),
+            locked: AtomicBool::new(false),
         }
     }
 
     pub fn lock(&self) -> SpinGuard<'_, T> {
-        while self
-            .flag
-            .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_err()
-        {
+        while self.locked.swap(true, Ordering::Acquire) {
             hint::spin_loop();
         }
 
@@ -58,6 +54,6 @@ impl<T> DerefMut for SpinGuard<'_, T> {
 
 impl<T> Drop for SpinGuard<'_, T> {
     fn drop(&mut self) {
-        self.owner.flag.store(false, Ordering::Release);
+        self.owner.locked.store(false, Ordering::Release);
     }
 }
