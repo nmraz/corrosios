@@ -59,3 +59,6 @@ pub struct ConfigTableEntry {
     pub guid: Guid,
     pub ptr: usize,
 }
+
+// Until `never_type` is stabilized
+pub enum NoReturn {}

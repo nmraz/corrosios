@@ -9,8 +9,8 @@ use uninit::out_ref::Out;
 use crate::proto::io::{SimpleTextOutput, SimpleTextOutputAbi};
 use crate::proto::{Protocol, ProtocolHandle};
 use crate::{
-    ConfigTableEntry, Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, Result, Status,
-    U16CStr,
+    ConfigTableEntry, Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, NoReturn, Result,
+    Status, U16CStr,
 };
 
 pub struct OpenProtocolHandle<'a, P: Protocol> {
@@ -400,8 +400,22 @@ impl BootTable {
     pub fn exit_boot_services(
         self,
         image_handle: Handle,
+        mmap_buf: Out<'_, [u8]>,
+        runtime_func: impl FnOnce(RuntimeTable, MemoryMapIter<'_>) -> NoReturn,
+    ) -> Status {
+        self.exit_boot_services_inner(image_handle, mmap_buf, runtime_func)
+            .unwrap_err()
+    }
+
+    fn exit_boot_services_inner(
+        self,
+        image_handle: Handle,
         mut mmap_buf: Out<'_, [u8]>,
-    ) -> Result<(RuntimeTable, MemoryMapIter<'_>)> {
+        runtime_func: impl FnOnce(RuntimeTable, MemoryMapIter<'_>) -> NoReturn,
+    ) -> Result<()> {
+        // A rustc bug marks the entire loop as unreachable, even though it will always run at least
+        // one iteration.
+        #[allow(unreachable_code)]
         loop {
             // Work around rust-lang/rust#51526.
             // Safety: We never actually create overlapping mutable references, as each reborrow
@@ -416,7 +430,8 @@ impl BootTable {
             }
             status.to_result()?;
 
-            break Ok((unsafe { RuntimeTable::from_abi(self.abi()) }, mmap));
+            let runtime_table = unsafe { RuntimeTable::from_abi(self.abi()) };
+            runtime_func(runtime_table, mmap);
         }
     }
 

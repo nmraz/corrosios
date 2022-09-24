@@ -50,20 +50,25 @@ fn run(image_handle: Handle, boot_table: BootTable) -> Result<()> {
     let kernel_entry = setup::load_kernel(image_handle, boot_table.boot_services())?;
     let bootinfo_ctx = setup::prepare_bootinfo(&boot_table)?;
 
-    let (runtime_table, mmap) =
-        boot_table.exit_boot_services(image_handle, bootinfo_ctx.efi_mmap_buf.as_out())?;
+    let err = boot_table.exit_boot_services(
+        image_handle,
+        bootinfo_ctx.efi_mmap_buf.as_out(),
+        move |runtime_table, mmap| {
+            let mut builder = bootinfo_ctx.builder;
+            builder
+                .append(ItemKind::EFI_SYSTEM_TABLE, runtime_table)
+                .unwrap();
 
-    let mut builder = bootinfo_ctx.builder;
-    builder
-        .append(ItemKind::EFI_SYSTEM_TABLE, runtime_table)
-        .unwrap();
+            append_mmap(&mut builder, mmap, bootinfo_ctx.mmap_scratch);
 
-    append_mmap(&mut builder, mmap, bootinfo_ctx.mmap_scratch);
+            let bootinfo_header = builder.finish();
+            let entry: extern "sysv64" fn(usize) -> ! = unsafe { mem::transmute(kernel_entry) };
 
-    let bootinfo_header = builder.finish();
-    let entry: extern "sysv64" fn(usize) -> ! = unsafe { mem::transmute(kernel_entry) };
+            entry(bootinfo_header as *const _ as usize);
+        },
+    );
 
-    entry(bootinfo_header as *const _ as usize);
+    Err(err)
 }
 
 fn append_mmap<'a>(
