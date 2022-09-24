@@ -18,17 +18,20 @@ macro_rules! println {
 static CONSOLE: SpinLock<Option<Console>> = SpinLock::new(None);
 
 pub fn init() {
-    let mut console = CONSOLE.lock();
-    assert!(console.is_none());
-    unsafe {
-        *console = Some(Console::new());
-    }
+    CONSOLE.with(|console, _| {
+        assert!(console.is_none());
+        unsafe {
+            *console = Some(Console::new());
+        }
+    });
 }
 
 pub fn write(msg: &str) {
-    if let Some(console) = CONSOLE.lock().as_mut() {
-        console.write(msg);
-    }
+    CONSOLE.with(|console, _| {
+        if let Some(console) = console {
+            console.write(msg);
+        }
+    });
 }
 
 pub fn writeln_fmt(args: Arguments<'_>) {

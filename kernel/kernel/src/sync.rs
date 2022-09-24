@@ -1,4 +1,4 @@
-pub use spinlock::{SpinGuard, SpinLock};
+pub use spinlock::SpinLock;
 
 mod irq;
 mod spinlock;

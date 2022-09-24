@@ -3,6 +3,8 @@ use core::hint;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use super::irq::{self, IrqDisabled};
+
 pub struct SpinLock<T> {
     data: UnsafeCell<T>,
     locked: AtomicBool,
@@ -16,12 +18,19 @@ impl<T> SpinLock<T> {
         }
     }
 
-    pub fn lock(&self) -> SpinGuard<'_, T> {
-        while self.locked.swap(true, Ordering::Acquire) {
-            hint::spin_loop();
-        }
+    pub fn with<R>(&self, f: impl FnOnce(&mut T, &IrqDisabled) -> R) -> R {
+        irq::disable_with(|irq_disabled| {
+            while self.locked.swap(true, Ordering::Acquire) {
+                hint::spin_loop();
+            }
 
-        SpinGuard { owner: self }
+            // Safety: we have exclusive access now that the lock is locked
+            let ret = unsafe { f(&mut *self.data.get(), irq_disabled) };
+
+            self.locked.store(false, Ordering::Release);
+
+            ret
+        })
     }
 }
 
@@ -31,29 +40,3 @@ impl<T> SpinLock<T> {
 unsafe impl<T: Send> Sync for SpinLock<T> {}
 
 unsafe impl<T: Send> Send for SpinLock<T> {}
-
-pub struct SpinGuard<'a, T> {
-    owner: &'a SpinLock<T>,
-}
-
-impl<T> Deref for SpinGuard<'_, T> {
-    type Target = T;
-
-    fn deref(&self) -> &T {
-        // Safety: we have exclusive access when the lock is locked
-        unsafe { &*self.owner.data.get() }
-    }
-}
-
-impl<T> DerefMut for SpinGuard<'_, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        // Safety: we have exclusive access when the lock is locked
-        unsafe { &mut *self.owner.data.get() }
-    }
-}
-
-impl<T> Drop for SpinGuard<'_, T> {
-    fn drop(&mut self) {
-        self.owner.locked.store(false, Ordering::Release);
-    }
-}

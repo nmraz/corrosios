@@ -200,11 +200,13 @@ impl SizeClass {
     }
 
     fn allocate(&self) -> Result<NonNull<u8>, HeapAllocError> {
-        self.inner.lock().allocate(&self.meta)
+        // self.inner.lock().allocate(&self.meta)
+        self.inner.with(|inner, _| inner.allocate(&self.meta))
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>) {
-        unsafe { self.inner.lock().deallocate(&self.meta, ptr) }
+        self.inner
+            .with(|inner, _| unsafe { inner.deallocate(&self.meta, ptr) })
     }
 }
 

@@ -39,38 +39,39 @@ pub unsafe fn init(
     reserved_ranges: &[Range<PhysFrameNum>],
     mut bootheap: BootHeap,
 ) {
-    let mut manager_ref = PHYS_MANAGER.lock();
-    assert!(manager_ref.is_none(), "pmm already initialized");
+    PHYS_MANAGER.with(|manager_ref, _| {
+        assert!(manager_ref.is_none(), "pmm already initialized");
 
-    let max_pfn = highest_usable_frame(mem_map);
-    println!("pmm: reserving bitmaps up to frame {}", max_pfn);
-    let mut manager = PhysManager::new(max_pfn, &mut bootheap);
+        let max_pfn = highest_usable_frame(mem_map);
+        println!("pmm: reserving bitmaps up to frame {}", max_pfn);
+        let mut manager = PhysManager::new(max_pfn, &mut bootheap);
 
-    let bootheap_used_range = bootheap.used_range();
-    println!(
-        "pmm: final bootheap usage: {}-{} ({})",
-        bootheap_used_range.start,
-        bootheap_used_range.end,
-        display_byte_size(bootheap_used_range.end - bootheap_used_range.start)
-    );
+        let bootheap_used_range = bootheap.used_range();
+        println!(
+            "pmm: final bootheap usage: {}-{} ({})",
+            bootheap_used_range.start,
+            bootheap_used_range.end,
+            display_byte_size(bootheap_used_range.end - bootheap_used_range.start)
+        );
 
-    let bootheap_used_frames = bootheap_used_range.start.containing_frame()
-        ..bootheap_used_range.end.containing_tail_frame();
+        let bootheap_used_frames = bootheap_used_range.start.containing_frame()
+            ..bootheap_used_range.end.containing_tail_frame();
 
-    let reserved_ranges = {
-        let mut final_reserved_ranges: ArrayVec<_, 5> = ArrayVec::new();
-        final_reserved_ranges.extend(reserved_ranges.iter().cloned());
-        final_reserved_ranges.push(bootheap_used_frames);
-        final_reserved_ranges.sort_unstable_by_key(|range| range.start);
-        final_reserved_ranges
-    };
+        let reserved_ranges = {
+            let mut final_reserved_ranges: ArrayVec<_, 5> = ArrayVec::new();
+            final_reserved_ranges.extend(reserved_ranges.iter().cloned());
+            final_reserved_ranges.push(bootheap_used_frames);
+            final_reserved_ranges.sort_unstable_by_key(|range| range.start);
+            final_reserved_ranges
+        };
 
-    utils::iter_usable_ranges(mem_map, &reserved_ranges, |start, end| {
-        println!("pmm: adding free range {}-{}", start, end);
-        manager.add_free_range(start, end);
+        utils::iter_usable_ranges(mem_map, &reserved_ranges, |start, end| {
+            println!("pmm: adding free range {}-{}", start, end);
+            manager.add_free_range(start, end);
+        });
+
+        *manager_ref = Some(manager);
     });
-
-    *manager_ref = Some(manager);
 }
 
 pub fn allocate(order: usize) -> Option<PhysFrameNum> {
@@ -86,7 +87,7 @@ pub fn dump_usage() {
 }
 
 fn with<R>(f: impl FnOnce(&mut PhysManager) -> R) -> R {
-    f(PHYS_MANAGER.lock().as_mut().expect("pmm not initialized"))
+    PHYS_MANAGER.with(|pmm, _| f(pmm.as_mut().expect("pmm not initialized")))
 }
 
 fn highest_usable_frame(mem_map: &[MemoryRange]) -> PhysFrameNum {
