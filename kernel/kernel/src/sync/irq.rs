@@ -22,7 +22,7 @@ impl IrqDisabled {
     }
 }
 
-pub fn without<R>(f: impl FnOnce(&IrqDisabled) -> R) -> R {
+pub fn disable_with<R>(f: impl FnOnce(&IrqDisabled) -> R) -> R {
     unsafe {
         let prev_state = arch::cpu::irq_enabled();
         arch::cpu::disable_irq();
