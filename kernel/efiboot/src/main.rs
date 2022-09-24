@@ -50,7 +50,7 @@ fn run(image_handle: Handle, boot_table: BootTable) -> Result<()> {
     let kernel_entry = setup::load_kernel(image_handle, boot_table.boot_services())?;
     let bootinfo_ctx = setup::prepare_bootinfo(&boot_table)?;
 
-    let noret = boot_table.exit_boot_services(
+    boot_table.exit_boot_services(
         image_handle,
         bootinfo_ctx.efi_mmap_buf.as_out(),
         move |runtime_table, mmap| {
@@ -67,9 +67,6 @@ fn run(image_handle: Handle, boot_table: BootTable) -> Result<()> {
             entry(bootinfo_header as *const _ as usize);
         },
     )?;
-
-    // One day we'll have `!` :(
-    match noret {}
 }
 
 fn append_mmap<'a>(

@@ -4,13 +4,14 @@ use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::{mem, ptr, slice};
 
+use never_say_never::Never;
 use uninit::out_ref::Out;
 
 use crate::proto::io::{SimpleTextOutput, SimpleTextOutputAbi};
 use crate::proto::{Protocol, ProtocolHandle};
 use crate::{
-    ConfigTableEntry, Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, NoReturn, Result,
-    Status, U16CStr,
+    ConfigTableEntry, Guid, Handle, MemoryDescriptor, MemoryMapKey, MemoryType, Result, Status,
+    U16CStr,
 };
 
 pub struct OpenProtocolHandle<'a, P: Protocol> {
@@ -401,11 +402,8 @@ impl BootTable {
         self,
         image_handle: Handle,
         mut mmap_buf: Out<'_, [u8]>,
-        runtime_func: impl FnOnce(RuntimeTable, MemoryMapIter<'_>) -> NoReturn,
-    ) -> Result<NoReturn> {
-        // A rustc bug marks the entire loop as unreachable, even though it will always run at least
-        // one iteration.
-        #[allow(unreachable_code)]
+        runtime_func: impl FnOnce(RuntimeTable, MemoryMapIter<'_>) -> Never,
+    ) -> Result<Never> {
         loop {
             // Work around rust-lang/rust#51526.
             // Safety: We never actually create overlapping mutable references, as each reborrow

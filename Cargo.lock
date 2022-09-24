@@ -352,6 +352,12 @@ name = "minielf"
 version = "0.1.0"
 
 [[package]]
+name = "never-say-never"
+version = "6.6.666"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf5a574dadd7941adeaa71823ecba5e28331b8313fb2e1c6a5c7e5981ea53ad6"
+
+[[package]]
 name = "num-integer"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -524,6 +530,7 @@ name = "uefi"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "never-say-never",
  "ucs2",
  "uefi-macros",
  "uninit",
