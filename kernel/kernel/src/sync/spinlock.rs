@@ -1,6 +1,5 @@
 use core::cell::UnsafeCell;
 use core::hint;
-use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use super::irq::{self, IrqDisabled};
