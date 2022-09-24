@@ -1,5 +1,7 @@
+use core::iter::FusedIterator;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
+use core::ptr::NonNull;
 use core::{mem, ptr, slice};
 
 use uninit::out_ref::Out;
@@ -69,6 +71,47 @@ impl<P: Protocol> Drop for OpenProtocolHandle<'_, P> {
         .expect("failed to close existing protocol handle");
     }
 }
+
+#[derive(Clone)]
+pub struct MemoryMapIter<'a> {
+    ptr: NonNull<u8>,
+    end: *const u8,
+    desc_size: usize,
+    _marker: PhantomData<&'a MemoryDescriptor>,
+}
+
+impl<'a> Iterator for MemoryMapIter<'a> {
+    type Item = &'a MemoryDescriptor;
+
+    fn next(&mut self) -> Option<&'a MemoryDescriptor> {
+        if self.ptr.as_ptr() == self.end as *mut _ {
+            None
+        } else {
+            // Safety: we trust that the firmware has filled the buffer with valid memory
+            // descriptors, and we know that they all lie in the same buffer passed by the user to
+            // `memory_map`.
+            unsafe {
+                let desc = self.ptr.cast().as_ref();
+                self.ptr = NonNull::new_unchecked(self.ptr.as_ptr().add(self.desc_size));
+                Some(desc)
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        // Safety: both `ptr` and `end` lie in the same buffer passed by the user to `memory_map`.
+        // As this buffer was originally passed as a slice, its size is guaranteed not to overflow
+        // an `isize`.
+        let len = unsafe {
+            self.end.offset_from(self.ptr.as_ptr() as *const _) as usize / self.desc_size
+        };
+
+        (len, Some(len))
+    }
+}
+
+impl ExactSizeIterator for MemoryMapIter<'_> {}
+impl FusedIterator for MemoryMapIter<'_> {}
 
 pub enum AllocMode {
     Any,
@@ -179,25 +222,20 @@ impl BootServices {
     pub fn memory_map<'a>(
         &self,
         mut buf: Out<'a, [u8]>,
-    ) -> Result<(
-        MemoryMapKey,
-        impl ExactSizeIterator<Item = &'a MemoryDescriptor> + Clone,
-    )> {
+    ) -> Result<(MemoryMapKey, MemoryMapIter<'a>)> {
+        let ptr = buf.as_mut_ptr();
         let mut size = buf.len();
         let mut key = MemoryMapKey(0);
         let mut desc_size = 0;
         let mut version = 0;
 
-        assert_eq!(
-            buf.as_ptr() as usize % mem::align_of::<MemoryDescriptor>(),
-            0
-        );
+        assert_eq!(ptr as usize % mem::align_of::<MemoryDescriptor>(), 0);
 
         // Safety: buffer is suitably aligned.
         unsafe {
             (self.get_memory_map)(
                 &mut size,
-                buf.as_mut_ptr() as *mut MemoryDescriptor,
+                ptr as *mut MemoryDescriptor,
                 &mut key,
                 &mut desc_size,
                 &mut version,
@@ -205,11 +243,16 @@ impl BootServices {
         }
         .to_result()?;
 
-        let iter = buf.as_uninit()[..size].chunks(desc_size).map(move |chunk| {
-            assert_eq!(chunk.len(), desc_size);
-            // Safety: aligned, we trust the firmware.
-            unsafe { &*(chunk.as_ptr() as *const MemoryDescriptor) }
-        });
+        assert_eq!(size % desc_size, 0);
+
+        let iter = unsafe {
+            MemoryMapIter {
+                ptr: NonNull::new_unchecked(ptr),
+                end: ptr.add(size) as *const _,
+                desc_size,
+                _marker: PhantomData,
+            }
+        };
 
         Ok((key, iter))
     }
@@ -358,10 +401,7 @@ impl BootTable {
         self,
         image_handle: Handle,
         mut mmap_buf: Out<'_, [u8]>,
-    ) -> Result<(
-        RuntimeTable,
-        impl ExactSizeIterator<Item = &MemoryDescriptor> + Clone,
-    )> {
+    ) -> Result<(RuntimeTable, MemoryMapIter<'_>)> {
         loop {
             // Work around rust-lang/rust#51526.
             // Safety: We never actually create overlapping mutable references, as each reborrow
