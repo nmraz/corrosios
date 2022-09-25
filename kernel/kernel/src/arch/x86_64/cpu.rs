@@ -1,5 +1,7 @@
 use core::arch::asm;
 
+use super::x64_cpu::get_rflags;
+
 #[inline]
 pub fn halt() -> ! {
     unsafe {
@@ -26,13 +28,4 @@ pub unsafe fn enable_irq() {
     unsafe {
         asm!("sti", options(nostack));
     }
-}
-
-#[inline]
-pub fn get_rflags() -> u64 {
-    let rflags: u64;
-    unsafe {
-        asm!("pushf; pop {}", out(reg) rflags);
-    }
-    rflags
 }

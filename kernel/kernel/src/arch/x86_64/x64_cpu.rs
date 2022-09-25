@@ -15,3 +15,12 @@ pub unsafe fn outb(port: u16, val: u8) {
         asm!("out dx, al", in("dx") port, in("al") val, options(nostack));
     }
 }
+
+#[inline]
+pub fn get_rflags() -> u64 {
+    let rflags: u64;
+    unsafe {
+        asm!("pushf; pop {}", out(reg) rflags);
+    }
+    rflags
+}

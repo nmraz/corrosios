@@ -2,7 +2,7 @@ use core::hint;
 
 use bitflags::bitflags;
 
-use super::ioport::{inb, outb};
+use super::x64_cpu::{inb, outb};
 
 pub struct Console {
     serial: Serial,
