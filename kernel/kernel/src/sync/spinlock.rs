@@ -19,17 +19,21 @@ impl<T> SpinLock<T> {
 
     pub fn with<R>(&self, f: impl FnOnce(&mut T, &IrqDisabled) -> R) -> R {
         irq::disable_with(|irq_disabled| {
-            while self.locked.swap(true, Ordering::Acquire) {
-                hint::spin_loop();
-            }
-
-            // Safety: we have exclusive access now that the lock is locked
-            let ret = unsafe { f(&mut *self.data.get(), irq_disabled) };
-
-            self.locked.store(false, Ordering::Release);
-
-            ret
+            self.with_noirq(irq_disabled, |data| f(data, irq_disabled))
         })
+    }
+
+    pub fn with_noirq<R>(&self, _irq_disabled: &IrqDisabled, f: impl FnOnce(&mut T) -> R) -> R {
+        while self.locked.swap(true, Ordering::Acquire) {
+            hint::spin_loop();
+        }
+
+        // Safety: we have exclusive access now that the lock is locked
+        let ret = unsafe { f(&mut *self.data.get()) };
+
+        self.locked.store(false, Ordering::Release);
+
+        ret
     }
 }
 
