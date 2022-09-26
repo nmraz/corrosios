@@ -70,6 +70,9 @@ boot_main:
     // NOTE: We must avoid clobbering `rdi` for the duration of this function as
     // it contains the physical address of the data provided by the bootloader.
 
+    // Disable interrupts until we have a proper IDT set up
+    cli
+
     // The kernel is physically relocatable, so we must stick to pure PIC
     // here until the kernel is mapped to its (constant) virtual address. For
     // the remainder of this function, `r8` will hold the physical address of the
