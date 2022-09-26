@@ -4,7 +4,7 @@ use core::ops::Range;
 use arrayvec::ArrayVec;
 
 use crate::arch::mmu::{flush_tlb, PageTableSpace};
-use crate::{arch, kimage};
+use crate::kimage;
 
 use super::pt::{
     GatherInvalidations, MappingPointer, PageTable, PageTableAlloc, PageTableAllocError,
