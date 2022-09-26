@@ -90,7 +90,7 @@ pub unsafe fn get_early_mapper() -> EarlyMapper {
         end: start + EARLY_MAP_PTS.len(),
     };
 
-    let pt = unsafe { PageTable::new(arch::mmu::kernel_pt_root(), KernelPfnTranslator) };
+    let pt = unsafe { PageTable::current_kernel(KernelPfnTranslator) };
 
     EarlyMapper {
         slots: ArrayVec::new(),

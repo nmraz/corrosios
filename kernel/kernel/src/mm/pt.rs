@@ -1,6 +1,8 @@
 use core::cmp;
 
-use crate::arch::mmu::{self, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT};
+use crate::arch::mmu::{
+    self, current_kernel_pt, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT,
+};
 
 use super::types::{PageTableFlags, PageTablePerms, PhysFrameNum, VirtPageNum};
 
@@ -70,6 +72,14 @@ pub struct PageTable<T> {
 }
 
 impl<T: TranslatePhys> PageTable<T> {
+    /// # Safety
+    ///
+    /// The caller must guarantee that `translator` provides correct virtual page numbers for any
+    /// queried physical frames (from within the active page table hierarchy).
+    pub unsafe fn current_kernel(translator: T) -> Self {
+        unsafe { Self::new(current_kernel_pt(), translator) }
+    }
+
     /// # Safety
     ///
     /// The caller must guarantee that the provided table is correctly structured and that

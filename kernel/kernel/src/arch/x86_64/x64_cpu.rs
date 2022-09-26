@@ -26,6 +26,22 @@ pub fn get_rflags() -> u64 {
 }
 
 #[inline]
+pub fn read_cr3() -> u64 {
+    let cr3: u64;
+    unsafe {
+        asm!("mov {}, cr3", out(reg) cr3, options(nostack));
+    }
+    cr3
+}
+
+#[inline]
+pub unsafe fn write_cr3(val: u64) {
+    unsafe {
+        asm!("mov cr3, {}", in(reg) val, options(nostack));
+    }
+}
+
+#[inline]
 pub unsafe fn rdmsr(num: u32) -> u64 {
     let eax: u32;
     let edx: u32;

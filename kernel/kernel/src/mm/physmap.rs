@@ -1,6 +1,5 @@
 use bootinfo::item::{MemoryKind, MemoryRange};
 
-use crate::arch;
 use crate::arch::mm::{PHYS_MAP_BASE, PHYS_MAP_MAX_PAGES};
 
 use super::pt::{MappingPointer, PageTable, PageTableAlloc, TranslatePhys};
@@ -21,7 +20,7 @@ pub unsafe fn init(
     pt_mapping: impl TranslatePhys,
 ) {
     // Safety: the function contract guarantees that `pt_mapping` can be used here
-    let mut pt = unsafe { PageTable::new(arch::mmu::kernel_pt_root(), pt_mapping) };
+    let mut pt = unsafe { PageTable::current_kernel(pt_mapping) };
 
     // Note: the bootloader is responsible for sorting/coalescing the memory map
     let usable_map = mem_map
