@@ -4,5 +4,5 @@ pub mod mmu;
 pub mod serial;
 
 mod boot;
-mod gdt;
+mod descriptor;
 mod x64_cpu;

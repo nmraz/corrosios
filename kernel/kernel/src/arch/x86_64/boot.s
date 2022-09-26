@@ -28,10 +28,22 @@ boot_stack_top:
 
 .section .boot.rodata, "a"
 
+.type early_gdt, @object
+early_gdt:
+    // Null descriptor
+    .quad 0
+    // Kernel code: present, non-system, exectuable, long mode, ring0
+    .quad 0x20980000000000
+.size early_gdt, . - early_gdt
+.set EARLY_GDT_SIZE, . - early_gdt
+
+.set KERNEL_CS_SELECTOR, 8
+
 .type early_gdtr, @object
 early_gdtr:
-    .word {GDT_SIZE} * 8 - 1
-    .quad GDT
+    .word EARLY_GDT_SIZE - 1
+early_gdtr_ptr:
+    .quad 0
 .size early_gdtr, . - early_gdtr
 
 
@@ -153,6 +165,8 @@ boot_main:
     lea rax, [KERNEL_PML4 + r9]
     mov cr3, rax
 
+    lea rax, [rip + early_gdt]
+    mov [rip + early_gdtr_ptr], rax
     lgdt [rip + early_gdtr]
 
     // Bootdata physical address
@@ -164,7 +178,7 @@ boot_main:
     // Top-level page table index of boot code
     boottext_pt_index rcx, 3
 
-    push {KERNEL_CS_SELECTOR}
+    push KERNEL_CS_SELECTOR
     lea rax, [high_entry]
     push rax
     retfq
