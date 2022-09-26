@@ -24,3 +24,22 @@ pub fn get_rflags() -> u64 {
     }
     rflags
 }
+
+#[inline]
+pub unsafe fn rdmsr(num: u32) -> u64 {
+    let eax: u32;
+    let edx: u32;
+
+    unsafe {
+        asm!("rdmsr", in("ecx") num, out("eax") eax, out("edx") edx, options(nostack));
+    }
+
+    ((edx as u64) << 32) | (eax as u64)
+}
+
+#[inline]
+pub unsafe fn wrmsr(num: u32, val: u64) {
+    unsafe {
+        asm!("wrmsr", in("ecx") num, in("eax") val as u32, in("edx") (val >> 32) as u32, options(nostack));
+    }
+}
