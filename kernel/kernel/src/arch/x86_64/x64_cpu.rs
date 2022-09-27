@@ -124,7 +124,7 @@ pub unsafe fn wrgsbase(base: VirtAddr) {
 pub unsafe fn read_gs_qword<const OFF: usize>() -> u64 {
     let ret: u64;
     unsafe {
-        asm!("mov {}, gs:[{}]", out(reg) ret, const OFF);
+        asm!("mov {}, gs:[{}]", out(reg) ret, const OFF, options(nostack, readonly, pure));
     }
     ret
 }
