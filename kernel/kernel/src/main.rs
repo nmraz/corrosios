@@ -52,8 +52,6 @@ extern "C" fn kernel_main(
     }
     println!("memory manager initialized");
 
-    // mm::heap::dump_size_classes();
-
     unsafe {
         arch::cpu::init(irq_disabled);
     }
