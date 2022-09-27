@@ -1,4 +1,5 @@
 pub use spinlock::SpinLock;
 
-mod irq;
+pub mod irq;
+
 mod spinlock;

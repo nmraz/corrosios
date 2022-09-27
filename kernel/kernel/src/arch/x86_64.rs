@@ -5,4 +5,5 @@ pub mod serial;
 
 mod boot;
 mod descriptor;
+mod percpu;
 mod x64_cpu;

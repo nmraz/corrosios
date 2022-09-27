@@ -7,7 +7,7 @@ use crate::arch;
 /// Whenever an instance of this structure is alive, users can safely assume that interrupts are
 /// disbled.
 pub struct IrqDisabled {
-    _not_send: PhantomData<*const ()>,
+    _not_send_sync: PhantomData<*const ()>,
 }
 
 impl IrqDisabled {
@@ -17,7 +17,7 @@ impl IrqDisabled {
     /// for the duration of the returned object's lifetime.
     pub unsafe fn new() -> Self {
         Self {
-            _not_send: PhantomData,
+            _not_send_sync: PhantomData,
         }
     }
 }

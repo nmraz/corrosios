@@ -1,14 +1,12 @@
-use core::arch::asm;
-
-use super::x64_cpu::get_rflags;
+use super::x64_cpu::{cli, get_rflags, hlt, sti};
 
 #[inline]
 pub fn halt() -> ! {
     unsafe {
-        asm!("cli", options(nomem, nostack));
-        loop {
-            asm!("hlt", options(nomem, nostack));
-        }
+        cli();
+    }
+    loop {
+        hlt();
     }
 }
 
@@ -19,13 +17,13 @@ pub fn irq_enabled() -> bool {
 #[inline]
 pub unsafe fn disable_irq() {
     unsafe {
-        asm!("cli", options(nostack));
+        cli();
     }
 }
 
 #[inline]
 pub unsafe fn enable_irq() {
     unsafe {
-        asm!("sti", options(nostack));
+        sti();
     }
 }
