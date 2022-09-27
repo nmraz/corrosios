@@ -13,6 +13,7 @@ use crate::arch::mmu::PAGE_SIZE;
 use crate::mm::physmap::{paddr_to_physmap, physmap_to_pfn};
 use crate::mm::types::PhysFrameNum;
 use crate::mm::utils::{self, display_byte_size};
+use crate::sync::irq::IrqDisabled;
 use crate::sync::SpinLock;
 
 use super::early::BootHeap;
@@ -38,8 +39,9 @@ pub unsafe fn init(
     mem_map: &[MemoryRange],
     reserved_ranges: &[Range<PhysFrameNum>],
     mut bootheap: BootHeap,
+    irq_disabled: &IrqDisabled,
 ) {
-    PHYS_MANAGER.with(|manager_ref, _| {
+    PHYS_MANAGER.with_noirq(irq_disabled, |manager_ref| {
         assert!(manager_ref.is_none(), "pmm already initialized");
 
         let max_pfn = highest_usable_frame(mem_map);

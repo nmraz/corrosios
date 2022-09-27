@@ -12,6 +12,7 @@ use crate::arch::mmu::PAGE_SIZE;
 use crate::mm::early::{BootHeap, EarlyMapPfnTranslator};
 use crate::mm::utils::display_byte_size;
 use crate::mm::{physmap, pmm};
+use crate::sync::irq::IrqDisabled;
 use crate::{arch, kimage};
 
 use super::types::{PhysAddr, PhysFrameNum};
@@ -22,7 +23,7 @@ use super::{early, utils};
 /// * This function must be called only once during initialization
 /// * The physical address range passed in `bootinfo_paddr` and `bootinfo_size` must contain a valid
 ///   bootinfo structure, with correct memory map information
-pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
+pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled: &IrqDisabled) {
     // Safety: function contract
     let mut mapper = unsafe { early::get_early_mapper() };
 
@@ -71,7 +72,7 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize) {
                 bootheap_range.start..bootheap_range.start + bootheap_earlymap_pages,
             ),
         );
-        pmm::init(mem_map, &reserved_ranges, bootheap);
+        pmm::init(mem_map, &reserved_ranges, bootheap, irq_disabled);
     }
 }
 

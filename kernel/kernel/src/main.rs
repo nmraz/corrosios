@@ -10,6 +10,8 @@ use alloc::boxed::Box;
 use arch::cpu;
 use mm::types::PhysAddr;
 
+use crate::sync::irq::IrqDisabled;
+
 mod arch;
 #[macro_use]
 mod console;
@@ -29,6 +31,9 @@ extern "C" fn kernel_main(
     bootinfo_paddr: PhysAddr,
     bootinfo_size: usize,
 ) -> ! {
+    // Safety: main is called with interrupts disabled.
+    let irq_disabled = unsafe { IrqDisabled::new() };
+
     console::init();
 
     unsafe {
@@ -46,7 +51,9 @@ extern "C" fn kernel_main(
     println!("bootinfo at {}, size {:#x}", bootinfo_paddr, bootinfo_size);
 
     println!("initializing memory manager");
-    unsafe { mm::init(bootinfo_paddr, bootinfo_size) };
+    unsafe {
+        mm::init(bootinfo_paddr, bootinfo_size, &irq_disabled);
+    }
     println!("memory manager initialized");
 
     mm::heap::dump_size_classes();
