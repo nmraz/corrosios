@@ -36,7 +36,7 @@ pub fn current(_irq_disabled: &IrqDisabled) -> &X64PerCpu {
     }
 }
 
-pub unsafe fn init_current(_irq_disabled: &IrqDisabled) {
+pub unsafe fn init_current(_irq_disabled: &IrqDisabled) -> &X64PerCpu {
     let wrapper: *mut X64PerCpuWrapper = heap::allocate(Layout::new::<X64PerCpuWrapper>())
         .expect("failed to allocate per-CPU structure")
         .as_ptr()
@@ -52,7 +52,8 @@ pub unsafe fn init_current(_irq_disabled: &IrqDisabled) {
         let nmi_stack = VirtAddr::from_ptr(addr_of!((*inner).nmi_stack));
         let doubl_fault_stak = VirtAddr::from_ptr(addr_of!((*inner).double_fault_stack));
 
-        addr_of_mut!((*inner).tss).write(Tss::new(
+        let tss = addr_of_mut!((*inner).tss);
+        tss.write(Tss::new(
             nmi_stack,
             doubl_fault_stak,
             null_vaddr,
@@ -62,6 +63,10 @@ pub unsafe fn init_current(_irq_disabled: &IrqDisabled) {
             null_vaddr,
         ));
 
+        addr_of_mut!((*inner).gdt).write(Gdt::new(VirtAddr::from_ptr(tss)));
+
         wrgsbase(VirtAddr::from_ptr(wrapper));
+
+        &*inner
     }
 }
