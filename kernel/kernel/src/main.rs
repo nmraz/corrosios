@@ -12,9 +12,10 @@ use mm::types::PhysAddr;
 
 use crate::sync::irq::IrqDisabled;
 
-mod arch;
 #[macro_use]
 mod console;
+
+mod arch;
 mod global_alloc;
 mod kimage;
 mod mm;
