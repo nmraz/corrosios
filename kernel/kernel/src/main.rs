@@ -6,7 +6,6 @@
 
 extern crate alloc;
 
-use alloc::boxed::Box;
 use arch::cpu;
 use mm::types::PhysAddr;
 
@@ -21,10 +20,6 @@ mod kimage;
 mod mm;
 mod panic;
 mod sync;
-
-#[derive(Debug, Clone, Copy)]
-#[repr(align(512))]
-struct AlignedU32(u32);
 
 #[no_mangle]
 extern "C" fn kernel_main(
@@ -57,11 +52,11 @@ extern "C" fn kernel_main(
     }
     println!("memory manager initialized");
 
-    mm::heap::dump_size_classes();
+    // mm::heap::dump_size_classes();
 
-    let x = Box::new(AlignedU32(5));
-    let y = Box::new(AlignedU32(7));
-    println!("x: {:?} ({:p}), y: {:?} ({:p})", *x, x, *y, y);
+    unsafe {
+        arch::cpu::init(irq_disabled);
+    }
 
     mm::pmm::dump_usage();
 

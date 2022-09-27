@@ -4,7 +4,7 @@ use crate::mm::types::VirtAddr;
 
 pub const IA32_GS_BASE: u32 = 0xc0000101;
 
-#[repr(C, packed)]
+#[repr(C, packed(2))]
 pub struct DescriptorRegister {
     pub limit: u16,
     pub ptr: u64,
@@ -80,9 +80,16 @@ pub unsafe fn lgdt(desc: &DescriptorRegister) {
 }
 
 #[inline]
-pub unsafe fn lldt(desc: &DescriptorRegister) {
+pub unsafe fn lldt(selector: u16) {
     unsafe {
-        asm!("lldt [{}]", in(reg) desc, options(nostack));
+        asm!("lldt {:x}", in(reg) selector, options(nostack));
+    }
+}
+
+#[inline]
+pub unsafe fn ltr(tss_selector: u16) {
+    unsafe {
+        asm!("ltr {:x}", in(reg) tss_selector, options(nostack));
     }
 }
 

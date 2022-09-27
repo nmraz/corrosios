@@ -14,7 +14,7 @@ use super::x64_cpu::{read_gs_qword, wrgsbase};
 pub struct InterruptStack(UnsafeCell<MaybeUninit<[u8; 0x1000]>>);
 
 pub struct X64PerCpu {
-    pub tss: Tss,
+    pub tss: UnsafeCell<Tss>,
     pub gdt: Gdt,
     pub nmi_stack: InterruptStack,
     pub double_fault_stack: InterruptStack,
@@ -45,28 +45,28 @@ pub unsafe fn init_current(_irq_disabled: &IrqDisabled) -> &X64PerCpu {
     let null_vaddr = VirtAddr::new(0);
 
     unsafe {
-        let inner = addr_of_mut!((*wrapper).inner);
-
         addr_of_mut!((*wrapper).ptr).write(wrapper as *const _);
 
+        let inner = addr_of_mut!((*wrapper).inner);
         let nmi_stack = VirtAddr::from_ptr(addr_of!((*inner).nmi_stack));
-        let doubl_fault_stak = VirtAddr::from_ptr(addr_of!((*inner).double_fault_stack));
+        let double_fault_stack = VirtAddr::from_ptr(addr_of!((*inner).double_fault_stack));
 
-        let tss = addr_of_mut!((*inner).tss);
-        tss.write(Tss::new(
+        let tss = UnsafeCell::raw_get(addr_of_mut!((*inner).tss));
+        Tss::init(
+            tss,
             nmi_stack,
-            doubl_fault_stak,
+            double_fault_stack,
             null_vaddr,
             null_vaddr,
             null_vaddr,
             null_vaddr,
             null_vaddr,
-        ));
+        );
 
-        addr_of_mut!((*inner).gdt).write(Gdt::new(VirtAddr::from_ptr(tss)));
+        let gdt = addr_of_mut!((*inner).gdt);
+        gdt.write(Gdt::new(VirtAddr::from_ptr(tss)));
 
         wrgsbase(VirtAddr::from_ptr(wrapper));
-
         &*inner
     }
 }
