@@ -43,16 +43,7 @@ impl Tss {
     /// # Safety
     ///
     /// `tss` must be suitably aligned and dereferenceable
-    pub unsafe fn init(
-        tss: *mut Tss,
-        ist1: VirtAddr,
-        ist2: VirtAddr,
-        ist3: VirtAddr,
-        ist4: VirtAddr,
-        ist5: VirtAddr,
-        ist6: VirtAddr,
-        ist7: VirtAddr,
-    ) {
+    pub unsafe fn init(tss: *mut Tss, nmi_stack: VirtAddr, double_fault_stack: VirtAddr) {
         unsafe {
             let fixed = addr_of_mut!((*tss).fixed);
             fixed.write(TssFixed {
@@ -62,13 +53,13 @@ impl Tss {
                 rsp2: 0,
                 _reserved1: 0,
                 _reserved2: 0,
-                ist1: ist1.as_u64(),
-                ist2: ist2.as_u64(),
-                ist3: ist3.as_u64(),
-                ist4: ist4.as_u64(),
-                ist5: ist5.as_u64(),
-                ist6: ist6.as_u64(),
-                ist7: ist7.as_u64(),
+                ist1: nmi_stack.as_u64(),
+                ist2: double_fault_stack.as_u64(),
+                ist3: 0,
+                ist4: 0,
+                ist5: 0,
+                ist6: 0,
+                ist7: 0,
                 _reserved3: 0,
                 _reserved4: 0,
                 _reserved5: 0,

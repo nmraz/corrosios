@@ -42,8 +42,6 @@ pub unsafe fn init_current(_irq_disabled: &IrqDisabled) -> &X64PerCpu {
         .as_ptr()
         .cast();
 
-    let null_vaddr = VirtAddr::new(0);
-
     unsafe {
         addr_of_mut!((*wrapper).ptr).write(wrapper as *const _);
 
@@ -52,16 +50,7 @@ pub unsafe fn init_current(_irq_disabled: &IrqDisabled) -> &X64PerCpu {
         let double_fault_stack = VirtAddr::from_ptr(addr_of!((*inner).double_fault_stack));
 
         let tss = UnsafeCell::raw_get(addr_of_mut!((*inner).tss));
-        Tss::init(
-            tss,
-            nmi_stack,
-            double_fault_stack,
-            null_vaddr,
-            null_vaddr,
-            null_vaddr,
-            null_vaddr,
-            null_vaddr,
-        );
+        Tss::init(tss, nmi_stack, double_fault_stack);
 
         let gdt = addr_of_mut!((*inner).gdt);
         gdt.write(Gdt::new(VirtAddr::from_ptr(tss)));
