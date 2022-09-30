@@ -70,24 +70,22 @@ impl<T> Once<T> {
             Ordering::Relaxed,
             Ordering::Relaxed,
         ) {
-            Ok(_) => {}
+            Ok(_) => unsafe { self.init_with_unchecked(f) },
             Err(INITIALIZED) => {
                 fence(Ordering::Acquire);
-                return unsafe { self.get_unchecked() };
+                unsafe { self.get_unchecked() }
             }
             Err(INITIALIZING) => {
                 while self.state.load(Ordering::Relaxed) == INITIALIZING {
                     hint::spin_loop();
                 }
                 fence(Ordering::Acquire);
-                return unsafe { self.get_unchecked() };
+                unsafe { self.get_unchecked() }
             }
             Err(state) => {
                 panic!("unknown state {state}");
             }
         }
-
-        unsafe { self.init_with_unchecked(f) }
     }
 
     /// Initializes the contained value with `value`.
