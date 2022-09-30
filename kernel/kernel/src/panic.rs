@@ -16,7 +16,7 @@ fn handle_panic(info: &PanicInfo<'_>) -> ! {
             println!("at {}", location);
         }
 
-        println!("**************************************");
+        println!("**************************************\n");
     }
 
     cpu::halt();
