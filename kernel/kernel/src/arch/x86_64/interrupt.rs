@@ -39,7 +39,7 @@ struct InterruptFrame {
     ss: u64,
 }
 
-unsafe fn handle_exception(frame: &InterruptFrame) {
+unsafe fn handle_exception(frame: &mut InterruptFrame) {
     panic!("fatal exception: {}", exception_vector_to_str(frame.vector));
 }
 
@@ -66,14 +66,14 @@ fn exception_vector_to_str(vector: u64) -> &'static str {
     }
 }
 
-unsafe fn handle_nmi(_frame: &InterruptFrame) {}
+unsafe fn handle_nmi(_frame: &mut InterruptFrame) {}
 
-unsafe fn handle_irq(frame: &InterruptFrame) {
+unsafe fn handle_irq(frame: &mut InterruptFrame) {
     println!("got IRQ {}", frame.vector);
 }
 
 #[no_mangle]
-unsafe extern "C" fn handle_interrupt(frame: &InterruptFrame) {
+unsafe extern "C" fn handle_interrupt(frame: &mut InterruptFrame) {
     unsafe {
         if frame.vector == VECTOR_NMI {
             handle_nmi(frame);
