@@ -164,12 +164,15 @@ unsafe impl<T: Sync> Sync for Once<T> {}
 // Safety: we can be sent as long as the contained value can be.
 unsafe impl<T: Send> Send for Once<T> {}
 
+/// A wrapper around [`Once`] that lazily computes a value the first time it is retreived.
 pub struct Lazy<T, I> {
     inner: Once<T>,
     initializer: Cell<Option<I>>,
 }
 
 impl<T, I: FnOnce() -> T> Lazy<T, I> {
+    /// Creates a new, uninitialized `Lazy` that will invoke `initializer` the first time
+    /// [`get()`](Lazy::get) is called.
     pub fn new(initializer: I) -> Self {
         Self {
             inner: Once::new(),
@@ -177,6 +180,8 @@ impl<T, I: FnOnce() -> T> Lazy<T, I> {
         }
     }
 
+    /// Retrives the contained value, atomically invoking the stored initializer if the contained
+    /// value is still uninitialized.
     pub fn get(&self) -> &T {
         self.inner.get_or_init_with(|| {
             let initializer = self
