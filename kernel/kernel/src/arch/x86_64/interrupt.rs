@@ -38,9 +38,7 @@ unsafe fn handle_exception(frame: &InterruptFrame) {
     panic!("exception {}", frame.vector);
 }
 
-unsafe fn handle_nmi(_frame: &InterruptFrame) {
-    println!("got NMI");
-}
+unsafe fn handle_nmi(_frame: &InterruptFrame) {}
 
 unsafe fn handle_irq(frame: &InterruptFrame) {
     println!("got IRQ {}", frame.vector);

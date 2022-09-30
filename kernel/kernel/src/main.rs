@@ -59,8 +59,14 @@ extern "C" fn kernel_main(
 
     mm::pmm::dump_usage();
 
+    println!("triggering IRQ 55");
     unsafe {
-        *core::ptr::null_mut::<u64>() = 0;
+        core::arch::asm!("int 55");
+    }
+
+    println!("causing irrecoverable page fault");
+    unsafe {
+        *(0x1234 as *mut u64) = 0;
     }
 
     cpu::halt();
