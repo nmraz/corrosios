@@ -153,7 +153,7 @@ impl<T> Once<T> {
     }
 
     unsafe fn get_unchecked(&self) -> &T {
-        self.value.get().as_ref().unwrap().assume_init_ref()
+        unsafe { self.value.get().as_ref().unwrap().assume_init_ref() }
     }
 }
 
