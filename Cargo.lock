@@ -316,6 +316,7 @@ dependencies = [
  "itertools",
  "num-utils",
  "paste",
+ "spin-once",
 ]
 
 [[package]]
