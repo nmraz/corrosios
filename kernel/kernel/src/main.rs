@@ -1,5 +1,6 @@
 #![feature(alloc_error_handler)]
 #![feature(asm_const)]
+#![feature(panic_info_message)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
 #![no_main]

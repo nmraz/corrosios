@@ -6,7 +6,17 @@ use crate::arch::cpu;
 #[panic_handler]
 fn handle_panic(info: &PanicInfo<'_>) -> ! {
     if !PANICKING.swap(true, Ordering::Relaxed) {
-        println!("kernel panic: {}", info);
+        println!("\n************ KERNEL PANIC ************");
+
+        if let Some(message) = info.message() {
+            println!("{}", message);
+        }
+
+        if let Some(location) = info.location() {
+            println!("at {}", location);
+        }
+
+        println!("**************************************");
     }
 
     cpu::halt();
