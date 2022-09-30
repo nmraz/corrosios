@@ -1,4 +1,9 @@
-use super::interrupt_vectors::VECTOR_NMI;
+use super::interrupt_vectors::{
+    VECTOR_ALIGNMENT_CHECK, VECTOR_BOUND, VECTOR_BREAKPOINT, VECTOR_DEBUG, VECTOR_DEVICE_NOT_AVAIL,
+    VECTOR_DIVIDE_ERROR, VECTOR_DOUBLE_FAULT, VECTOR_FPU_ERROR, VECTOR_GP_FAULT,
+    VECTOR_INVALID_OPCODE, VECTOR_INVALID_TSS, VECTOR_MACHINE_CHECK, VECTOR_NMI, VECTOR_OVERFLOW,
+    VECTOR_PAGE_FAULT, VECTOR_SEGMENT_NP, VECTOR_SIMD_ERROR, VECTOR_STACK_FAULT,
+};
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -35,7 +40,30 @@ struct InterruptFrame {
 }
 
 unsafe fn handle_exception(frame: &InterruptFrame) {
-    panic!("exception {}", frame.vector);
+    panic!("fatal exception: {}", exception_vector_to_str(frame.vector));
+}
+
+fn exception_vector_to_str(vector: u64) -> &'static str {
+    match vector {
+        VECTOR_DIVIDE_ERROR => "division by 0",
+        VECTOR_DEBUG => "debug exception",
+        VECTOR_BREAKPOINT => "breakpoint",
+        VECTOR_OVERFLOW => "integer overflow",
+        VECTOR_BOUND => "bounds check failure",
+        VECTOR_INVALID_OPCODE => "invalid opcode",
+        VECTOR_DEVICE_NOT_AVAIL => "",
+        VECTOR_DOUBLE_FAULT => "double fault",
+        VECTOR_INVALID_TSS => "invalid TSS",
+        VECTOR_SEGMENT_NP => "segment not present",
+        VECTOR_STACK_FAULT => "stack fault",
+        VECTOR_GP_FAULT => "general protection fault",
+        VECTOR_PAGE_FAULT => "page fault",
+        VECTOR_FPU_ERROR => "FPU floating-point error",
+        VECTOR_ALIGNMENT_CHECK => "alignment check failure",
+        VECTOR_MACHINE_CHECK => "machine check exception",
+        VECTOR_SIMD_ERROR => "SIMD floating-point error",
+        _ => "unknown exception",
+    }
 }
 
 unsafe fn handle_nmi(_frame: &InterruptFrame) {}

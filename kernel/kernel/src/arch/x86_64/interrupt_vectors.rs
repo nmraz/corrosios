@@ -18,7 +18,6 @@ pub const VECTOR_FPU_ERROR: u64 = 16;
 pub const VECTOR_ALIGNMENT_CHECK: u64 = 17;
 pub const VECTOR_MACHINE_CHECK: u64 = 18;
 pub const VECTOR_SIMD_ERROR: u64 = 19;
-pub const VECTOR_VIRTUALIZATION: u64 = 20;
 
 macro_rules! for_each_interrupt {
     ($vector:ident) => {
