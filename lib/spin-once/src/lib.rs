@@ -1,7 +1,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
 
-use core::cell::UnsafeCell;
+use core::cell::{Cell, UnsafeCell};
 use core::hint;
 use core::mem::MaybeUninit;
 use core::sync::atomic::{fence, AtomicU8, Ordering};
@@ -37,9 +37,9 @@ impl<T> Once<T> {
     /// Retrives the contained value or atomically initializes it by invoking `f` and storing its
     /// return value.
     ///
-    /// If there are multiple concurrent calls to this function, only one of the callers will be
-    /// selected and **only** its `f` will be invoked; the others will wait (spin) until
-    /// initialization completes.
+    /// If there are multiple concurrent calls to this function or to
+    /// [`Once::get_or_init_with_raw`], only one of the callers will be selected and **only** its
+    /// `f` will be invoked; the others will wait (spin) until initialization completes.
     pub fn get_or_init_with(&self, f: impl FnOnce() -> T) -> &T {
         unsafe {
             self.get_or_init_with_raw(move |slot| {
@@ -51,14 +51,15 @@ impl<T> Once<T> {
     /// Retrives the contained value or atomically initializes it by invoking `f` on its underlying
     /// storage.
     ///
-    /// If there are multiple concurrent calls to this function, only one of the callers will be
-    /// selected and **only** its `f` will be invoked; the others will wait (spin) until
-    /// initialization completes.
+    /// If there are multiple concurrent calls to this function or to [`Once::get_or_init_with`],
+    /// only one of the callers will be selected and **only** its `f` will be invoked; the others
+    /// will wait (spin) until initialization completes.
     ///
     /// # Safety
     ///
     /// `f` must completely initialize the contained value.
     pub unsafe fn get_or_init_with_raw(&self, f: impl FnOnce(&mut MaybeUninit<T>)) -> &T {
+        // Common fast path
         if let Some(val) = self.get() {
             return val;
         }
@@ -162,3 +163,35 @@ unsafe impl<T: Sync> Sync for Once<T> {}
 
 // Safety: we can be sent as long as the contained value can be.
 unsafe impl<T: Send> Send for Once<T> {}
+
+pub struct Lazy<T, I> {
+    inner: Once<T>,
+    initializer: Cell<Option<I>>,
+}
+
+impl<T, I: FnOnce() -> T> Lazy<T, I> {
+    pub fn new(initializer: I) -> Self {
+        Self {
+            inner: Once::new(),
+            initializer: Cell::new(Some(initializer)),
+        }
+    }
+
+    pub fn get(&self) -> &T {
+        self.inner.get_or_init_with(|| {
+            let initializer = self
+                .initializer
+                .take()
+                .expect("missing initializer in `Lazy::get`");
+            initializer()
+        })
+    }
+}
+
+// Safety: the `Once` provides synchronization around both the initialization of the contained value
+// and the accesses to `initializer`, so we are `Sync` if the contained value is. We require the
+// initializer to be `Send` as it will be moved into the first caller that initializes the value.
+unsafe impl<T: Sync, I: Send> Sync for Lazy<I, T> {}
+
+// Safety: we can be sent as long as both the contained value and the initializer can be.
+unsafe impl<T: Send, I: Send> Send for Lazy<T, I> {}
