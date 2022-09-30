@@ -1,7 +1,9 @@
 use core::alloc::Layout;
+use core::marker::PhantomData;
 use core::ops::Range;
 
 use arrayvec::ArrayVec;
+use spin_once::Once;
 
 use crate::arch::mmu::{flush_tlb, PageTableSpace};
 use crate::kimage;
@@ -78,11 +80,18 @@ impl TranslatePhys for EarlyMapPfnTranslator {
     }
 }
 
-/// # Safety
+/// Returns an `EarlyMapper` object that can be used to identity-map regions of memory before the
+/// physmap is set up.
 ///
-/// * This function must be called only once during initialization on the BSP
-/// * The returned object must be accessed only on the BSP
-pub unsafe fn get_early_mapper() -> EarlyMapper {
+/// # Panics
+///
+/// Panics if this function is called more than once.
+pub fn take_early_mapper() -> EarlyMapper {
+    static GUARD: Once<()> = Once::new();
+
+    // Panic if we are called multiple times
+    GUARD.init(());
+
     let addr = VirtAddr::from_ptr(EARLY_MAP_PTS.as_ptr());
     let start = kimage::pfn_from_kernel_vpn(addr.containing_page());
     let alloc = BumpPageTableAlloc {
@@ -96,6 +105,7 @@ pub unsafe fn get_early_mapper() -> EarlyMapper {
         slots: ArrayVec::new(),
         pt,
         alloc,
+        _not_send_sync: PhantomData,
     }
 }
 
@@ -103,6 +113,7 @@ pub struct EarlyMapper {
     slots: ArrayVec<EarlyMapperSlot, EARLY_MAP_MAX_SLOTS>,
     pt: PageTable<KernelPfnTranslator>,
     alloc: BumpPageTableAlloc,
+    _not_send_sync: PhantomData<*const ()>,
 }
 
 impl EarlyMapper {

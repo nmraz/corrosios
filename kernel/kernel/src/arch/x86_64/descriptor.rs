@@ -1,8 +1,9 @@
-use core::mem;
+use core::mem::{self, MaybeUninit};
 use core::ptr::addr_of_mut;
 
 use bitflags::bitflags;
 use paste::paste;
+use spin_once::Once;
 
 use crate::mm::types::VirtAddr;
 
@@ -149,30 +150,43 @@ bitflags! {
     }
 }
 
-pub unsafe fn init_idt() {
+type IdtEntry = [u64; 2];
+type Idt = [IdtEntry; TOTAL_VECTORS];
+static IDT: Once<Idt> = Once::new();
+
+pub fn init_idt() {
+    use super::interrupt::entry_points::*;
+
     macro_rules! idt_entry {
-        ($vector:literal) => {
+        ($vector:literal, $slots:ident) => {
             paste! {
                 {
                     let entry_point = [<interrupt_vector_ $vector>] as unsafe extern "C" fn() as u64;
-                    IDT[$vector] = make_idt_entry(entry_point, KERNEL_CODE_SELECTOR, get_ist($vector));
+                    $slots[$vector].write(make_idt_entry(entry_point, KERNEL_CODE_SELECTOR, get_ist($vector)));
                 }
             }
         };
     }
 
-    use super::interrupt::entry_points::*;
     unsafe {
-        for_each_interrupt!(idt_entry);
+        IDT.init_with(|slot| {
+            let slots = slot
+                .as_mut_ptr()
+                .cast::<[MaybeUninit<IdtEntry>; TOTAL_VECTORS]>()
+                .as_mut()
+                .unwrap();
+
+            for_each_interrupt!(idt_entry, slots);
+        });
     }
 }
 
 pub fn get_idt() -> VirtAddr {
-    unsafe { VirtAddr::from_ptr(&IDT) }
+    VirtAddr::from_ptr(IDT.get().expect("IDT not initialized"))
 }
 
 pub fn get_idt_size() -> usize {
-    unsafe { core::mem::size_of_val(&IDT) }
+    mem::size_of::<Idt>()
 }
 
 fn get_ist(vector: u64) -> u8 {
@@ -205,6 +219,3 @@ bitflags! {
         const TYPE_INTERRUPT_64 = 0b1110 << 40;
     }
 }
-
-type IdtEntry = [u64; 2];
-static mut IDT: [IdtEntry; TOTAL_VECTORS] = [[0, 0]; TOTAL_VECTORS];

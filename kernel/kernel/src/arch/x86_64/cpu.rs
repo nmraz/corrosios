@@ -8,8 +8,8 @@ use super::percpu;
 use super::x64_cpu::{cli, get_rflags, hlt, lgdt, lidt, lldt, ltr, sti, DescriptorRegister};
 
 pub unsafe fn init_bsp(irq_disabled: IrqDisabled) {
+    init_idt();
     unsafe {
-        init_idt();
         init_current(irq_disabled);
     }
 }

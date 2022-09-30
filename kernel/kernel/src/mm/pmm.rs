@@ -25,16 +25,17 @@ const ORDER_COUNT: usize = 16;
 static PHYS_MANAGER: SpinLock<Option<PhysManager>> = SpinLock::new(None);
 
 /// Initializes the physical memory manager (PMM) for all usable ranges in `mem_map`, carving out
-/// holes as specified in `reserved_ranges`. `bootheap` will be used for any necessary metadata
-/// allocations, the page range covered by it will also be marked as reserved when the manager is
-/// initialized.
+/// holes as specified in `reserved_ranges`.
+///
+/// `bootheap` will be used for any necessary metadata allocations, the page range covered by it
+/// will also be marked as reserved when the manager is initialized. Frames in entries marked as
+/// usable in `mem_map` should no longer be accessed directly when this function returns, as they
+/// are now owned by the PMM.
 ///
 /// # Safety
 ///
 /// * `mem_map` must contain non-overlapping entries
 /// * Entries marked as usable in `mem_map` must point to valid, usable memory
-/// * Frames in entries marked as usable in `mem_map` should no longer be accessed directly, as they
-///   are now owned by the PMM
 pub unsafe fn init(
     mem_map: &[MemoryRange],
     reserved_ranges: &[Range<PhysFrameNum>],

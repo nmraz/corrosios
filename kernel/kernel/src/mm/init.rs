@@ -20,12 +20,14 @@ use super::{early, utils};
 
 /// # Safety
 ///
-/// * This function must be called only once during initialization
 /// * The physical address range passed in `bootinfo_paddr` and `bootinfo_size` must contain a valid
 ///   bootinfo structure, with correct memory map information
+///
+/// # Panics
+///
+/// Panics if this function is called more than once.
 pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled: &IrqDisabled) {
-    // Safety: function contract
-    let mut mapper = unsafe { early::get_early_mapper() };
+    let mut mapper = early::take_early_mapper();
 
     let bootinfo_pages = div_ceil(bootinfo_size, PAGE_SIZE);
     let bootinfo_ptr = mapper
@@ -71,6 +73,7 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled:
             EarlyMapPfnTranslator::new(
                 bootheap_range.start..bootheap_range.start + bootheap_earlymap_pages,
             ),
+            irq_disabled,
         );
         pmm::init(mem_map, &reserved_ranges, bootheap, irq_disabled);
     }
