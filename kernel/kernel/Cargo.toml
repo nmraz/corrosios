@@ -11,6 +11,7 @@ atomic_ref = "0.2.1"
 bitflags = "1.2.1"
 intrusive-collections = { version = "0.9.4", default-features = false, features = ["nightly"] }
 itertools = { version = "0.10.3", default-features = false }
+paste = "1.0.9"
 
 bitmap = { path = "../../lib/bitmap" }
 bootinfo = { path = "../bootinfo" }
