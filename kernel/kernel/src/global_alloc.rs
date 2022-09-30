@@ -7,10 +7,7 @@ struct KernelHeapAlloc;
 
 unsafe impl GlobalAlloc for KernelHeapAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        match heap::allocate(layout) {
-            Ok(ptr) => ptr.as_ptr().cast(),
-            Err(_) => core::ptr::null_mut(),
-        }
+        heap::allocate(layout).map_or(core::ptr::null_mut(), |ptr| ptr.as_ptr().cast())
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
@@ -28,10 +25,8 @@ unsafe impl GlobalAlloc for KernelHeapAlloc {
                 Err(_) => return core::ptr::null_mut(),
             };
 
-            match heap::resize(ptr, layout, new_layout) {
-                Ok(ptr) => ptr.as_ptr().cast(),
-                Err(_) => core::ptr::null_mut(),
-            }
+            heap::resize(ptr, layout, new_layout)
+                .map_or(core::ptr::null_mut(), |ptr| ptr.as_ptr().cast())
         }
     }
 }
