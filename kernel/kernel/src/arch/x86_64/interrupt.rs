@@ -1,11 +1,4 @@
-use core::arch::global_asm;
-
-use paste::paste;
-
-use super::interrupt_vectors::{
-    VECTOR_ALIGNMENT_CHECK, VECTOR_DOUBLE_FAULT, VECTOR_GP_FAULT, VECTOR_INVALID_TSS, VECTOR_NMI,
-    VECTOR_PAGE_FAULT, VECTOR_SEGMENT_NP, VECTOR_STACK_FAULT,
-};
+use super::interrupt_vectors::VECTOR_NMI;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -45,7 +38,7 @@ unsafe fn handle_exception(frame: &InterruptFrame) {
     panic!("exception {}", frame.vector);
 }
 
-unsafe fn handle_nmi(frame: &InterruptFrame) {
+unsafe fn handle_nmi(_frame: &InterruptFrame) {
     println!("got NMI");
 }
 
@@ -66,14 +59,23 @@ unsafe extern "C" fn handle_interrupt(frame: &InterruptFrame) {
     }
 }
 
-macro_rules! interrupt_stub {
-    ($vector:literal) => {
-        paste! {
-            extern "C" {
-                pub fn [<interrupt_vector_ $vector>]();
-            }
-            global_asm!(
-                "
+pub mod entry_points {
+    use core::arch::global_asm;
+    use paste::paste;
+
+    use crate::arch::x86_64::interrupt_vectors::{
+        VECTOR_ALIGNMENT_CHECK, VECTOR_DOUBLE_FAULT, VECTOR_GP_FAULT, VECTOR_INVALID_TSS,
+        VECTOR_PAGE_FAULT, VECTOR_SEGMENT_NP, VECTOR_STACK_FAULT,
+    };
+
+    macro_rules! interrupt_stub {
+        ($vector:literal) => {
+            paste! {
+                extern "C" {
+                    pub fn [<interrupt_vector_ $vector>]();
+                }
+                global_asm!(
+                    "
                 .global interrupt_vector_{vector}
                 .type interrupt_vector_{vector}, @function
                 interrupt_vector_{vector}:
@@ -85,25 +87,26 @@ macro_rules! interrupt_stub {
                     jmp interrupt_entry_common
                 .size interrupt_vector_{vector}, interrupt_vector_{vector} - .
                 ",
-                vector = const $vector,
-                has_error_code = const has_error_code($vector) as u32
-            );
-        }
-    };
-}
+                    vector = const $vector,
+                    has_error_code = const has_error_code($vector) as u32
+                );
+            }
+        };
+    }
 
-const fn has_error_code(vector: u64) -> bool {
-    matches!(
-        vector,
-        VECTOR_DOUBLE_FAULT
-            | VECTOR_INVALID_TSS
-            | VECTOR_SEGMENT_NP
-            | VECTOR_STACK_FAULT
-            | VECTOR_GP_FAULT
-            | VECTOR_PAGE_FAULT
-            | VECTOR_ALIGNMENT_CHECK
-    )
-}
+    for_each_interrupt!(interrupt_stub);
+    global_asm!(include_str!("interrupt.s"));
 
-for_each_interrupt!(interrupt_stub);
-global_asm!(include_str!("interrupt.s"));
+    const fn has_error_code(vector: u64) -> bool {
+        matches!(
+            vector,
+            VECTOR_DOUBLE_FAULT
+                | VECTOR_INVALID_TSS
+                | VECTOR_SEGMENT_NP
+                | VECTOR_STACK_FAULT
+                | VECTOR_GP_FAULT
+                | VECTOR_PAGE_FAULT
+                | VECTOR_ALIGNMENT_CHECK
+        )
+    }
+}

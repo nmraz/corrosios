@@ -54,10 +54,14 @@ extern "C" fn kernel_main(
     println!("memory manager initialized");
 
     unsafe {
-        arch::cpu::init(irq_disabled);
+        arch::cpu::init_bsp(irq_disabled);
     }
 
     mm::pmm::dump_usage();
+
+    unsafe {
+        *core::ptr::null_mut::<u64>() = 0;
+    }
 
     cpu::halt();
 }

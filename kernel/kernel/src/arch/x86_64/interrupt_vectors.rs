@@ -1,3 +1,5 @@
+pub const TOTAL_VECTORS: usize = 256;
+
 pub const VECTOR_DIVIDE_ERROR: u64 = 0;
 pub const VECTOR_DEBUG: u64 = 1;
 pub const VECTOR_NMI: u64 = 2;

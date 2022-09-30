@@ -2,8 +2,11 @@ use core::mem;
 use core::ptr::addr_of_mut;
 
 use bitflags::bitflags;
+use paste::paste;
 
 use crate::mm::types::VirtAddr;
+
+use super::interrupt_vectors::{TOTAL_VECTORS, VECTOR_DOUBLE_FAULT, VECTOR_NMI};
 
 pub const IOPB_BITS: usize = 0x10000;
 pub const IOPB_BYTES: usize = bitmap::bytes_required(IOPB_BITS);
@@ -28,6 +31,10 @@ struct TssFixed {
     _reserved5: u16,
     iopb_base: u16,
 }
+
+// Note: keep these IST numbers in sync with the TSS construction below
+const IST_NMI: u8 = 1;
+const IST_DOUBLE_FAULT: u8 = 2;
 
 /// 64-bit Task State Segment structure, as specified in ISDM 3A, section 7.7
 #[repr(C, packed)]
@@ -82,6 +89,7 @@ impl Tss {
 
 const GDT_ENTRIES: usize = 4;
 
+// Note: keep these selectors in sync with the GDT entries below
 pub const KERNEL_CODE_SELECTOR: u16 = 8;
 pub const TSS_SELECTOR: u16 = 16;
 
@@ -91,13 +99,13 @@ pub struct Gdt([u64; GDT_ENTRIES]);
 
 impl Gdt {
     pub fn new(tss: VirtAddr) -> Self {
-        let (tss_lo, tss_hi) = make_tss_descriptor(tss.as_u64());
+        let (tss_lo, tss_hi) = make_gdt_tss_descriptor(tss.as_u64());
 
         Self([
             // Null segment
             0,
             // Kernel code segment
-            make_non_system_descriptor(GdtFlags::TYPE_CODE | GdtFlags::LONG_MODE),
+            make_gdt_non_system_descriptor(GdtFlags::TYPE_CODE | GdtFlags::LONG_MODE),
             // TSS segment
             tss_lo,
             tss_hi,
@@ -105,11 +113,11 @@ impl Gdt {
     }
 }
 
-fn make_non_system_descriptor(flags: GdtFlags) -> u64 {
+fn make_gdt_non_system_descriptor(flags: GdtFlags) -> u64 {
     (flags | GdtFlags::NON_SYSTEM | GdtFlags::PRESENT).bits()
 }
 
-fn make_tss_descriptor(base: u64) -> (u64, u64) {
+fn make_gdt_tss_descriptor(base: u64) -> (u64, u64) {
     // See ISDM 3A, section 7.2.3
 
     let flags = GdtFlags::PRESENT | GdtFlags::TYPE_TSS;
@@ -129,7 +137,6 @@ fn make_tss_descriptor(base: u64) -> (u64, u64) {
 }
 
 bitflags! {
-    #[repr(transparent)]
     struct GdtFlags: u64 {
         const WRITE = 1 << 41;
         const NON_SYSTEM = 1 << 44;
@@ -141,3 +148,63 @@ bitflags! {
         const TYPE_TSS = 0b1001 << 40;
     }
 }
+
+pub unsafe fn init_idt() {
+    macro_rules! idt_entry {
+        ($vector:literal) => {
+            paste! {
+                {
+                    let entry_point = [<interrupt_vector_ $vector>] as unsafe extern "C" fn() as u64;
+                    IDT[$vector] = make_idt_entry(entry_point, KERNEL_CODE_SELECTOR, get_ist($vector));
+                }
+            }
+        };
+    }
+
+    use super::interrupt::entry_points::*;
+    unsafe {
+        for_each_interrupt!(idt_entry);
+    }
+}
+
+pub fn get_idt() -> VirtAddr {
+    unsafe { VirtAddr::from_ptr(&IDT) }
+}
+
+pub fn get_idt_size() -> usize {
+    unsafe { core::mem::size_of_val(&IDT) }
+}
+
+fn get_ist(vector: u64) -> u8 {
+    match vector {
+        VECTOR_NMI => IST_NMI,
+        VECTOR_DOUBLE_FAULT => IST_DOUBLE_FAULT,
+        _ => 0,
+    }
+}
+
+fn make_idt_entry(entry_point: u64, cs_selector: u16, ist: u8) -> IdtEntry {
+    let selector = cs_selector as u64;
+    let ist = (ist & 0b111) as u64;
+
+    let offset_0_15 = entry_point & 0xffff;
+    let offset_16_31 = (entry_point >> 16) & 0xffff;
+    let offset_32_63 = entry_point >> 32;
+
+    let flags = IdtFlags::PRESENT | IdtFlags::TYPE_INTERRUPT_64;
+
+    [
+        flags.bits() | offset_0_15 | (selector << 16) | (ist << 32) | (offset_16_31 << 48),
+        offset_32_63,
+    ]
+}
+
+bitflags! {
+    struct IdtFlags: u64 {
+        const PRESENT = 1 << 47;
+        const TYPE_INTERRUPT_64 = 0b1110 << 40;
+    }
+}
+
+type IdtEntry = [u64; 2];
+static mut IDT: [IdtEntry; TOTAL_VECTORS] = [[0, 0]; TOTAL_VECTORS];
