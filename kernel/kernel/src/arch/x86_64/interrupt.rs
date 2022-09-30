@@ -45,13 +45,13 @@ unsafe fn handle_exception(frame: &InterruptFrame) {
 
 fn exception_vector_to_str(vector: u64) -> &'static str {
     match vector {
-        VECTOR_DIVIDE_ERROR => "division by 0",
+        VECTOR_DIVIDE_ERROR => "division by zero",
         VECTOR_DEBUG => "debug exception",
         VECTOR_BREAKPOINT => "breakpoint",
         VECTOR_OVERFLOW => "integer overflow",
         VECTOR_BOUND => "bounds check failure",
         VECTOR_INVALID_OPCODE => "invalid opcode",
-        VECTOR_DEVICE_NOT_AVAIL => "",
+        VECTOR_DEVICE_NOT_AVAIL => "device not available",
         VECTOR_DOUBLE_FAULT => "double fault",
         VECTOR_INVALID_TSS => "invalid TSS",
         VECTOR_SEGMENT_NP => "segment not present",
