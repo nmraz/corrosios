@@ -24,14 +24,6 @@ pub fn init() {
     });
 }
 
-pub fn write(msg: &str) {
-    CONSOLE.with(|console, _| {
-        if let Some(console) = console {
-            console.write(msg);
-        }
-    });
-}
-
 pub fn writeln_fmt(args: Arguments<'_>) {
     CONSOLE.with(|console, _| {
         if let Some(console) = console {
