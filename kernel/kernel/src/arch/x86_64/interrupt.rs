@@ -1,5 +1,7 @@
 use core::fmt;
 
+use crate::arch::x86_64::x64_cpu::read_cr2;
+
 use super::interrupt_vectors::{
     VECTOR_ALIGNMENT_CHECK, VECTOR_BOUND, VECTOR_BREAKPOINT, VECTOR_DEBUG, VECTOR_DEVICE_NOT_AVAIL,
     VECTOR_DIVIDE_ERROR, VECTOR_DOUBLE_FAULT, VECTOR_FPU_ERROR, VECTOR_GP_FAULT,
@@ -85,10 +87,35 @@ impl fmt::Display for InterruptFrame {
 }
 
 unsafe fn handle_exception(frame: &mut InterruptFrame) {
+    match frame.vector {
+        VECTOR_PAGE_FAULT => handle_page_fault(frame),
+        _ => panic!(
+            "fatal exception: {}\n{}",
+            exception_vector_to_str(frame.vector),
+            frame
+        ),
+    };
+}
+
+fn handle_page_fault(frame: &InterruptFrame) {
+    let addr = read_cr2();
+
+    let was_write = (frame.error_code >> 1) & 1 != 0;
+    let was_user = (frame.error_code >> 2) & 1 != 0;
+
+    let access_type = match was_write {
+        true => "write",
+        false => "read",
+    };
+
+    let access_mode = match was_user {
+        true => "user",
+        false => "kernel",
+    };
+
     panic!(
-        "fatal exception: {}\n{}",
-        exception_vector_to_str(frame.vector),
-        frame
+        "fatal page fault: {}-mode {} to {}\n{}",
+        access_mode, access_type, addr, frame
     );
 }
 

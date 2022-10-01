@@ -99,6 +99,15 @@ pub unsafe fn write_cr3(val: u64) {
 }
 
 #[inline]
+pub fn read_cr2() -> VirtAddr {
+    let cr2: u64;
+    unsafe {
+        asm!("mov {}, cr2", out(reg) cr2, options(nostack));
+    }
+    VirtAddr::new(cr2 as usize)
+}
+
+#[inline]
 pub unsafe fn lgdt(desc: &DescriptorRegister) {
     unsafe {
         asm!("lgdt [{}]", in(reg) desc, options(nostack));
