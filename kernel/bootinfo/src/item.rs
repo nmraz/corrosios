@@ -1,13 +1,13 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct MemoryKind(pub u32);
+use struct_enum::struct_enum;
 
-impl MemoryKind {
-    pub const RESERVED: Self = Self(0);
-    pub const USABLE: Self = Self(1);
-    pub const FIRMWARE: Self = Self(2);
-    pub const ACPI_TABLES: Self = Self(3);
-    pub const UNUSABLE: Self = Self(4);
+struct_enum! {
+    pub struct MemoryKind: u32 {
+        RESERVED = 0;
+        USABLE = 1;
+        FIRMWARE = 2;
+        ACPI_TABLES = 3;
+        UNUSABLE = 4;
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -18,13 +18,11 @@ pub struct MemoryRange {
     pub kind: MemoryKind,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct PixelFormat(pub u32);
-
-impl PixelFormat {
-    pub const RGB: Self = Self(0);
-    pub const BGR: Self = Self(1);
+struct_enum! {
+    pub struct PixelFormat: u32 {
+        RGB = 0;
+        BGR = 1;
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -1,3 +1,5 @@
+use struct_enum::struct_enum;
+
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
 pub struct Handle(pub(crate) *const ());
@@ -26,21 +28,19 @@ pub struct Timestamp {
 #[repr(transparent)]
 pub struct MemoryMapKey(pub(crate) usize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct MemoryType(pub u32);
-
-impl MemoryType {
-    pub const RESERVED: Self = Self(0);
-    pub const LOADER_CODE: Self = Self(1);
-    pub const LOADER_DATA: Self = Self(2);
-    pub const BOOT_SERVICES_CODE: Self = Self(3);
-    pub const BOOT_SERVICES_DATA: Self = Self(4);
-    pub const RUNTIME_SERVICES_CODE: Self = Self(5);
-    pub const RUNTIME_SERVICES_DATA: Self = Self(6);
-    pub const CONVENTIONAL: Self = Self(7);
-    pub const UNUSABLE: Self = Self(8);
-    pub const ACPI_RECLAIM: Self = Self(9);
+struct_enum! {
+    pub struct MemoryType: u32 {
+        RESERVED = 0;
+        LOADER_CODE = 1;
+        LOADER_DATA = 2;
+        BOOT_SERVICES_CODE = 3;
+        BOOT_SERVICES_DATA = 4;
+        RUNTIME_SERVICES_CODE = 5;
+        RUNTIME_SERVICES_DATA = 6;
+        CONVENTIONAL = 7;
+        UNUSABLE = 8;
+        ACPI_RECLAIM = 9;
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

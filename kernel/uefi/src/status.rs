@@ -1,26 +1,32 @@
 use core::{mem, result};
 
-pub type Result<T> = result::Result<T, Status>;
+use struct_enum::struct_enum;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-#[must_use]
-pub struct Status(pub usize);
+pub type Result<T> = result::Result<T, Status>;
 
 const ERROR_BIT: usize = 1 << (mem::size_of::<usize>() * 8 - 1);
 
+const fn err(code: usize) -> usize {
+    code | ERROR_BIT
+}
+
+struct_enum! {
+    #[must_use]
+    pub struct Status: usize {
+        SUCCESS = 0;
+
+        WARN_UNKNOWN_GLYPH = 1;
+
+        LOAD_ERROR = err(1);
+        INVALID_PARAMETER = err(2);
+        UNSUPPORTED = err(3);
+        BUFFER_TOO_SMALL = err(5);
+        OUT_OF_RESOURCES = err(9);
+        END_OF_FILE = err(31);
+    }
+}
+
 impl Status {
-    pub const SUCCESS: Self = Self(0);
-
-    pub const LOAD_ERROR: Self = Self(1 | ERROR_BIT);
-    pub const INVALID_PARAMETER: Self = Self(2 | ERROR_BIT);
-    pub const UNSUPPORTED: Self = Self(3 | ERROR_BIT);
-    pub const BUFFER_TOO_SMALL: Self = Self(5 | ERROR_BIT);
-    pub const OUT_OF_RESOURCES: Self = Self(9 | ERROR_BIT);
-    pub const END_OF_FILE: Self = Self(31 | ERROR_BIT);
-
-    pub const WARN_UNKNOWN_GLYPH: Self = Self(1);
-
     pub fn is_err(self) -> bool {
         self.0 & ERROR_BIT != 0
     }

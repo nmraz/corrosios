@@ -2,21 +2,21 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
 
+use struct_enum::struct_enum;
+
 pub mod builder;
 pub mod item;
 pub mod view;
 
 pub const ITEM_ALIGN: usize = 8;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct ItemKind(pub u32);
-
-impl ItemKind {
-    pub const CONTAINER: Self = Self(0xb007b081);
-    pub const EFI_SYSTEM_TABLE: Self = Self(1);
-    pub const MEMORY_MAP: Self = Self(2);
-    pub const FRAMEBUFFER: Self = Self(3);
+struct_enum! {
+    pub struct ItemKind: u32 {
+        CONTAINER = 0xb007b081;
+        EFI_SYSTEM_TABLE = 1;
+        MEMORY_MAP = 2;
+        FRAMEBUFFER = 3;
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

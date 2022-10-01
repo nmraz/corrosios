@@ -9,3 +9,4 @@ edition = "2021"
 uninit = { version = "0.5.1", default-features = false }
 
 num-utils = { path = "../../lib/num-utils" }
+struct-enum = { path = "../../lib/struct-enum" }
