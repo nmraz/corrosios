@@ -95,6 +95,7 @@ fn add_efi_partition(gdisk: &mut GptDisk<'_>) -> Result<(u64, u64)> {
             EFI_PARTITION_SIZE,
             gpt::partition_types::EFI,
             0,
+            None,
         )
         .context("failed to create EFI system partition")?;
 
