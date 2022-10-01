@@ -1,12 +1,14 @@
 use core::arch::asm;
 use core::mem;
 
+use crate::arch::x86_64::x64_cpu::{write_cr4, write_ia32_efer, Cr4, Ia32Efer};
 use crate::sync::irq::IrqDisabled;
 
 use super::descriptor::{get_idt, get_idt_size, init_idt, Gdt, KERNEL_CODE_SELECTOR, TSS_SELECTOR};
 use super::percpu;
 use super::x64_cpu::{
-    cli, get_rflags, hlt, lgdt, lidt, lldt, ltr, sti, DescriptorRegister, Rflags,
+    cli, get_rflags, hlt, lgdt, lidt, lldt, ltr, read_cr0, read_cr4, read_ia32_efer, sti,
+    write_cr0, Cr0, DescriptorRegister, Rflags,
 };
 
 #[inline]
@@ -55,6 +57,8 @@ pub unsafe fn init_current(irq_disabled: IrqDisabled) {
         #[allow(clippy::drop_non_drop)]
         drop(irq_disabled);
         sti();
+
+        init_cpu_features();
     }
 }
 
@@ -94,5 +98,25 @@ unsafe fn load_idt() {
             ptr: get_idt().as_u64(),
         };
         lidt(&desc);
+    }
+}
+
+unsafe fn init_cpu_features() {
+    let mut cr0 = read_cr0();
+    cr0 |= Cr0::WP;
+    unsafe {
+        write_cr0(cr0);
+    }
+
+    let mut cr4 = read_cr4();
+    cr4 |= Cr4::OSFXCR | Cr4::OSXMMEXCPT;
+    unsafe {
+        write_cr4(cr4);
+    }
+
+    let mut ia32_efer = read_ia32_efer();
+    ia32_efer |= Ia32Efer::NXE | Ia32Efer::SCE;
+    unsafe {
+        write_ia32_efer(ia32_efer);
     }
 }
