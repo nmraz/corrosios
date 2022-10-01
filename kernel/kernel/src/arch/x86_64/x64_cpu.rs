@@ -10,6 +10,7 @@ bitflags! {
     #[repr(transparent)]
     pub struct Rflags: u64 {
         const CF = 1 << 0;
+        const RSVD = 1 << 1;
         const PF = 1 << 2;
         const AF = 1 << 4;
         const ZF = 1 << 6;
