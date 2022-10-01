@@ -10,8 +10,10 @@ use crate::sync::irq::IrqDisabled;
 use super::descriptor::{Gdt, Tss};
 use super::x64_cpu::{read_gs_qword, wrgsbase};
 
+const INTERRUPT_STACK_SIZE: usize = 0x2000;
+
 #[repr(C, align(0x10))]
-pub struct InterruptStack(UnsafeCell<MaybeUninit<[u8; 0x1000]>>);
+pub struct InterruptStack(UnsafeCell<MaybeUninit<[u8; INTERRUPT_STACK_SIZE]>>);
 
 pub struct X64PerCpu {
     pub tss: UnsafeCell<Tss>,
