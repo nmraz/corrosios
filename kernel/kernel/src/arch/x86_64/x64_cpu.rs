@@ -1,8 +1,33 @@
 use core::arch::asm;
 
+use bitflags::bitflags;
+
 use crate::mm::types::VirtAddr;
 
 pub const IA32_GS_BASE: u32 = 0xc0000101;
+
+bitflags! {
+    #[repr(transparent)]
+    pub struct Rflags: u64 {
+        const CF = 1 << 0;
+        const PF = 1 << 2;
+        const AF = 1 << 4;
+        const ZF = 1 << 6;
+        const SF = 1 << 7;
+        const TF = 1 << 8;
+        const IF = 1 << 9;
+        const DF = 1 << 10;
+        const OF = 1 << 11;
+        const IOPL3 = 3 << 12;
+        const NT = 1 << 14;
+        const RF = 1 << 16;
+        const VM = 1 << 17;
+        const AC = 1 << 18;
+        const VIF = 1 << 19;
+        const VIP = 1 << 20;
+        const ID = 1 << 21;
+    }
+}
 
 #[repr(C, packed(2))]
 pub struct DescriptorRegister {
@@ -48,12 +73,12 @@ pub fn hlt() {
 }
 
 #[inline]
-pub fn get_rflags() -> u64 {
+pub fn get_rflags() -> Rflags {
     let rflags: u64;
     unsafe {
         asm!("pushf; pop {}", out(reg) rflags);
+        Rflags::from_bits_unchecked(rflags)
     }
-    rflags
 }
 
 #[inline]

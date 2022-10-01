@@ -5,7 +5,9 @@ use crate::sync::irq::IrqDisabled;
 
 use super::descriptor::{get_idt, get_idt_size, init_idt, Gdt, KERNEL_CODE_SELECTOR, TSS_SELECTOR};
 use super::percpu;
-use super::x64_cpu::{cli, get_rflags, hlt, lgdt, lidt, lldt, ltr, sti, DescriptorRegister};
+use super::x64_cpu::{
+    cli, get_rflags, hlt, lgdt, lidt, lldt, ltr, sti, DescriptorRegister, Rflags,
+};
 
 pub unsafe fn init_bsp(irq_disabled: IrqDisabled) {
     init_idt();
@@ -78,7 +80,7 @@ pub fn halt() -> ! {
 }
 
 pub fn irq_enabled() -> bool {
-    get_rflags() & 0x200 != 0
+    get_rflags().contains(Rflags::IF)
 }
 
 #[inline]
