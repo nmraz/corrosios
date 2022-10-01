@@ -1,5 +1,6 @@
 #![feature(abi_efiapi)]
 #![feature(alloc_error_handler, allocator_api)]
+#![warn(rust_2018_idioms)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
 #![no_main]
@@ -35,7 +36,7 @@ fn halt() -> ! {
 }
 
 #[panic_handler]
-fn handle_panic(_info: &PanicInfo) -> ! {
+fn handle_panic(_info: &PanicInfo<'_>) -> ! {
     halt()
 }
 
@@ -70,7 +71,7 @@ fn run(image_handle: Handle, boot_table: BootTable) -> Result<()> {
 }
 
 fn append_mmap<'a>(
-    builder: &mut Builder,
+    builder: &mut Builder<'_>,
     efi_mmap: impl ExactSizeIterator<Item = &'a MemoryDescriptor>,
     scratch: &mut [MaybeUninit<bootitem::MemoryRange>],
 ) {

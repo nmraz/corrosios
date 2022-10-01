@@ -1,11 +1,10 @@
 #![feature(alloc_error_handler)]
 #![feature(asm_const)]
 #![feature(panic_info_message)]
+#![warn(rust_2018_idioms)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
 #![no_main]
-
-extern crate alloc;
 
 use arch::cpu;
 use mm::types::PhysAddr;

@@ -78,7 +78,7 @@ fn get_framebuffer(boot_table: &BootTable) -> Result<bootitem::Framebuffer> {
     })
 }
 
-fn append_bootinfo<T>(builder: &mut Builder, kind: ItemKind, val: T) -> Result<()> {
+fn append_bootinfo<T>(builder: &mut Builder<'_>, kind: ItemKind, val: T) -> Result<()> {
     builder
         .append(kind, val)
         .map_err(|_| Status::OUT_OF_RESOURCES)

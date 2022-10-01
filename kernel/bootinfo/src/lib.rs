@@ -1,3 +1,4 @@
+#![warn(rust_2018_idioms)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
 
