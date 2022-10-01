@@ -1,9 +1,12 @@
+use core::fmt;
+
 use super::interrupt_vectors::{
     VECTOR_ALIGNMENT_CHECK, VECTOR_BOUND, VECTOR_BREAKPOINT, VECTOR_DEBUG, VECTOR_DEVICE_NOT_AVAIL,
     VECTOR_DIVIDE_ERROR, VECTOR_DOUBLE_FAULT, VECTOR_FPU_ERROR, VECTOR_GP_FAULT,
     VECTOR_INVALID_OPCODE, VECTOR_INVALID_TSS, VECTOR_MACHINE_CHECK, VECTOR_NMI, VECTOR_OVERFLOW,
     VECTOR_PAGE_FAULT, VECTOR_SEGMENT_NP, VECTOR_SIMD_ERROR, VECTOR_STACK_FAULT,
 };
+use super::x64_cpu::Rflags;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -34,13 +37,59 @@ struct InterruptFrame {
     // Fixed portion pushed by CPU upon entry
     rip: u64,
     cs: u64,
-    rflags: u64,
+    rflags: Rflags,
     rsp: u64,
     ss: u64,
 }
 
+impl fmt::Display for InterruptFrame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "\nvector: {:#018x}  code: {:#018x}",
+            self.vector, self.error_code
+        )?;
+
+        writeln!(
+            f,
+            "rip: {:#018x}  rsp: {:#018x}  rfl: {:?}",
+            self.rip, self.rsp, self.rflags
+        )?;
+
+        writeln!(
+            f,
+            "rax: {:#018x}  rbx: {:#018x}  rcx: {:#018x}  rdx: {:#018x}",
+            self.rax, self.rbx, self.rcx, self.rdx
+        )?;
+
+        writeln!(
+            f,
+            "rsi: {:#018x}  rdi: {:#018x}  rbp: {:#018x}   r8: {:#018x}",
+            self.rsi, self.rdi, self.rbp, self.r8
+        )?;
+
+        writeln!(
+            f,
+            " r9: {:#018x}  r10: {:#018x}  r11: {:#018x}  r12: {:#018x}",
+            self.r9, self.r10, self.r11, self.r12
+        )?;
+
+        writeln!(
+            f,
+            "r13: {:#018x}  r14: {:#018x}  r15: {:#018x}",
+            self.r13, self.r14, self.r15
+        )?;
+
+        Ok(())
+    }
+}
+
 unsafe fn handle_exception(frame: &mut InterruptFrame) {
-    panic!("fatal exception: {}", exception_vector_to_str(frame.vector));
+    panic!(
+        "fatal exception: {}\n{}",
+        exception_vector_to_str(frame.vector),
+        frame
+    );
 }
 
 fn exception_vector_to_str(vector: u64) -> &'static str {
