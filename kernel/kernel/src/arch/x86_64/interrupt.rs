@@ -101,11 +101,15 @@ fn handle_page_fault(frame: &InterruptFrame) {
     let addr = read_cr2();
 
     let was_write = (frame.error_code >> 1) & 1 != 0;
+    let was_instr = (frame.error_code >> 4) & 1 != 0;
     let was_user = (frame.error_code >> 2) & 1 != 0;
 
-    let access_type = match was_write {
-        true => "write",
-        false => "read",
+    let access_type = if was_instr {
+        "jump to"
+    } else if was_write {
+        "write to"
+    } else {
+        "read from"
     };
 
     let access_mode = match was_user {
@@ -114,7 +118,7 @@ fn handle_page_fault(frame: &InterruptFrame) {
     };
 
     panic!(
-        "fatal page fault: {}-mode {} to {}\n{}",
+        "fatal page fault: {}-mode {} {}\n{}",
         access_mode, access_type, addr, frame
     );
 }
@@ -196,9 +200,6 @@ pub mod entry_points {
         };
     }
 
-    for_each_interrupt!(interrupt_stub);
-    global_asm!(include_str!("interrupt.s"));
-
     const fn has_error_code(vector: u64) -> bool {
         matches!(
             vector,
@@ -211,4 +212,7 @@ pub mod entry_points {
                 | VECTOR_ALIGNMENT_CHECK
         )
     }
+
+    for_each_interrupt!(interrupt_stub);
+    global_asm!(include_str!("interrupt.s"));
 }
