@@ -1,7 +1,5 @@
 use core::fmt::{Arguments, Write};
 
-use arrayvec::ArrayString;
-
 use crate::arch::serial::Console;
 use crate::sync::SpinLock;
 
@@ -35,8 +33,9 @@ pub fn write(msg: &str) {
 }
 
 pub fn writeln_fmt(args: Arguments<'_>) {
-    let mut msg = ArrayString::<512>::new();
-    if writeln!(msg, "{}", args).is_ok() {
-        write(&msg);
-    }
+    CONSOLE.with(|console, _| {
+        if let Some(console) = console {
+            let _ = writeln!(console, "{}", args);
+        }
+    })
 }

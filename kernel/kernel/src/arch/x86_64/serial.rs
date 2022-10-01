@@ -1,4 +1,4 @@
-use core::hint;
+use core::{fmt, hint};
 
 use bitflags::bitflags;
 
@@ -28,6 +28,13 @@ impl Console {
             }
             self.serial.write_byte(byte);
         }
+    }
+}
+
+impl fmt::Write for Console {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.write(s);
+        Ok(())
     }
 }
 
