@@ -9,6 +9,34 @@ use super::x64_cpu::{
     cli, get_rflags, hlt, lgdt, lidt, lldt, ltr, sti, DescriptorRegister, Rflags,
 };
 
+#[inline]
+pub fn halt() -> ! {
+    unsafe {
+        cli();
+    }
+    loop {
+        hlt();
+    }
+}
+
+pub fn irq_enabled() -> bool {
+    get_rflags().contains(Rflags::IF)
+}
+
+#[inline]
+pub unsafe fn disable_irq() {
+    unsafe {
+        cli();
+    }
+}
+
+#[inline]
+pub unsafe fn enable_irq() {
+    unsafe {
+        sti();
+    }
+}
+
 pub unsafe fn init_bsp(irq_disabled: IrqDisabled) {
     init_idt();
     unsafe {
@@ -66,33 +94,5 @@ unsafe fn load_idt() {
             ptr: get_idt().as_u64(),
         };
         lidt(&desc);
-    }
-}
-
-#[inline]
-pub fn halt() -> ! {
-    unsafe {
-        cli();
-    }
-    loop {
-        hlt();
-    }
-}
-
-pub fn irq_enabled() -> bool {
-    get_rflags().contains(Rflags::IF)
-}
-
-#[inline]
-pub unsafe fn disable_irq() {
-    unsafe {
-        cli();
-    }
-}
-
-#[inline]
-pub unsafe fn enable_irq() {
-    unsafe {
-        sti();
     }
 }
