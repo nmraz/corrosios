@@ -15,5 +15,6 @@ paste = "1.0.9"
 
 bitmap = { path = "../../lib/bitmap" }
 bootinfo = { path = "../bootinfo" }
+kernel-api = { path = "../kernel-api" }
 num-utils = { path = "../../lib/num-utils" }
 spin-once = { path = "../../lib/spin-once" }

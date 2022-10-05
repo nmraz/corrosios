@@ -1,32 +1,18 @@
-use core::cmp;
+use core::{cmp, result};
 
 use crate::arch::mmu::{
     self, current_kernel_pt, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT,
 };
+use crate::err::{Error, Result};
 
 use super::types::{PageTableFlags, PageTablePerms, PhysFrameNum, VirtPageNum};
-
-#[derive(Debug, Clone, Copy)]
-pub struct PageTableAllocError;
-
-#[derive(Debug, Clone, Copy)]
-pub enum MapError {
-    AllocFailed,
-    EntryExists,
-}
-
-impl From<PageTableAllocError> for MapError {
-    fn from(_: PageTableAllocError) -> Self {
-        Self::AllocFailed
-    }
-}
 
 pub trait TranslatePhys {
     fn translate(&self, phys: PhysFrameNum) -> VirtPageNum;
 }
 
 pub trait PageTableAlloc {
-    fn allocate(&mut self) -> Result<PhysFrameNum, PageTableAllocError>;
+    fn allocate(&mut self) -> Result<PhysFrameNum>;
 }
 
 pub trait GatherInvalidations {
@@ -102,7 +88,7 @@ impl<T: TranslatePhys> PageTable<T> {
         pointer: &mut MappingPointer,
         phys_base: PhysFrameNum,
         perms: PageTablePerms,
-    ) -> Result<(), MapError> {
+    ) -> Result<()> {
         self.inner.map(
             alloc,
             pointer,
@@ -125,7 +111,7 @@ impl<T: TranslatePhys> PageTable<T> {
         alloc: &mut impl PageTableAlloc,
         gather: &mut impl GatherInvalidations,
         pointer: &mut MappingPointer,
-    ) -> Result<(), PageTableAllocError> {
+    ) -> Result<()> {
         self.inner
             .unmap(alloc, gather, pointer, self.root, PT_LEVEL_COUNT - 1)
     }
@@ -153,7 +139,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         level: usize,
         phys_base: PhysFrameNum,
         perms: PageTablePerms,
-    ) -> Result<(), MapError> {
+    ) -> Result<()> {
         walk_level(level, pointer, |pointer| {
             if mmu::supports_page_size(level) && can_use_level_page(level, pointer, phys_base) {
                 self.map_terminal(pointer, table, level, phys_base, perms)?;
@@ -174,7 +160,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         pointer: &mut MappingPointer,
         table: PhysFrameNum,
         level: usize,
-    ) -> Result<(), PageTableAllocError> {
+    ) -> Result<()> {
         walk_level(level, pointer, |pointer| {
             if level == 0 {
                 self.unmap_terminal(gather, pointer, table, level);
@@ -214,7 +200,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         alloc: &mut impl PageTableAlloc,
         table: PhysFrameNum,
         index: usize,
-    ) -> Result<PhysFrameNum, MapError> {
+    ) -> Result<PhysFrameNum> {
         let perms: PageTablePerms = PageTablePerms::READ
             | PageTablePerms::WRITE
             | PageTablePerms::EXECUTE
@@ -222,7 +208,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
 
         match self.next_table(table, index) {
             Ok(next) => return Ok(next),
-            Err(NextTableError::LargePage(_)) => return Err(MapError::EntryExists),
+            Err(NextTableError::LargePage(_)) => return Err(Error::RESOURCE_IN_USE),
             Err(NextTableError::NotPresent) => {}
         };
 
@@ -241,7 +227,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         &self,
         table: PhysFrameNum,
         index: usize,
-    ) -> Result<PhysFrameNum, NextTableError> {
+    ) -> result::Result<PhysFrameNum, NextTableError> {
         let entry = self.get(table, index);
         let flags = entry.flags();
 
@@ -263,7 +249,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         level: usize,
         phys_base: PhysFrameNum,
         perms: PageTablePerms,
-    ) -> Result<(), MapError> {
+    ) -> Result<()> {
         let index = pointer.virt().pt_index(level);
 
         if self
@@ -271,7 +257,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
             .flags()
             .contains(PageTableFlags::PRESENT)
         {
-            return Err(MapError::EntryExists);
+            return Err(Error::RESOURCE_IN_USE);
         }
 
         let mut flags = PageTableFlags::PRESENT;
@@ -342,8 +328,8 @@ impl<T: TranslatePhys> PageTableInner<T> {
 fn walk_level<E>(
     level: usize,
     pointer: &mut MappingPointer,
-    mut f: impl FnMut(&mut MappingPointer) -> Result<(), E>,
-) -> Result<(), E> {
+    mut f: impl FnMut(&mut MappingPointer) -> result::Result<(), E>,
+) -> result::Result<(), E> {
     let virt = pointer.virt();
     let range_end = virt + pointer.remaining_pages();
     let next_table_boundary = (virt + 1).align_up(PT_ENTRY_COUNT * level_page_count(level));

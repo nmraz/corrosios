@@ -15,6 +15,7 @@ use crate::sync::irq::IrqDisabled;
 mod console;
 
 mod arch;
+mod err;
 mod global_alloc;
 mod kimage;
 mod mm;
