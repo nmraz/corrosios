@@ -6,6 +6,8 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
 use arch::cpu;
 use mm::types::PhysAddr;
 

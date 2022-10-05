@@ -2,6 +2,7 @@ pub mod heap;
 pub mod physmap;
 pub mod pmm;
 pub mod types;
+pub mod vm;
 
 mod early;
 mod init;

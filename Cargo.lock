@@ -371,9 +371,18 @@ dependencies = [
  "bootinfo",
  "intrusive-collections",
  "itertools",
+ "kernel-api",
  "num-utils",
  "paste",
+ "qcell",
  "spin-once",
+]
+
+[[package]]
+name = "kernel-api"
+version = "0.1.0"
+dependencies = [
+ "struct-enum",
 ]
 
 [[package]]
@@ -483,6 +492,12 @@ checksum = "94e2ef8dbfc347b10c094890f778ee2e36ca9bb4262e86dc99cd217e35f3470b"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "qcell"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b632aa7e99db96aa805f87e389f801c536f6785ded873a4e3fbc0441747cc40"
 
 [[package]]
 name = "quote"
