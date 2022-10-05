@@ -62,7 +62,11 @@ fn get_effective_size(layout: Layout) -> usize {
 // the number; in other words, rounding a number up to its size class must not decrease its trailing
 // zero count. We ensure this by never adding a power of 2 to a size class not already divisible by
 // that power, which would cause us to "skip" a size class that was more strictly aligned.
-static ALLOCATOR: Allocator<23> = Allocator::new([
+static ALLOCATOR: Allocator<25> = Allocator::new([
+    // For small marker objects like `QCellOwner`
+    SizeClass::new(2, 0),
+    // Single pointers and other very small objects
+    SizeClass::new(8, 0),
     // 16-byte granularity
     SizeClass::new(16, 0),
     SizeClass::new(32, 0),
