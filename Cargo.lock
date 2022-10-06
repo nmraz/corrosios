@@ -371,17 +371,10 @@ dependencies = [
  "bootinfo",
  "intrusive-collections",
  "itertools",
- "kernel-api",
  "num-utils",
  "paste",
  "qcell",
  "spin-once",
-]
-
-[[package]]
-name = "kernel-api"
-version = "0.1.0"
-dependencies = [
  "struct-enum",
 ]
 

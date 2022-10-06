@@ -99,8 +99,7 @@ impl<O> AddrSpaceSlice<O> {
                     base,
                     page_count,
                     inner: QCell::new(id, Some(AddrSpaceSliceInner::new())),
-                })
-                .map_err(|_| Error::OUT_OF_MEMORY)?;
+                })?;
 
                 let child = AddrSpaceChild::Subslice(Arc::clone(&slice));
                 Ok((child, slice))
@@ -199,7 +198,7 @@ fn finish_insert<O, R>(
     mut prev: CursorMut<'_, AddrSpaceChildAdapter<O>>,
     f: impl FnOnce() -> Result<(AddrSpaceChild<O>, R)>,
 ) -> Result<R> {
-    let new_child = Box::try_new_uninit().map_err(|_| Error::OUT_OF_MEMORY)?;
+    let new_child = Box::try_new_uninit()?;
     let (data, ret) = f()?;
     let new_child = Box::write(
         new_child,
