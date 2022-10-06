@@ -1,5 +1,5 @@
 use core::cmp;
-use core::ops::Range;
+use core::ops::{ControlFlow, Range};
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -190,7 +190,17 @@ impl<O> AddrSpaceSliceInner<O> {
         page_count: usize,
         f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild<O>, R)>,
     ) -> Result<R> {
-        todo!()
+        let mut f = Some(f);
+
+        self.iter_gaps_mut(|gap_base, gap_page_count, prev_cursor| {
+            if gap_page_count > page_count {
+                let f = f.take().expect("did not break after finding spot");
+                ControlFlow::Break(finish_insert_after(prev_cursor, || f(gap_base)))
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .unwrap_or(Err(Error::OUT_OF_MEMORY))
     }
 
     fn alloc_spot_fixed<R>(
@@ -199,7 +209,7 @@ impl<O> AddrSpaceSliceInner<O> {
         page_count: usize,
         f: impl FnOnce() -> Result<(AddrSpaceChild<O>, R)>,
     ) -> Result<R> {
-        let prev = self.children.upper_bound_mut(Bound::Included(&base));
+        let mut prev = self.children.upper_bound_mut(Bound::Included(&base));
         if let Some(prev) = prev.get() {
             if prev.base() + prev.page_count() > base {
                 return Err(Error::RESOURCE_IN_USE);
@@ -212,12 +222,44 @@ impl<O> AddrSpaceSliceInner<O> {
             }
         }
 
-        finish_insert(prev, f)
+        finish_insert_after(&mut prev, f)
+    }
+
+    /// Calls `f` on all gaps (unallocated regions) in this slice, passing each invocation the base
+    /// of the gap, its page count, and a cursor pointing to the item in the tree before the gap.
+    ///
+    /// Iteration will stop early if `f` returns [`ControlFlow::Break`], and the break value will
+    /// be returned.
+    fn iter_gaps_mut<'a, B>(
+        &'a mut self,
+        mut f: impl FnMut(
+            VirtPageNum,
+            usize,
+            &mut CursorMut<'a, AddrSpaceChildAdapter<O>>,
+        ) -> ControlFlow<B>,
+    ) -> Option<B> {
+        let mut cursor = self.children.cursor_mut();
+
+        loop {
+            let cur = cursor.as_cursor().get()?;
+            let next = cursor.peek_next().get()?;
+
+            let cur_end = cur.base() + cur.page_count();
+            let next_start = next.base();
+
+            if cur_end < next_start {
+                if let ControlFlow::Break(val) = f(cur_end, next_start - cur_end, &mut cursor) {
+                    return Some(val);
+                }
+            }
+
+            cursor.move_next();
+        }
     }
 }
 
-fn finish_insert<O, R>(
-    mut prev: CursorMut<'_, AddrSpaceChildAdapter<O>>,
+fn finish_insert_after<O, R>(
+    prev: &mut CursorMut<'_, AddrSpaceChildAdapter<O>>,
     f: impl FnOnce() -> Result<(AddrSpaceChild<O>, R)>,
 ) -> Result<R> {
     let new_child = Box::try_new_uninit()?;
