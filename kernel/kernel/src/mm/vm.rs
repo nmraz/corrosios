@@ -1,4 +1,5 @@
 use core::cmp;
+use core::ops::Range;
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -57,6 +58,27 @@ pub struct AddrSpace<O> {
 }
 
 impl<O: AddrSpaceOps> AddrSpace<O> {
+    pub unsafe fn new(range: Range<VirtPageNum>, ops: O) -> Result<Arc<Self>> {
+        assert!(range.end >= range.start);
+
+        let inner = AddrSpaceInner {
+            cell_owner: QCellOwner::new(),
+        };
+
+        let root_slice = Arc::try_new(AddrSpaceSliceShared {
+            name: ArrayString::from("root").unwrap(),
+            base: range.start,
+            page_count: range.end - range.start,
+            inner: inner.cell_owner.cell(Some(AddrSpaceSliceInner::new())),
+        })?;
+
+        Ok(Arc::try_new(AddrSpace {
+            inner: SpinLock::new(inner),
+            root_slice,
+            ops,
+        })?)
+    }
+
     pub fn root_slice(self: &Arc<Self>) -> AddrSpaceSlice<O> {
         AddrSpaceSlice {
             slice: Arc::clone(&self.root_slice),
