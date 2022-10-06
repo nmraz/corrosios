@@ -1,9 +1,10 @@
 use core::cmp;
 
 use alloc::boxed::Box;
-use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use arrayvec::ArrayString;
+use intrusive_collections::rbtree::CursorMut;
+use intrusive_collections::{intrusive_adapter, Bound, KeyAdapter, RBTree, RBTreeLink};
 use qcell::{QCell, QCellOwner, QCellOwnerID};
 
 use crate::err::{Error, Result};
@@ -86,24 +87,29 @@ impl<O> AddrSpaceSlice<O> {
     pub fn create_subslice(
         &self,
         name: &str,
-        base_offset: Option<usize>,
+        base: Option<VirtPageNum>,
         page_count: usize,
     ) -> Result<AddrSpaceSlice<O>> {
         let name = ArrayString::from(&name[..cmp::min(name.len(), MAX_NAME_LEN)]).unwrap();
 
-        self.with_inner(|inner, id| {
-            let slice = Arc::try_new(AddrSpaceSliceShared {
-                name,
-                base: self.base(), // TODO
-                page_count,
-                inner: QCell::new(id, Some(AddrSpaceSliceInner::new())),
-            })
-            .map_err(|_| Error::OUT_OF_MEMORY)?;
+        let slice = self.with_inner(|inner, id| {
+            inner.alloc_spot(base, page_count, |base| {
+                let slice = Arc::try_new(AddrSpaceSliceShared {
+                    name,
+                    base,
+                    page_count,
+                    inner: QCell::new(id, Some(AddrSpaceSliceInner::new())),
+                })
+                .map_err(|_| Error::OUT_OF_MEMORY)?;
 
-            Ok(AddrSpaceSlice {
-                addr_space: Arc::clone(&self.addr_space),
-                slice,
+                let child = AddrSpaceChild::Subslice(Arc::clone(&slice));
+                Ok((child, slice))
             })
+        })?;
+
+        Ok(AddrSpaceSlice {
+            addr_space: Arc::clone(&self.addr_space),
+            slice,
         })
     }
 
@@ -136,20 +142,109 @@ struct AddrSpaceInner {
 }
 
 struct AddrSpaceSliceInner<O> {
-    children: BTreeMap<VirtPageNum, AddrSpaceSliceChild<O>>,
+    children: RBTree<AddrSpaceChildAdapter<O>>,
 }
 
 impl<O> AddrSpaceSliceInner<O> {
     fn new() -> Self {
         Self {
-            children: BTreeMap::new(),
+            children: RBTree::default(),
+        }
+    }
+
+    fn alloc_spot<R>(
+        &mut self,
+        base: Option<VirtPageNum>,
+        page_count: usize,
+        f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild<O>, R)>,
+    ) -> Result<R> {
+        match base {
+            Some(base) => self.alloc_spot_fixed(base, page_count, || f(base)),
+            None => self.alloc_spot_dynamic(page_count, f),
+        }
+    }
+
+    fn alloc_spot_dynamic<R>(
+        &mut self,
+        page_count: usize,
+        f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild<O>, R)>,
+    ) -> Result<R> {
+        todo!()
+    }
+
+    fn alloc_spot_fixed<R>(
+        &mut self,
+        base: VirtPageNum,
+        page_count: usize,
+        f: impl FnOnce() -> Result<(AddrSpaceChild<O>, R)>,
+    ) -> Result<R> {
+        let prev = self.children.upper_bound_mut(Bound::Included(&base));
+        if let Some(prev) = prev.get() {
+            if prev.base() + prev.page_count() > base {
+                return Err(Error::RESOURCE_IN_USE);
+            }
+        }
+
+        if let Some(next) = prev.peek_next().get() {
+            if base + page_count > next.base() {
+                return Err(Error::RESOURCE_IN_USE);
+            }
+        }
+
+        finish_insert(prev, f)
+    }
+}
+
+fn finish_insert<O, R>(
+    mut prev: CursorMut<'_, AddrSpaceChildAdapter<O>>,
+    f: impl FnOnce() -> Result<(AddrSpaceChild<O>, R)>,
+) -> Result<R> {
+    let new_child = Box::try_new_uninit().map_err(|_| Error::OUT_OF_MEMORY)?;
+    let (data, ret) = f()?;
+    let new_child = Box::write(
+        new_child,
+        AddrSpaceChildNode {
+            link: RBTreeLink::new(),
+            data,
+        },
+    );
+    prev.insert_after(new_child);
+    Ok(ret)
+}
+
+struct AddrSpaceChildNode<O> {
+    link: RBTreeLink,
+    data: AddrSpaceChild<O>,
+}
+
+impl<O> AddrSpaceChildNode<O> {
+    fn base(&self) -> VirtPageNum {
+        match &self.data {
+            AddrSpaceChild::Subslice(slice) => slice.base,
+            AddrSpaceChild::Mapping(mapping) => mapping.base,
+        }
+    }
+
+    fn page_count(&self) -> usize {
+        match &self.data {
+            AddrSpaceChild::Subslice(slice) => slice.page_count,
+            AddrSpaceChild::Mapping(mapping) => mapping.page_count,
         }
     }
 }
 
-enum AddrSpaceSliceChild<O> {
-    Subslice(Arc<AddrSpaceSlice<O>>),
-    Mapping(Box<Mapping>),
+intrusive_adapter!(AddrSpaceChildAdapter<O> = Box<AddrSpaceChildNode<O>>: AddrSpaceChildNode<O> { link: RBTreeLink });
+impl<'a, O> KeyAdapter<'a> for AddrSpaceChildAdapter<O> {
+    type Key = VirtPageNum;
+
+    fn get_key(&self, value: &'a AddrSpaceChildNode<O>) -> Self::Key {
+        value.base()
+    }
+}
+
+enum AddrSpaceChild<O> {
+    Subslice(Arc<AddrSpaceSliceShared<O>>),
+    Mapping(Mapping),
 }
 
 struct Mapping {
