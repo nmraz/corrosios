@@ -1,4 +1,4 @@
-#![feature(alloc_error_handler)]
+#![feature(alloc_error_handler, allocator_api)]
 #![feature(asm_const)]
 #![feature(panic_info_message)]
 #![warn(rust_2018_idioms)]

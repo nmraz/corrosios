@@ -1,13 +1,18 @@
+use core::cmp;
+
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
-use alloc::sync::{Arc, Weak};
-use qcell::{QCell, QCellOwner};
+use alloc::sync::Arc;
+use arrayvec::ArrayString;
+use qcell::{QCell, QCellOwner, QCellOwnerID};
 
 use crate::err::{Error, Result};
 use crate::sync::irq::IrqDisabled;
 use crate::sync::SpinLock;
 
 use super::types::{PhysFrameNum, VirtPageNum};
+
+const MAX_NAME_LEN: usize = 32;
 
 /// A request to flush pages from the TLB.
 pub enum TlbFlush<'a> {
@@ -45,56 +50,85 @@ pub unsafe trait AddrSpaceOps {
 }
 
 pub struct AddrSpace<O> {
-    lock: SpinLock<AddrSpaceInner>,
+    inner: SpinLock<AddrSpaceInner>,
     root_slice: Arc<AddrSpaceSliceShared<O>>,
     ops: O,
 }
 
 impl<O: AddrSpaceOps> AddrSpace<O> {
-    pub fn root_slice(&self) -> AddrSpaceSlice<O> {
-        let slice = Arc::downgrade(&self.root_slice);
-        AddrSpaceSlice { slice }
+    pub fn root_slice(self: &Arc<Self>) -> AddrSpaceSlice<O> {
+        AddrSpaceSlice {
+            slice: Arc::clone(&self.root_slice),
+            addr_space: Arc::clone(self),
+        }
     }
 }
 
 #[derive(Clone)]
 pub struct AddrSpaceSlice<O> {
-    slice: Weak<AddrSpaceSliceShared<O>>,
+    addr_space: Arc<AddrSpace<O>>,
+    slice: Arc<AddrSpaceSliceShared<O>>,
 }
 
 impl<O> AddrSpaceSlice<O> {
-    pub fn addr_space(&self) -> Result<Arc<AddrSpace<O>>> {
-        self.upgrade().map(|slice| slice.addr_space())
+    pub fn name(&self) -> &str {
+        &self.slice.name
+    }
+
+    pub fn base(&self) -> VirtPageNum {
+        self.slice.base
+    }
+
+    pub fn page_count(&self) -> usize {
+        self.slice.page_count
     }
 
     pub fn create_subslice(
         &self,
+        name: &str,
         base_offset: Option<usize>,
         page_count: usize,
     ) -> Result<AddrSpaceSlice<O>> {
-        let shared = self.upgrade()?;
+        let name = ArrayString::from(&name[..cmp::min(name.len(), MAX_NAME_LEN)]).unwrap();
 
-        todo!()
+        self.with_inner(|inner, id| {
+            let slice = Arc::try_new(AddrSpaceSliceShared {
+                name,
+                base: self.base(), // TODO
+                page_count,
+                inner: QCell::new(id, Some(AddrSpaceSliceInner::new())),
+            })
+            .map_err(|_| Error::OUT_OF_MEMORY)?;
+
+            Ok(AddrSpaceSlice {
+                addr_space: Arc::clone(&self.addr_space),
+                slice,
+            })
+        })
     }
 
-    fn upgrade(&self) -> Result<Arc<AddrSpaceSliceShared<O>>> {
-        self.slice.upgrade().ok_or(Error::INVALID_STATE)
+    fn with_inner<R>(
+        &self,
+        f: impl FnOnce(&mut AddrSpaceSliceInner<O>, QCellOwnerID) -> Result<R>,
+    ) -> Result<R> {
+        self.addr_space.inner.with(|addr_space_inner, _| {
+            let id = addr_space_inner.cell_owner.id();
+            let inner = self
+                .slice
+                .inner
+                .rw(&mut addr_space_inner.cell_owner)
+                .as_mut()
+                .ok_or(Error::INVALID_STATE)?;
+            f(inner, id)
+        })
     }
 }
 
 struct AddrSpaceSliceShared<O> {
+    name: ArrayString<32>,
     base: VirtPageNum,
     page_count: usize,
-    addr_space: Weak<AddrSpace<O>>,
-    inner: QCell<AddrSpaceSliceInner<O>>,
-}
-
-impl<O> AddrSpaceSliceShared<O> {
-    fn addr_space(&self) -> Arc<AddrSpace<O>> {
-        self.addr_space
-            .upgrade()
-            .expect("slice data outlived address space")
-    }
+    inner: QCell<Option<AddrSpaceSliceInner<O>>>,
 }
 
 struct AddrSpaceInner {
@@ -103,6 +137,14 @@ struct AddrSpaceInner {
 
 struct AddrSpaceSliceInner<O> {
     children: BTreeMap<VirtPageNum, AddrSpaceSliceChild<O>>,
+}
+
+impl<O> AddrSpaceSliceInner<O> {
+    fn new() -> Self {
+        Self {
+            children: BTreeMap::new(),
+        }
+    }
 }
 
 enum AddrSpaceSliceChild<O> {
