@@ -163,6 +163,10 @@ macro_rules! impl_arith_helpers {
             pub const fn align_up(self, align: usize) -> Self {
                 Self(align_up(self.0, align))
             }
+
+            pub fn checked_add(self, rhs: usize) -> Option<Self> {
+                self.0.checked_add(rhs).map(Self)
+            }
         }
 
         impl fmt::Display for $t {
