@@ -6,7 +6,7 @@ use alloc::sync::Arc;
 use arrayvec::ArrayString;
 use intrusive_collections::rbtree::CursorMut;
 use intrusive_collections::{intrusive_adapter, Bound, KeyAdapter, RBTree, RBTreeLink};
-use qcell::{QCell, QCellOwner, QCellOwnerID};
+use qcell::{QCell, QCellOwner};
 
 use crate::err::{Error, Result};
 use crate::sync::irq::IrqDisabled;
@@ -67,7 +67,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
 
         let root_slice = Arc::try_new(AddrSpaceSliceShared {
             name: ArrayString::from("root").unwrap(),
-            base: range.start,
+            start: range.start,
             page_count: range.end - range.start,
             inner: inner.cell_owner.cell(Some(AddrSpaceSliceInner::new())),
         })?;
@@ -85,6 +85,10 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             addr_space: Arc::clone(self),
         }
     }
+
+    fn with_owner<R>(&self, f: impl FnOnce(&mut QCellOwner) -> Result<R>) -> Result<R> {
+        self.inner.with(|inner, _| f(&mut inner.cell_owner))
+    }
 }
 
 #[derive(Clone)]
@@ -93,13 +97,13 @@ pub struct AddrSpaceSlice<O> {
     slice: Arc<AddrSpaceSliceShared<O>>,
 }
 
-impl<O> AddrSpaceSlice<O> {
+impl<O: AddrSpaceOps> AddrSpaceSlice<O> {
     pub fn name(&self) -> &str {
         &self.slice.name
     }
 
-    pub fn base(&self) -> VirtPageNum {
-        self.slice.base
+    pub fn start(&self) -> VirtPageNum {
+        self.slice.start
     }
 
     pub fn page_count(&self) -> usize {
@@ -109,16 +113,18 @@ impl<O> AddrSpaceSlice<O> {
     pub fn create_subslice(
         &self,
         name: &str,
-        base: Option<VirtPageNum>,
+        start: Option<VirtPageNum>,
         page_count: usize,
     ) -> Result<AddrSpaceSlice<O>> {
         let name = ArrayString::from(&name[..cmp::min(name.len(), MAX_NAME_LEN)]).unwrap();
 
-        let slice = self.with_inner(|inner, id| {
-            inner.alloc_spot(base, page_count, |base| {
+        let slice = self.addr_space.with_owner(|owner| {
+            let id = owner.id();
+
+            self.slice.alloc_spot(owner, start, page_count, |start| {
                 let slice = Arc::try_new(AddrSpaceSliceShared {
                     name,
-                    base,
+                    start,
                     page_count,
                     inner: QCell::new(id, Some(AddrSpaceSliceInner::new())),
                 })?;
@@ -133,29 +139,149 @@ impl<O> AddrSpaceSlice<O> {
             slice,
         })
     }
-
-    fn with_inner<R>(
-        &self,
-        f: impl FnOnce(&mut AddrSpaceSliceInner<O>, QCellOwnerID) -> Result<R>,
-    ) -> Result<R> {
-        self.addr_space.inner.with(|addr_space_inner, _| {
-            let id = addr_space_inner.cell_owner.id();
-            let inner = self
-                .slice
-                .inner
-                .rw(&mut addr_space_inner.cell_owner)
-                .as_mut()
-                .ok_or(Error::INVALID_STATE)?;
-            f(inner, id)
-        })
-    }
 }
 
 struct AddrSpaceSliceShared<O> {
     name: ArrayString<32>,
-    base: VirtPageNum,
+    start: VirtPageNum,
     page_count: usize,
     inner: QCell<Option<AddrSpaceSliceInner<O>>>,
+}
+
+impl<O> AddrSpaceSliceShared<O> {
+    fn alloc_spot<R>(
+        &self,
+        owner: &mut QCellOwner,
+        start: Option<VirtPageNum>,
+        page_count: usize,
+        f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild<O>, R)>,
+    ) -> Result<R> {
+        match start {
+            Some(start) => self.alloc_spot_fixed(owner, start, page_count, || f(start)),
+            None => self.alloc_spot_dynamic(owner, page_count, f),
+        }
+    }
+
+    fn alloc_spot_dynamic<R>(
+        &self,
+        owner: &mut QCellOwner,
+        page_count: usize,
+        f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild<O>, R)>,
+    ) -> Result<R> {
+        let mut f = Some(f);
+
+        self.iter_gaps_mut(owner, |gap_start, gap_page_count, prev_cursor| {
+            if gap_page_count > page_count {
+                let f = f.take().expect("did not break after finding spot");
+                ControlFlow::Break(finish_insert_after(prev_cursor, || f(gap_start)))
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .and_then(|res| res.unwrap_or(Err(Error::OUT_OF_MEMORY)))
+    }
+
+    fn alloc_spot_fixed<R>(
+        &self,
+        owner: &mut QCellOwner,
+        start: VirtPageNum,
+        page_count: usize,
+        f: impl FnOnce() -> Result<(AddrSpaceChild<O>, R)>,
+    ) -> Result<R> {
+        let end = start
+            .checked_add(page_count)
+            .ok_or(Error::INVALID_ARGUMENT)?;
+
+        if start < self.start || end > self.start + self.page_count {
+            return Err(Error::INVALID_ARGUMENT);
+        }
+
+        let inner = self.inner(owner)?;
+
+        let mut prev = inner.children.upper_bound_mut(Bound::Included(&start));
+        if let Some(prev) = prev.get() {
+            if prev.start() + prev.page_count() > start {
+                return Err(Error::RESOURCE_IN_USE);
+            }
+        }
+
+        if let Some(next) = prev.peek_next().get() {
+            if end > next.start() {
+                return Err(Error::RESOURCE_IN_USE);
+            }
+        }
+
+        finish_insert_after(&mut prev, f)
+    }
+
+    /// Calls `f` on all gaps (unallocated regions) in this slice, passing each invocation the start
+    /// of the gap, its page count, and a cursor pointing to the item in the tree before the gap.
+    ///
+    /// Iteration will stop early if `f` returns [`ControlFlow::Break`], and the break value will
+    /// be returned.
+    fn iter_gaps_mut<'a, B>(
+        &'a self,
+        owner: &'a mut QCellOwner,
+        mut f: impl FnMut(
+            VirtPageNum,
+            usize,
+            &mut CursorMut<'a, AddrSpaceChildAdapter<O>>,
+        ) -> ControlFlow<B>,
+    ) -> Result<Option<B>> {
+        let inner = self.inner(owner)?;
+
+        let mut cursor = inner.children.front_mut();
+        let Some(first) = cursor.get() else {
+            let retval = match f(self.start, self.page_count, &mut cursor) {
+                ControlFlow::Break(val) => Some(val),
+                ControlFlow::Continue(_) => None,
+            };
+
+            return Ok(retval);
+        };
+
+        let first_start = first.start();
+
+        if self.start < first_start {
+            if let ControlFlow::Break(val) = f(self.start, first_start - self.start, &mut cursor) {
+                return Ok(Some(val));
+            }
+        }
+
+        while let Some(next) = cursor.peek_next().get() {
+            let cur = cursor
+                .get()
+                .expect("cursor null despite next being non-null");
+
+            let cur_end = cur.end();
+            let next_start = next.start();
+
+            if cur_end < next_start {
+                if let ControlFlow::Break(val) = f(cur_end, next_start - cur_end, &mut cursor) {
+                    return Ok(Some(val));
+                }
+            }
+
+            cursor.move_next();
+        }
+
+        let last_end = cursor
+            .get()
+            .expect("cursor should point to last node")
+            .end();
+        let slice_end = self.start + self.page_count;
+        if last_end < slice_end {
+            if let ControlFlow::Break(val) = f(last_end, slice_end - last_end, &mut cursor) {
+                return Ok(Some(val));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn inner<'a>(&'a self, owner: &'a mut QCellOwner) -> Result<&'a mut AddrSpaceSliceInner<O>> {
+        self.inner.rw(owner).as_mut().ok_or(Error::INVALID_STATE)
+    }
 }
 
 struct AddrSpaceInner {
@@ -170,90 +296,6 @@ impl<O> AddrSpaceSliceInner<O> {
     fn new() -> Self {
         Self {
             children: RBTree::default(),
-        }
-    }
-
-    fn alloc_spot<R>(
-        &mut self,
-        base: Option<VirtPageNum>,
-        page_count: usize,
-        f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild<O>, R)>,
-    ) -> Result<R> {
-        match base {
-            Some(base) => self.alloc_spot_fixed(base, page_count, || f(base)),
-            None => self.alloc_spot_dynamic(page_count, f),
-        }
-    }
-
-    fn alloc_spot_dynamic<R>(
-        &mut self,
-        page_count: usize,
-        f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild<O>, R)>,
-    ) -> Result<R> {
-        let mut f = Some(f);
-
-        self.iter_gaps_mut(|gap_base, gap_page_count, prev_cursor| {
-            if gap_page_count > page_count {
-                let f = f.take().expect("did not break after finding spot");
-                ControlFlow::Break(finish_insert_after(prev_cursor, || f(gap_base)))
-            } else {
-                ControlFlow::Continue(())
-            }
-        })
-        .unwrap_or(Err(Error::OUT_OF_MEMORY))
-    }
-
-    fn alloc_spot_fixed<R>(
-        &mut self,
-        base: VirtPageNum,
-        page_count: usize,
-        f: impl FnOnce() -> Result<(AddrSpaceChild<O>, R)>,
-    ) -> Result<R> {
-        let mut prev = self.children.upper_bound_mut(Bound::Included(&base));
-        if let Some(prev) = prev.get() {
-            if prev.base() + prev.page_count() > base {
-                return Err(Error::RESOURCE_IN_USE);
-            }
-        }
-
-        if let Some(next) = prev.peek_next().get() {
-            if base + page_count > next.base() {
-                return Err(Error::RESOURCE_IN_USE);
-            }
-        }
-
-        finish_insert_after(&mut prev, f)
-    }
-
-    /// Calls `f` on all gaps (unallocated regions) in this slice, passing each invocation the base
-    /// of the gap, its page count, and a cursor pointing to the item in the tree before the gap.
-    ///
-    /// Iteration will stop early if `f` returns [`ControlFlow::Break`], and the break value will
-    /// be returned.
-    fn iter_gaps_mut<'a, B>(
-        &'a mut self,
-        mut f: impl FnMut(
-            VirtPageNum,
-            usize,
-            &mut CursorMut<'a, AddrSpaceChildAdapter<O>>,
-        ) -> ControlFlow<B>,
-    ) -> Option<B> {
-        let mut cursor = self.children.cursor_mut();
-
-        loop {
-            let cur = cursor.as_cursor().get()?;
-            let next = cursor.peek_next().get()?;
-
-            let cur_end = cur.base() + cur.page_count();
-            let next_start = next.base();
-
-            if cur_end < next_start {
-                if let ControlFlow::Break(val) = f(cur_end, next_start - cur_end, &mut cursor) {
-                    return Some(val);
-                }
-            }
-
-            cursor.move_next();
         }
     }
 }
@@ -281,11 +323,15 @@ struct AddrSpaceChildNode<O> {
 }
 
 impl<O> AddrSpaceChildNode<O> {
-    fn base(&self) -> VirtPageNum {
+    fn start(&self) -> VirtPageNum {
         match &self.data {
-            AddrSpaceChild::Subslice(slice) => slice.base,
-            AddrSpaceChild::Mapping(mapping) => mapping.base,
+            AddrSpaceChild::Subslice(slice) => slice.start,
+            AddrSpaceChild::Mapping(mapping) => mapping.start,
         }
+    }
+
+    fn end(&self) -> VirtPageNum {
+        self.start() + self.page_count()
     }
 
     fn page_count(&self) -> usize {
@@ -301,7 +347,7 @@ impl<'a, O> KeyAdapter<'a> for AddrSpaceChildAdapter<O> {
     type Key = VirtPageNum;
 
     fn get_key(&self, value: &'a AddrSpaceChildNode<O>) -> Self::Key {
-        value.base()
+        value.start()
     }
 }
 
@@ -311,6 +357,6 @@ enum AddrSpaceChild<O> {
 }
 
 struct Mapping {
-    base: VirtPageNum,
+    start: VirtPageNum,
     page_count: usize,
 }

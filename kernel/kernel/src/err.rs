@@ -4,9 +4,10 @@ use struct_enum::struct_enum;
 
 struct_enum! {
     pub struct Error: u32 {
-        OUT_OF_MEMORY = 1;
+        INVALID_ARGUMENT = 1;
         INVALID_STATE = 2;
-        RESOURCE_IN_USE = 3;
+        OUT_OF_MEMORY = 3;
+        RESOURCE_IN_USE = 4;
     }
 }
 
