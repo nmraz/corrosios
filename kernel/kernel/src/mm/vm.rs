@@ -12,7 +12,7 @@ use crate::err::{Error, Result};
 use crate::sync::irq::IrqDisabled;
 use crate::sync::SpinLock;
 
-use super::types::{PhysFrameNum, VirtPageNum};
+use super::types::{PageTablePerms, PhysFrameNum, VirtPageNum};
 
 const MAX_NAME_LEN: usize = 32;
 
@@ -22,6 +22,29 @@ pub enum TlbFlush<'a> {
     Specific(&'a [VirtPageNum]),
     /// FLush the entire TLB.
     All,
+}
+
+/// The types of memory accesses that can cause a page fault.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessType {
+    Read,
+    Write,
+    Execute,
+}
+
+/// A virtual memory object that can be mapped into an address space.
+///
+/// # Safety
+///
+/// The implementation of [`provide_page`](VmObject::provide_page) must return a frame that can be
+/// safely used by clients mapping the object.
+pub unsafe trait VmObject {
+    /// Retrieves the size of this VM object, in pages.
+    fn page_count(&self) -> usize;
+
+    /// Requests the page at offset `offset` within the object, assuming it will be accessed in
+    /// accordance with `access_type`.
+    fn provide_page(&self, offset: usize, access_type: AccessType) -> Result<PhysFrameNum>;
 }
 
 /// Encapsulates the necessary low-level page table interactions required for higher-level address
@@ -51,13 +74,39 @@ pub unsafe trait AddrSpaceOps {
     fn flush(&self, request: &TlbFlush<'_>);
 }
 
+/// Represents an address space, with its associated page tables and mappings.
+///
+/// An instance of this structure is the entry point for all high-level virtual memory operations,
+/// such as mapping in pages and handling page faults.
+///
+/// # Slices
+///
+/// Unlike most typical address space abstractions, these address spaces do not provide generic
+/// `map` and `unmap` operations taking an arbitrary virtual address ranges. Instead, every address
+/// space is exposed to users as a tree of disjoint ["slices"](AddrSpaceSlice), each covering a
+/// portion of the address space.
+///
+/// Every slice can contain more sub-slices and (leaf) mapping objects pointing to a [`VmObject`].
+/// Mapping and unmapping operations operate on a given slice handle, and can only modify its direct
+/// children. The root slice of an address space can be retrieved via
+/// [`root_slice`](AddrSpace::root_slice).
+///
+/// Beyond providing encapsulation, slices also make reservation of virtual address ranges explicit
+/// and make it easier to
+///
+/// # Page tables and synchronization
+///
+/// Access to the low-level page table is abstracted via the [`AddrSpaceOps`] trait, which is
+/// responsible for providing access to the root page table for this address space and maintaining
+/// consistency across processors.
 pub struct AddrSpace<O> {
     inner: SpinLock<AddrSpaceInner>,
-    root_slice: Arc<AddrSpaceSliceShared<O>>,
+    root_slice: Arc<AddrSpaceSliceShared>,
     ops: O,
 }
 
 impl<O: AddrSpaceOps> AddrSpace<O> {
+    /// Creates a new address space spanning `range`, with page table operations `ops`.
     pub unsafe fn new(range: Range<VirtPageNum>, ops: O) -> Result<Arc<Self>> {
         assert!(range.end >= range.start);
 
@@ -79,6 +128,9 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         })?)
     }
 
+    /// Retrieves a handle to the root slice of this address space.
+    ///
+    /// The name of the root slice is always `root`.
     pub fn root_slice(self: &Arc<Self>) -> AddrSpaceSlice<O> {
         AddrSpaceSlice {
             slice: Arc::clone(&self.root_slice),
@@ -86,34 +138,85 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         }
     }
 
+    /// Handles a page fault accessing `vpn` with access type `access_type`.
+    ///
+    /// This may ultimately call into [`provide_page`](VmObject::provide_page) on the object mapped
+    /// at the specified address.
+    ///
+    /// # Errors
+    ///
+    /// * `BAD_ADDRESS` - `vpn` is not mapped into this address space or is mapped with permissions
+    ///                    incompatible with `access_type`.
+    /// * Any errors returned by the underlying `provide_page` call.
+    pub fn fault(&self, vpn: VirtPageNum, access_type: AccessType) -> Result<()> {
+        // TODO: be more careful about this lock when `provide_page` can sleep.
+        self.with_owner(|owner| {
+            let mapping = self.root_slice.get_mapping(owner, vpn)?;
+            let object_offset = vpn - mapping.start + mapping.object_offset;
+
+            todo!()
+        })
+    }
+
     fn with_owner<R>(&self, f: impl FnOnce(&mut QCellOwner) -> Result<R>) -> Result<R> {
         self.inner.with(|inner, _| f(&mut inner.cell_owner))
     }
 }
 
+/// A handle to a [slice](AddrSpace#slices) of an address space.
+///
+/// # States
+///
+/// In general, every slice may be either *attached* or *detached*.
+///
+/// Every slice is created attached (and the root of an address space is always attached),
+/// but unmapping a slice from its parent detaches it. Any attempts to perform mapping-related
+/// operations on a detached slice will fail with [`INVALID_STATE`](crate::err::Error::INVALID_STATE).
 #[derive(Clone)]
 pub struct AddrSpaceSlice<O> {
     addr_space: Arc<AddrSpace<O>>,
-    slice: Arc<AddrSpaceSliceShared<O>>,
+    slice: Arc<AddrSpaceSliceShared>,
 }
 
 impl<O: AddrSpaceOps> AddrSpaceSlice<O> {
+    /// Returns the human-friendly name of this slice, useful for debugging purposes.
+    ///
+    /// The root slice of an address space is always named `root`.
     pub fn name(&self) -> &str {
         &self.slice.name
     }
 
+    /// Returns the first page number covered by this slice.
     pub fn start(&self) -> VirtPageNum {
         self.slice.start
     }
 
+    /// Returns the page number just after the last page covered by this slice.
     pub fn end(&self) -> VirtPageNum {
         self.start() + self.page_count()
     }
 
+    /// Returns the number of pages covered by this slice.
     pub fn page_count(&self) -> usize {
         self.slice.page_count
     }
 
+    /// Allocates a slice spanning `page_count` pages from within this slice.
+    ///
+    /// A human-friendly description of this slice's purpose should be passed in `name`; it will be
+    /// used only for debugging purposes and may be truncated.
+    ///
+    /// If `start` is provided, the subslice will be created at the requested virtual page number.
+    /// Otherwise, a sufficiently large available region will be found and used.
+    ///
+    /// # Errors
+    ///
+    /// * `INVALID_STATE` - This function was called on a [detached](AddrSpaceSlice#states) slice.
+    /// * `INVALID_ARGUMENT` - The requested range is too large or does not lie in the virtual
+    ///                        address range managed by this slice.
+    /// * `OUT_OF_MEMORY` - Allocation of the new metadata failed.
+    /// * `RESOURCE_OVERLAP` - The requested range overlaps an existing subslice or mapping.
+    /// * `OUT_OF_RESOURCES` - No available regions of the requested size were found.
     pub fn create_subslice(
         &self,
         name: &str,
@@ -143,22 +246,65 @@ impl<O: AddrSpaceOps> AddrSpaceSlice<O> {
             slice,
         })
     }
+
+    /// Maps the range `object_offset..object_offset + page_count` of `object` into this slice.
+    ///
+    /// If `start` is provided, the mapping will be created at the requested virtual page number.
+    /// Otherwise, a sufficiently large available region will be found and used.
+    ///
+    /// # Errors
+    ///
+    /// * `INVALID_STATE` - This function was called on a [detached](AddrSpaceSlice#states) slice.
+    /// * `INVALID_ARGUMENT` - The requested range is too large or does not lie in the virtual
+    ///                        address range managed by this slice, or `page_count` is larger
+    ///                        than the size of the object.
+    /// * `OUT_OF_MEMORY` - Allocation of the new metadata failed.
+    /// * `RESOURCE_OVERLAP` - The requested range overlaps an existing subslice or mapping.
+    /// * `OUT_OF_RESOURCES` - No available regions of the requested size were found.
+    pub fn map(
+        &self,
+        start: Option<VirtPageNum>,
+        page_count: usize,
+        perms: PageTablePerms,
+        object: Arc<dyn VmObject>,
+        object_offset: usize,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
-struct AddrSpaceSliceShared<O> {
+struct AddrSpaceSliceShared {
     name: ArrayString<32>,
     start: VirtPageNum,
     page_count: usize,
-    inner: QCell<Option<AddrSpaceSliceInner<O>>>,
+    inner: QCell<Option<AddrSpaceSliceInner>>,
 }
 
-impl<O> AddrSpaceSliceShared<O> {
+impl AddrSpaceSliceShared {
+    /// Retrieves the mapping containing `vpn`, recursing into subslices as necessary.
+    fn get_mapping<'a>(&'a self, owner: &'a QCellOwner, vpn: VirtPageNum) -> Result<&'a Mapping> {
+        self.check_vpn(vpn)?;
+
+        let inner = self.inner(owner)?;
+        let child = inner.get_child(vpn).ok_or(Error::BAD_ADDRESS)?;
+
+        match child {
+            AddrSpaceChild::Subslice(slice) => slice.get_mapping(owner, vpn),
+            AddrSpaceChild::Mapping(mapping) => Ok(mapping),
+        }
+    }
+
+    /// Allocates a child of size `page_count` from within this slice, invoking `f` to construct it
+    /// once a suitable area has been found.
+    ///
+    /// If `start` is provided, the child will be created at the requested virtual page number.
+    /// Otherwise, a sufficiently large available region will be found and used.
     fn alloc_spot<R>(
         &self,
         owner: &mut QCellOwner,
         start: Option<VirtPageNum>,
         page_count: usize,
-        f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild<O>, R)>,
+        f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild, R)>,
     ) -> Result<R> {
         match start {
             Some(start) => self.alloc_spot_fixed(owner, start, page_count, || f(start)),
@@ -166,11 +312,13 @@ impl<O> AddrSpaceSliceShared<O> {
         }
     }
 
+    /// Allocates a child of size `page_count` from within this slice, invoking `f` to construct it
+    /// once a suitable area has been found.
     fn alloc_spot_dynamic<R>(
         &self,
         owner: &mut QCellOwner,
         page_count: usize,
-        f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild<O>, R)>,
+        f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild, R)>,
     ) -> Result<R> {
         let mut f = Some(f);
 
@@ -182,36 +330,38 @@ impl<O> AddrSpaceSliceShared<O> {
                 ControlFlow::Continue(())
             }
         })
-        .and_then(|res| res.unwrap_or(Err(Error::OUT_OF_MEMORY)))
+        .and_then(|res| res.unwrap_or(Err(Error::OUT_OF_RESOURCES)))
     }
 
+    /// Allocates a child spanning `start..start + page_count` from within this slice, invoking `f`
+    /// to construct it once a suitable area has been found.
     fn alloc_spot_fixed<R>(
         &self,
         owner: &mut QCellOwner,
         start: VirtPageNum,
         page_count: usize,
-        f: impl FnOnce() -> Result<(AddrSpaceChild<O>, R)>,
+        f: impl FnOnce() -> Result<(AddrSpaceChild, R)>,
     ) -> Result<R> {
         let end = start
             .checked_add(page_count)
             .ok_or(Error::INVALID_ARGUMENT)?;
 
-        if start < self.start || end > self.start + self.page_count {
+        if start < self.start || end > self.end() {
             return Err(Error::INVALID_ARGUMENT);
         }
 
-        let inner = self.inner(owner)?;
+        let inner = self.inner_mut(owner)?;
 
         let mut prev = inner.children.upper_bound_mut(Bound::Included(&start));
         if let Some(prev) = prev.get() {
-            if prev.start() + prev.page_count() > start {
-                return Err(Error::RESOURCE_IN_USE);
+            if prev.end() > start {
+                return Err(Error::RESOURCE_OVERLAP);
             }
         }
 
         if let Some(next) = prev.peek_next().get() {
             if end > next.start() {
-                return Err(Error::RESOURCE_IN_USE);
+                return Err(Error::RESOURCE_OVERLAP);
             }
         }
 
@@ -229,10 +379,10 @@ impl<O> AddrSpaceSliceShared<O> {
         mut f: impl FnMut(
             VirtPageNum,
             usize,
-            &mut CursorMut<'a, AddrSpaceChildAdapter<O>>,
+            &mut CursorMut<'a, AddrSpaceChildAdapter>,
         ) -> ControlFlow<B>,
     ) -> Result<Option<B>> {
-        let inner = self.inner(owner)?;
+        let inner = self.inner_mut(owner)?;
 
         let mut cursor = inner.children.front_mut();
         let Some(first) = cursor.get() else {
@@ -273,7 +423,7 @@ impl<O> AddrSpaceSliceShared<O> {
             .get()
             .expect("cursor should point to last node")
             .end();
-        let slice_end = self.start + self.page_count;
+        let slice_end = self.end();
         if last_end < slice_end {
             if let ControlFlow::Break(val) = f(last_end, slice_end - last_end, &mut cursor) {
                 return Ok(Some(val));
@@ -283,30 +433,31 @@ impl<O> AddrSpaceSliceShared<O> {
         Ok(None)
     }
 
-    fn inner<'a>(&'a self, owner: &'a mut QCellOwner) -> Result<&'a mut AddrSpaceSliceInner<O>> {
+    /// Checks that `vpn` lies within this slice's range, returning `BAD_ADDRESS` if it does not.
+    fn check_vpn(&self, vpn: VirtPageNum) -> Result<()> {
+        if (self.start..self.end()).contains(&vpn) {
+            Ok(())
+        } else {
+            Err(Error::BAD_ADDRESS)
+        }
+    }
+
+    fn end(&self) -> VirtPageNum {
+        self.start + self.page_count
+    }
+
+    fn inner<'a>(&'a self, owner: &'a QCellOwner) -> Result<&'a AddrSpaceSliceInner> {
+        self.inner.ro(owner).as_ref().ok_or(Error::INVALID_STATE)
+    }
+
+    fn inner_mut<'a>(&'a self, owner: &'a mut QCellOwner) -> Result<&'a mut AddrSpaceSliceInner> {
         self.inner.rw(owner).as_mut().ok_or(Error::INVALID_STATE)
     }
 }
 
-struct AddrSpaceInner {
-    cell_owner: QCellOwner,
-}
-
-struct AddrSpaceSliceInner<O> {
-    children: RBTree<AddrSpaceChildAdapter<O>>,
-}
-
-impl<O> AddrSpaceSliceInner<O> {
-    fn new() -> Self {
-        Self {
-            children: RBTree::default(),
-        }
-    }
-}
-
-fn finish_insert_after<O, R>(
-    prev: &mut CursorMut<'_, AddrSpaceChildAdapter<O>>,
-    f: impl FnOnce() -> Result<(AddrSpaceChild<O>, R)>,
+fn finish_insert_after<R>(
+    prev: &mut CursorMut<'_, AddrSpaceChildAdapter>,
+    f: impl FnOnce() -> Result<(AddrSpaceChild, R)>,
 ) -> Result<R> {
     let new_child = Box::try_new_uninit()?;
     let (data, ret) = f()?;
@@ -321,12 +472,49 @@ fn finish_insert_after<O, R>(
     Ok(ret)
 }
 
-struct AddrSpaceChildNode<O> {
-    link: RBTreeLink,
-    data: AddrSpaceChild<O>,
+struct AddrSpaceInner {
+    cell_owner: QCellOwner,
 }
 
-impl<O> AddrSpaceChildNode<O> {
+struct AddrSpaceSliceInner {
+    children: RBTree<AddrSpaceChildAdapter>,
+}
+
+impl AddrSpaceSliceInner {
+    fn new() -> Self {
+        Self {
+            children: RBTree::default(),
+        }
+    }
+
+    fn get_child(&self, vpn: VirtPageNum) -> Option<&AddrSpaceChild> {
+        self.children
+            .upper_bound(Bound::Included(&vpn))
+            .get()
+            .filter(|node| vpn < node.end())
+            .map(|node| &node.data)
+    }
+}
+
+enum AddrSpaceChild {
+    Subslice(Arc<AddrSpaceSliceShared>),
+    Mapping(Mapping),
+}
+
+struct Mapping {
+    start: VirtPageNum,
+    page_count: usize,
+    perms: PageTablePerms,
+    object_offset: usize,
+    object: Arc<dyn VmObject>,
+}
+
+struct AddrSpaceChildNode {
+    link: RBTreeLink,
+    data: AddrSpaceChild,
+}
+
+impl AddrSpaceChildNode {
     fn start(&self) -> VirtPageNum {
         match &self.data {
             AddrSpaceChild::Subslice(slice) => slice.start,
@@ -346,21 +534,11 @@ impl<O> AddrSpaceChildNode<O> {
     }
 }
 
-intrusive_adapter!(AddrSpaceChildAdapter<O> = Box<AddrSpaceChildNode<O>>: AddrSpaceChildNode<O> { link: RBTreeLink });
-impl<'a, O> KeyAdapter<'a> for AddrSpaceChildAdapter<O> {
+intrusive_adapter!(AddrSpaceChildAdapter = Box<AddrSpaceChildNode>: AddrSpaceChildNode { link: RBTreeLink });
+impl<'a> KeyAdapter<'a> for AddrSpaceChildAdapter {
     type Key = VirtPageNum;
 
-    fn get_key(&self, value: &'a AddrSpaceChildNode<O>) -> Self::Key {
+    fn get_key(&self, value: &'a AddrSpaceChildNode) -> Self::Key {
         value.start()
     }
-}
-
-enum AddrSpaceChild<O> {
-    Subslice(Arc<AddrSpaceSliceShared<O>>),
-    Mapping(Mapping),
-}
-
-struct Mapping {
-    start: VirtPageNum,
-    page_count: usize,
 }
