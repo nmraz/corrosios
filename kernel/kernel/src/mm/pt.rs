@@ -208,7 +208,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
 
         match self.next_table(table, index) {
             Ok(next) => return Ok(next),
-            Err(NextTableError::LargePage(_)) => return Err(Error::RESOURCE_IN_USE),
+            Err(NextTableError::LargePage(_)) => return Err(Error::RESOURCE_OVERLAP),
             Err(NextTableError::NotPresent) => {}
         };
 
@@ -257,7 +257,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
             .flags()
             .contains(PageTableFlags::PRESENT)
         {
-            return Err(Error::RESOURCE_IN_USE);
+            return Err(Error::RESOURCE_OVERLAP);
         }
 
         let mut flags = PageTableFlags::PRESENT;

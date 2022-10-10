@@ -6,8 +6,10 @@ struct_enum! {
     pub struct Error: u32 {
         INVALID_ARGUMENT = 1;
         INVALID_STATE = 2;
-        OUT_OF_MEMORY = 3;
-        RESOURCE_IN_USE = 4;
+        BAD_ADDRESS = 3;
+        OUT_OF_MEMORY = 4;
+        RESOURCE_OVERLAP = 5;
+        OUT_OF_RESOURCES = 6;
     }
 }
 
