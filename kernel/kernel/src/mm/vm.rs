@@ -83,7 +83,7 @@ pub unsafe trait AddrSpaceOps {
 ///
 /// Unlike most typical address space abstractions, these address spaces do not provide generic
 /// `map` and `unmap` operations taking an arbitrary virtual address ranges. Instead, every address
-/// space is exposed to users as a tree of disjoint ["slices"](AddrSpaceSlice), each covering a
+/// space is exposed to users as a tree of disjoint ["slices"](SliceHandle), each covering a
 /// portion of the address space.
 ///
 /// Every slice can contain more sub-slices and (leaf) mapping objects pointing to a [`VmObject`].
@@ -101,40 +101,41 @@ pub unsafe trait AddrSpaceOps {
 /// consistency across processors.
 pub struct AddrSpace<O> {
     inner: SpinLock<AddrSpaceInner>,
-    root_slice: Arc<AddrSpaceSliceShared>,
+    root_slice: Arc<SliceData>,
     ops: O,
+}
+
+struct AddrSpaceInner {
+    cell_owner: QCellOwner,
 }
 
 impl<O: AddrSpaceOps> AddrSpace<O> {
     /// Creates a new address space spanning `range`, with page table operations `ops`.
-    pub unsafe fn new(range: Range<VirtPageNum>, ops: O) -> Result<Arc<Self>> {
+    pub unsafe fn new(range: Range<VirtPageNum>, ops: O) -> Result<Self> {
         assert!(range.end >= range.start);
 
         let inner = AddrSpaceInner {
             cell_owner: QCellOwner::new(),
         };
 
-        let root_slice = Arc::try_new(AddrSpaceSliceShared {
+        let root_slice = Arc::try_new(SliceData {
             name: ArrayString::from("root").unwrap(),
             start: range.start,
             page_count: range.end - range.start,
-            inner: inner.cell_owner.cell(Some(AddrSpaceSliceInner::new())),
+            inner: inner.cell_owner.cell(Some(SliceInner::new())),
         })?;
 
-        Ok(Arc::try_new(AddrSpace {
+        Ok(AddrSpace {
             inner: SpinLock::new(inner),
             root_slice,
             ops,
-        })?)
+        })
     }
 
     /// Retrieves a handle to the root slice of this address space.
-    ///
-    /// The name of the root slice is always `root`.
-    pub fn root_slice(self: &Arc<Self>) -> AddrSpaceSlice<O> {
-        AddrSpaceSlice {
+    pub fn root_slice(&self) -> SliceHandle {
+        SliceHandle {
             slice: Arc::clone(&self.root_slice),
-            addr_space: Arc::clone(self),
         }
     }
 
@@ -158,6 +159,86 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         })
     }
 
+    /// Allocates a sub-slice spanning `page_count` pages from within `slice`.
+    ///
+    /// A human-friendly description of this slice's purpose should be passed in `name`; it will be
+    /// used only for debugging purposes and may be truncated.
+    ///
+    /// If `start` is provided, the subslice will be created at the requested virtual page number.
+    /// Otherwise, a sufficiently large available region will be found and used.
+    ///
+    /// # Errors
+    ///
+    /// * `INVALID_STATE` - This function was called with a [detached](SliceHandle#states) slice.
+    /// * `INVALID_ARGUMENT` - The requested range is too large or does not lie in the virtual
+    ///                        address range managed by this slice.
+    /// * `OUT_OF_MEMORY` - Allocation of the new metadata failed.
+    /// * `RESOURCE_OVERLAP` - The requested range overlaps an existing subslice or mapping.
+    /// * `OUT_OF_RESOURCES` - No available regions of the requested size were found.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `slice` belongs to a different address space.
+    pub fn create_subslice(
+        &self,
+        slice: &SliceHandle,
+        name: &str,
+        start: Option<VirtPageNum>,
+        page_count: usize,
+    ) -> Result<SliceHandle> {
+        let name = ArrayString::from(&name[..cmp::min(name.len(), MAX_NAME_LEN)]).unwrap();
+
+        let slice = self.with_owner(|owner| {
+            let id = owner.id();
+
+            slice.slice.alloc_spot(owner, start, page_count, |start| {
+                let slice = Arc::try_new(SliceData {
+                    name,
+                    start,
+                    page_count,
+                    inner: QCell::new(id, Some(SliceInner::new())),
+                })?;
+
+                let child = AddrSpaceChild::Subslice(Arc::clone(&slice));
+                Ok((child, slice))
+            })
+        })?;
+
+        Ok(SliceHandle { slice })
+    }
+
+    /// Maps the range `object_offset..object_offset + page_count` of `object` into `slice`.
+    ///
+    /// The mapping will be created with the permissions specified in `perms`.
+    ///
+    /// If `start` is provided, the mapping will be created at the requested virtual page number.
+    /// Otherwise, a sufficiently large available region will be found and used.
+    ///
+    /// # Errors
+    ///
+    /// * `INVALID_STATE` - This function was called on a [detached](SliceHandle#states) slice.
+    /// * `INVALID_ARGUMENT` - The requested range is too large or does not lie in the virtual
+    ///                        address range managed by this slice, or `page_count` is larger
+    ///                        than the size of the object.
+    /// * `OUT_OF_MEMORY` - Allocation of the new metadata failed.
+    /// * `RESOURCE_OVERLAP` - The requested range overlaps an existing subslice or mapping.
+    /// * `OUT_OF_RESOURCES` - No available regions of the requested size were found.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `slice` belongs to a different address space.
+    pub fn map(
+        &self,
+        slice: &SliceHandle,
+        start: Option<VirtPageNum>,
+        page_count: usize,
+        perms: PageTablePerms,
+        object: Arc<dyn VmObject>,
+        object_offset: usize,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     fn with_owner<R>(&self, f: impl FnOnce(&mut QCellOwner) -> Result<R>) -> Result<R> {
         self.inner.with(|inner, _| f(&mut inner.cell_owner))
     }
@@ -173,12 +254,11 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
 /// but unmapping a slice from its parent detaches it. Any attempts to perform mapping-related
 /// operations on a detached slice will fail with [`INVALID_STATE`](crate::err::Error::INVALID_STATE).
 #[derive(Clone)]
-pub struct AddrSpaceSlice<O> {
-    addr_space: Arc<AddrSpace<O>>,
-    slice: Arc<AddrSpaceSliceShared>,
+pub struct SliceHandle {
+    slice: Arc<SliceData>,
 }
 
-impl<O: AddrSpaceOps> AddrSpaceSlice<O> {
+impl SliceHandle {
     /// Returns the human-friendly name of this slice, useful for debugging purposes.
     ///
     /// The root slice of an address space is always named `root`.
@@ -200,87 +280,16 @@ impl<O: AddrSpaceOps> AddrSpaceSlice<O> {
     pub fn page_count(&self) -> usize {
         self.slice.page_count
     }
-
-    /// Allocates a slice spanning `page_count` pages from within this slice.
-    ///
-    /// A human-friendly description of this slice's purpose should be passed in `name`; it will be
-    /// used only for debugging purposes and may be truncated.
-    ///
-    /// If `start` is provided, the subslice will be created at the requested virtual page number.
-    /// Otherwise, a sufficiently large available region will be found and used.
-    ///
-    /// # Errors
-    ///
-    /// * `INVALID_STATE` - This function was called on a [detached](AddrSpaceSlice#states) slice.
-    /// * `INVALID_ARGUMENT` - The requested range is too large or does not lie in the virtual
-    ///                        address range managed by this slice.
-    /// * `OUT_OF_MEMORY` - Allocation of the new metadata failed.
-    /// * `RESOURCE_OVERLAP` - The requested range overlaps an existing subslice or mapping.
-    /// * `OUT_OF_RESOURCES` - No available regions of the requested size were found.
-    pub fn create_subslice(
-        &self,
-        name: &str,
-        start: Option<VirtPageNum>,
-        page_count: usize,
-    ) -> Result<AddrSpaceSlice<O>> {
-        let name = ArrayString::from(&name[..cmp::min(name.len(), MAX_NAME_LEN)]).unwrap();
-
-        let slice = self.addr_space.with_owner(|owner| {
-            let id = owner.id();
-
-            self.slice.alloc_spot(owner, start, page_count, |start| {
-                let slice = Arc::try_new(AddrSpaceSliceShared {
-                    name,
-                    start,
-                    page_count,
-                    inner: QCell::new(id, Some(AddrSpaceSliceInner::new())),
-                })?;
-
-                let child = AddrSpaceChild::Subslice(Arc::clone(&slice));
-                Ok((child, slice))
-            })
-        })?;
-
-        Ok(AddrSpaceSlice {
-            addr_space: Arc::clone(&self.addr_space),
-            slice,
-        })
-    }
-
-    /// Maps the range `object_offset..object_offset + page_count` of `object` into this slice.
-    ///
-    /// If `start` is provided, the mapping will be created at the requested virtual page number.
-    /// Otherwise, a sufficiently large available region will be found and used.
-    ///
-    /// # Errors
-    ///
-    /// * `INVALID_STATE` - This function was called on a [detached](AddrSpaceSlice#states) slice.
-    /// * `INVALID_ARGUMENT` - The requested range is too large or does not lie in the virtual
-    ///                        address range managed by this slice, or `page_count` is larger
-    ///                        than the size of the object.
-    /// * `OUT_OF_MEMORY` - Allocation of the new metadata failed.
-    /// * `RESOURCE_OVERLAP` - The requested range overlaps an existing subslice or mapping.
-    /// * `OUT_OF_RESOURCES` - No available regions of the requested size were found.
-    pub fn map(
-        &self,
-        start: Option<VirtPageNum>,
-        page_count: usize,
-        perms: PageTablePerms,
-        object: Arc<dyn VmObject>,
-        object_offset: usize,
-    ) -> Result<()> {
-        Ok(())
-    }
 }
 
-struct AddrSpaceSliceShared {
+struct SliceData {
     name: ArrayString<32>,
     start: VirtPageNum,
     page_count: usize,
-    inner: QCell<Option<AddrSpaceSliceInner>>,
+    inner: QCell<Option<SliceInner>>,
 }
 
-impl AddrSpaceSliceShared {
+impl SliceData {
     /// Retrieves the mapping containing `vpn`, recursing into subslices as necessary.
     fn get_mapping<'a>(&'a self, owner: &'a QCellOwner, vpn: VirtPageNum) -> Result<&'a Mapping> {
         self.check_vpn(vpn)?;
@@ -446,11 +455,11 @@ impl AddrSpaceSliceShared {
         self.start + self.page_count
     }
 
-    fn inner<'a>(&'a self, owner: &'a QCellOwner) -> Result<&'a AddrSpaceSliceInner> {
+    fn inner<'a>(&'a self, owner: &'a QCellOwner) -> Result<&'a SliceInner> {
         self.inner.ro(owner).as_ref().ok_or(Error::INVALID_STATE)
     }
 
-    fn inner_mut<'a>(&'a self, owner: &'a mut QCellOwner) -> Result<&'a mut AddrSpaceSliceInner> {
+    fn inner_mut<'a>(&'a self, owner: &'a mut QCellOwner) -> Result<&'a mut SliceInner> {
         self.inner.rw(owner).as_mut().ok_or(Error::INVALID_STATE)
     }
 }
@@ -472,15 +481,11 @@ fn finish_insert_after<R>(
     Ok(ret)
 }
 
-struct AddrSpaceInner {
-    cell_owner: QCellOwner,
-}
-
-struct AddrSpaceSliceInner {
+struct SliceInner {
     children: RBTree<AddrSpaceChildAdapter>,
 }
 
-impl AddrSpaceSliceInner {
+impl SliceInner {
     fn new() -> Self {
         Self {
             children: RBTree::default(),
@@ -497,7 +502,7 @@ impl AddrSpaceSliceInner {
 }
 
 enum AddrSpaceChild {
-    Subslice(Arc<AddrSpaceSliceShared>),
+    Subslice(Arc<SliceData>),
     Mapping(Mapping),
 }
 
