@@ -10,6 +10,7 @@ use itertools::Itertools;
 use num_utils::{div_ceil, log2};
 
 use crate::arch::mmu::PAGE_SIZE;
+use crate::err::{Error, Result};
 use crate::mm::physmap::{paddr_to_physmap, physmap_to_pfn};
 use crate::mm::types::PhysFrameNum;
 use crate::mm::utils::{self, display_byte_size};
@@ -18,6 +19,7 @@ use crate::sync::SpinLock;
 
 use super::early::BootHeap;
 use super::physmap::pfn_to_physmap;
+use super::pt::PageTableAlloc;
 use super::types::VirtAddr;
 
 const ORDER_COUNT: usize = 16;
@@ -87,6 +89,14 @@ pub unsafe fn deallocate(pfn: PhysFrameNum, order: usize) {
 
 pub fn dump_usage() {
     with(|pmm| pmm.dump_usage());
+}
+
+pub struct PmmPageTableAlloc;
+
+impl PageTableAlloc for PmmPageTableAlloc {
+    fn allocate(&mut self) -> Result<PhysFrameNum> {
+        allocate(0).ok_or(Error::OUT_OF_MEMORY)
+    }
 }
 
 fn with<R>(f: impl FnOnce(&mut PhysManager) -> R) -> R {

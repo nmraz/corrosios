@@ -10,6 +10,7 @@ struct_enum! {
         OUT_OF_MEMORY = 4;
         RESOURCE_OVERLAP = 5;
         OUT_OF_RESOURCES = 6;
+        NO_PERMS = 7;
     }
 }
 

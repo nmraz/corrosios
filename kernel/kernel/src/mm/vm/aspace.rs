@@ -9,6 +9,9 @@ use intrusive_collections::{intrusive_adapter, Bound, KeyAdapter, RBTree, RBTree
 use qcell::{QCell, QCellOwner};
 
 use crate::err::{Error, Result};
+use crate::mm::physmap::PhysmapPfnTranslator;
+use crate::mm::pmm::PmmPageTableAlloc;
+use crate::mm::pt::{MappingPointer, PageTable};
 use crate::mm::types::{PageTablePerms, PhysFrameNum, VirtPageNum};
 use crate::sync::irq::IrqDisabled;
 use crate::sync::SpinLock;
@@ -152,9 +155,29 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         // TODO: be more careful about this lock when `provide_page` can sleep.
         self.with_owner(|owner| {
             let mapping = self.root_slice.get_mapping(owner, vpn)?;
+
+            if !access_allowed(access_type, mapping.perms) {
+                return Err(Error::NO_PERMS);
+            }
+
             let object_offset = vpn - mapping.start + mapping.object_offset;
 
-            todo!()
+            // TODO: move this out of the address space critical section
+            let pfn = mapping.object.provide_page(object_offset, access_type)?;
+
+            // Safety: we're holding the page table lock, and our translator and allocator perform
+            // correctly.
+            unsafe {
+                let mut pt = PageTable::new(self.ops.root_pt(), PhysmapPfnTranslator);
+                pt.map(
+                    &mut PmmPageTableAlloc,
+                    &mut MappingPointer::new(vpn, 1),
+                    pfn,
+                    mapping.perms,
+                )?;
+            };
+
+            Ok(())
         })
     }
 
@@ -251,6 +274,14 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
 
     fn with_owner<R>(&self, f: impl FnOnce(&mut QCellOwner) -> Result<R>) -> Result<R> {
         self.inner.with(|inner, _| f(&mut inner.cell_owner))
+    }
+}
+
+fn access_allowed(access_type: AccessType, perms: PageTablePerms) -> bool {
+    match access_type {
+        AccessType::Read => perms.contains(PageTablePerms::READ),
+        AccessType::Write => perms.contains(PageTablePerms::WRITE),
+        AccessType::Execute => perms.contains(PageTablePerms::EXECUTE),
     }
 }
 

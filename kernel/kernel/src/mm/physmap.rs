@@ -64,11 +64,15 @@ pub fn pfn_to_physmap(pfn: PhysFrameNum) -> VirtPageNum {
     PHYS_MAP_BASE + pfn.as_usize()
 }
 
-pub fn physmap_to_paddr(vaddr: VirtAddr) -> PhysAddr {
-    vaddr.to_phys(physmap_to_pfn)
-}
-
 pub fn physmap_to_pfn(vpn: VirtPageNum) -> PhysFrameNum {
     assert!((PHYS_MAP_BASE..PHYS_MAP_BASE + PHYS_MAP_MAX_PAGES).contains(&vpn));
     PhysFrameNum::new(vpn - PHYS_MAP_BASE)
+}
+
+pub struct PhysmapPfnTranslator;
+
+impl TranslatePhys for PhysmapPfnTranslator {
+    fn translate(&self, phys: PhysFrameNum) -> VirtPageNum {
+        pfn_to_physmap(phys)
+    }
 }
