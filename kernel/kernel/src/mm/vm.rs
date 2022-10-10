@@ -106,6 +106,10 @@ impl<O: AddrSpaceOps> AddrSpaceSlice<O> {
         self.slice.start
     }
 
+    pub fn end(&self) -> VirtPageNum {
+        self.start() + self.page_count()
+    }
+
     pub fn page_count(&self) -> usize {
         self.slice.page_count
     }
