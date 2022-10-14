@@ -148,8 +148,8 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     ///
     /// # Errors
     ///
-    /// * `BAD_ADDRESS` - `vpn` is not mapped into this address space or is mapped with permissions
-    ///                    incompatible with `access_type`.
+    /// * `BAD_ADDRESS` - `vpn` is not mapped into this address space.
+    /// * `NO_PERMS` - `vpn` is mapped with permissions incompatible with `access_type`.
     /// * Any errors returned by the underlying `provide_page` call.
     pub fn fault(&self, vpn: VirtPageNum, access_type: AccessType) -> Result<()> {
         // TODO: be more careful about this lock when `provide_page` can sleep.
