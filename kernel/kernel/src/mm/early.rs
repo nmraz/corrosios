@@ -5,6 +5,7 @@ use core::ops::Range;
 use arrayvec::ArrayVec;
 use spin_once::Once;
 
+use crate::arch::mm::EARLY_MAP_PT_PAGES;
 use crate::arch::mmu::{flush_tlb, PageTableSpace};
 use crate::err::{Error, Result};
 use crate::kimage;
@@ -13,7 +14,6 @@ use super::pt::{GatherInvalidations, MappingPointer, PageTable, PageTableAlloc, 
 use super::types::{PageTablePerms, PhysAddr, PhysFrameNum, VirtAddr, VirtPageNum};
 
 const EARLY_MAP_MAX_SLOTS: usize = 5;
-const EARLY_MAP_PT_PAGES: usize = 10;
 
 static EARLY_MAP_PTS: [PageTableSpace; EARLY_MAP_PT_PAGES] =
     [PageTableSpace::NEW; EARLY_MAP_PT_PAGES];
