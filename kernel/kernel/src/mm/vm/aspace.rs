@@ -46,6 +46,8 @@ pub unsafe trait VmObject {
 
     /// Requests the page at offset `offset` within the object, assuming it will be accessed in
     /// accordance with `access_type`.
+    ///
+    /// For now, this function should not block as it will be called with a spinlock held.
     fn provide_page(&self, offset: usize, access_type: AccessType) -> Result<PhysFrameNum>;
 }
 
@@ -152,32 +154,14 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     /// * `NO_PERMS` - `vpn` is mapped with permissions incompatible with `access_type`.
     /// * Any errors returned by the underlying `provide_page` call.
     pub fn fault(&self, vpn: VirtPageNum, access_type: AccessType) -> Result<()> {
-        // TODO: be more careful about this lock when `provide_page` can sleep.
-        self.with_owner(|owner| {
-            let mapping = self.root_slice.get_mapping(owner, vpn)?;
-
-            if !access_allowed(access_type, mapping.perms) {
-                return Err(Error::NO_PERMS);
-            }
-
-            let object_offset = vpn - mapping.start + mapping.object_offset;
-
-            // TODO: move this out of the address space critical section
-            let pfn = mapping.object.provide_page(object_offset, access_type)?;
-
-            // Safety: we're holding the page table lock, and our translator and allocator perform
-            // correctly.
-            unsafe {
-                let mut pt = PageTable::new(self.ops.root_pt(), PhysmapPfnTranslator);
-                pt.map(
-                    &mut PmmPageTableAlloc,
-                    &mut MappingPointer::new(vpn, 1),
-                    pfn,
-                    mapping.perms,
-                )?;
-            };
-
-            Ok(())
+        self.commit(access_type, |this, owner| {
+            let mapping = this.root_slice.get_mapping(owner, vpn)?;
+            let offset = vpn - mapping.start;
+            Ok(CommitRange {
+                mapping,
+                offset,
+                page_count: 1,
+            })
         })
     }
 
@@ -272,9 +256,53 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         })
     }
 
+    fn commit(
+        &self,
+        access_type: AccessType,
+        get_range: impl for<'a> FnOnce(&'a Self, &'a QCellOwner) -> Result<CommitRange<'a>>,
+    ) -> Result<()> {
+        // TODO: be more careful about this lock when `provide_page` can sleep.
+        self.with_owner(|owner| {
+            let range = get_range(self, owner)?;
+            let mapping = range.mapping;
+
+            if !access_allowed(access_type, mapping.perms) {
+                return Err(Error::NO_PERMS);
+            }
+
+            // TODO: refactor this and find some way for `provide_page` to block outside the
+            // critical section
+            for offset in range.offset..range.offset + range.page_count {
+                let object_offset = offset + mapping.object_offset;
+
+                let pfn = mapping.object.provide_page(object_offset, access_type)?;
+
+                // Safety: we're holding the page table lock, and our translator and allocator perform
+                // correctly.
+                unsafe {
+                    let mut pt = PageTable::new(self.ops.root_pt(), PhysmapPfnTranslator);
+                    pt.map(
+                        &mut PmmPageTableAlloc,
+                        &mut MappingPointer::new(mapping.start + range.offset, 1),
+                        pfn,
+                        mapping.perms,
+                    )?;
+                };
+            }
+
+            Ok(())
+        })
+    }
+
     fn with_owner<R>(&self, f: impl FnOnce(&mut QCellOwner) -> Result<R>) -> Result<R> {
         self.inner.with(|inner, _| f(&mut inner.cell_owner))
     }
+}
+
+struct CommitRange<'a> {
+    mapping: &'a MappingData,
+    offset: usize,
+    page_count: usize,
 }
 
 fn access_allowed(access_type: AccessType, perms: PageTablePerms) -> bool {
