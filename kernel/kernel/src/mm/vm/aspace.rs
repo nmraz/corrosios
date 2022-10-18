@@ -154,15 +154,27 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     /// * `NO_PERMS` - `vpn` is mapped with permissions incompatible with `access_type`.
     /// * Any errors returned by the underlying `provide_page` call.
     pub fn fault(&self, vpn: VirtPageNum, access_type: AccessType) -> Result<()> {
-        self.commit(access_type, |this, owner| {
-            let mapping = this.root_slice.get_mapping(owner, vpn)?;
-            let offset = vpn - mapping.start;
-            Ok(CommitRange {
-                mapping,
-                offset,
-                page_count: 1,
-            })
-        })
+        struct GetCommitRangeByVpn(VirtPageNum);
+        impl<'a> GetCommitRange<'a> for GetCommitRangeByVpn {
+            fn get_range<'b, O>(
+                &self,
+                addr_space: &'a AddrSpace<O>,
+                owner: &'b QCellOwner,
+            ) -> Result<CommitRange<'b>>
+            where
+                'a: 'b,
+            {
+                let mapping = addr_space.root_slice.get_mapping(owner, self.0)?;
+                let offset = self.0 - mapping.start;
+                Ok(CommitRange {
+                    mapping,
+                    offset,
+                    page_count: 1,
+                })
+            }
+        }
+
+        self.do_commit(access_type, GetCommitRangeByVpn(vpn))
     }
 
     /// Allocates a sub-slice spanning `page_count` pages from within `slice`.
@@ -241,32 +253,69 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         object_offset: usize,
         object: Arc<dyn VmObject>,
         perms: PageTablePerms,
-    ) -> Result<()> {
-        self.with_owner(|owner| {
+    ) -> Result<MappingHandle> {
+        let mapping = self.with_owner(|owner| {
+            let id = owner.id();
             slice.slice.alloc_spot(owner, start, page_count, |start| {
                 let mapping = Arc::try_new(MappingData {
                     start,
                     page_count,
-                    perms,
                     object_offset,
                     object,
+                    inner: QCell::new(id, Some(MappingInner::new(perms))),
                 })?;
-                Ok((AddrSpaceChild::Mapping(mapping), ()))
+
+                let child = AddrSpaceChild::Mapping(Arc::clone(&mapping));
+                Ok((child, mapping))
             })
-        })
+        })?;
+
+        Ok(MappingHandle { mapping })
     }
 
-    fn commit(
+    pub fn commit(
         &self,
+        mapping: &MappingHandle,
         access_type: AccessType,
-        get_range: impl for<'a> FnOnce(&'a Self, &'a QCellOwner) -> Result<CommitRange<'a>>,
+        offset: usize,
+        page_count: usize,
     ) -> Result<()> {
+        struct GetReadyCommitRange<'a>(CommitRange<'a>);
+        impl<'a> GetCommitRange<'a> for GetReadyCommitRange<'a> {
+            fn get_range<'b, O>(
+                &self,
+                _addr_space: &'a AddrSpace<O>,
+                _owner: &'b QCellOwner,
+            ) -> Result<CommitRange<'b>>
+            where
+                'a: 'b,
+            {
+                Ok(self.0)
+            }
+        }
+
+        let mapping = Arc::clone(&mapping.mapping);
+        let commit_range = CommitRange {
+            mapping: &mapping,
+            offset,
+            page_count,
+        };
+        self.do_commit(access_type, GetReadyCommitRange(commit_range))
+    }
+
+    fn do_commit<'a>(&'a self, access_type: AccessType, g: impl GetCommitRange<'a>) -> Result<()> {
         // TODO: be more careful about this lock when `provide_page` can sleep.
         self.with_owner(|owner| {
-            let range = get_range(self, owner)?;
+            let range = g.get_range(self, owner)?;
             let mapping = range.mapping;
+            let perms = mapping
+                .inner
+                .ro(owner)
+                .as_ref()
+                .ok_or(Error::INVALID_STATE)?
+                .perms;
 
-            if !access_allowed(access_type, mapping.perms) {
+            if !access_allowed(access_type, perms) {
                 return Err(Error::NO_PERMS);
             }
 
@@ -285,7 +334,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                         &mut PmmPageTableAlloc,
                         &mut MappingPointer::new(mapping.start + range.offset, 1),
                         pfn,
-                        mapping.perms,
+                        perms,
                     )?;
                 };
             }
@@ -299,10 +348,21 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     }
 }
 
+#[derive(Clone, Copy)]
 struct CommitRange<'a> {
     mapping: &'a MappingData,
     offset: usize,
     page_count: usize,
+}
+
+trait GetCommitRange<'a> {
+    fn get_range<'b, O>(
+        &self,
+        addr_space: &'a AddrSpace<O>,
+        owner: &'b QCellOwner,
+    ) -> Result<CommitRange<'b>>
+    where
+        'a: 'b;
 }
 
 fn access_allowed(access_type: AccessType, perms: PageTablePerms) -> bool {
@@ -348,6 +408,47 @@ impl SliceHandle {
     /// Returns the number of pages covered by this slice.
     pub fn page_count(&self) -> usize {
         self.slice.page_count
+    }
+}
+
+/// A handle to a mapping of a VM object into an address space.
+///
+/// # States
+///
+/// Like slices, every mapping may be either *attached* or *detached*.
+///
+/// Every mapping is created attached, but unmapping a mapping from its parent detaches it. Any
+/// attempts to perform mapping-related operations on a detached mapping will fail with
+/// [`INVALID_STATE`](crate::err::Error::INVALID_STATE).
+#[derive(Clone)]
+pub struct MappingHandle {
+    mapping: Arc<MappingData>,
+}
+
+impl MappingHandle {
+    /// Returns the first page number covered by this mapping.
+    pub fn start(&self) -> VirtPageNum {
+        self.mapping.start
+    }
+
+    /// Returns the page number just after the last page covered by this mapping.
+    pub fn end(&self) -> VirtPageNum {
+        self.start() + self.page_count()
+    }
+
+    /// Returns the number of pages covered by this mapping.
+    pub fn page_count(&self) -> usize {
+        self.mapping.page_count
+    }
+
+    /// Returns the offset in the VM object at which this mapping starts.
+    pub fn object_offset(&self) -> usize {
+        self.mapping.object_offset
+    }
+
+    /// Returns a handle to the underlying VM object.
+    pub fn object(&self) -> &Arc<dyn VmObject> {
+        &self.mapping.object
     }
 }
 
@@ -584,7 +685,17 @@ struct MappingData {
     page_count: usize,
     object_offset: usize,
     object: Arc<dyn VmObject>,
+    inner: QCell<Option<MappingInner>>,
+}
+
+struct MappingInner {
     perms: PageTablePerms,
+}
+
+impl MappingInner {
+    fn new(perms: PageTablePerms) -> Self {
+        Self { perms }
+    }
 }
 
 struct AddrSpaceChildNode {
