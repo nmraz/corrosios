@@ -1,5 +1,6 @@
 use core::alloc::AllocError;
 
+use alloc::collections::TryReserveError;
 use struct_enum::struct_enum;
 
 struct_enum! {
@@ -16,6 +17,12 @@ struct_enum! {
 
 impl From<AllocError> for Error {
     fn from(_: AllocError) -> Self {
+        Self::OUT_OF_MEMORY
+    }
+}
+
+impl From<TryReserveError> for Error {
+    fn from(_: TryReserveError) -> Self {
         Self::OUT_OF_MEMORY
     }
 }
