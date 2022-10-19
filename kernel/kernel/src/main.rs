@@ -10,6 +10,7 @@
 extern crate alloc;
 
 use arch::cpu;
+use log::{debug, info};
 use mm::types::PhysAddr;
 
 use crate::sync::irq::IrqDisabled;
@@ -21,6 +22,7 @@ mod arch;
 mod err;
 mod global_alloc;
 mod kimage;
+mod logging;
 mod mm;
 mod panic;
 mod sync;
@@ -35,12 +37,15 @@ extern "C" fn kernel_main(
     let irq_disabled = unsafe { IrqDisabled::new() };
 
     console::init();
+    logging::init();
+
+    info!("corrosios starting");
 
     unsafe {
         kimage::init(kernel_paddr);
     }
 
-    println!(
+    debug!(
         "kernel loaded at {}-{}, mapped at {}-{}",
         kimage::phys_base().addr(),
         kimage::phys_end().addr(),
@@ -48,13 +53,13 @@ extern "C" fn kernel_main(
         kimage::virt_end().addr()
     );
 
-    println!("bootinfo at {}, size {:#x}", bootinfo_paddr, bootinfo_size);
+    debug!("bootinfo at {}, size {:#x}", bootinfo_paddr, bootinfo_size);
 
-    println!("initializing memory manager");
+    info!("initializing memory manager");
     unsafe {
         mm::init(bootinfo_paddr, bootinfo_size, &irq_disabled);
     }
-    println!("memory manager initialized");
+    info!("memory manager initialized");
 
     unsafe {
         arch::cpu::init_bsp(irq_disabled);
@@ -62,12 +67,12 @@ extern "C" fn kernel_main(
 
     mm::pmm::dump_usage();
 
-    println!("triggering IRQ 55");
+    debug!("triggering IRQ 55");
     unsafe {
         core::arch::asm!("int 55");
     }
 
-    println!("causing irrecoverable page fault");
+    debug!("causing irrecoverable page fault");
     unsafe {
         *(0x1234 as *mut u64) = 0;
     }

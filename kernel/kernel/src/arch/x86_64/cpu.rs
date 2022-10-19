@@ -1,6 +1,8 @@
 use core::arch::asm;
 use core::mem;
 
+use log::debug;
+
 use crate::arch::x86_64::x64_cpu::{write_cr4, write_ia32_efer, Cr4, Ia32Efer};
 use crate::sync::irq::IrqDisabled;
 
@@ -49,7 +51,7 @@ pub unsafe fn init_bsp(irq_disabled: IrqDisabled) {
 pub unsafe fn init_current(irq_disabled: IrqDisabled) {
     unsafe {
         let cur_percpu = percpu::init_current(&irq_disabled);
-        println!("initialized percpu at {:p}", cur_percpu);
+        debug!("initialized percpu at {:p}", cur_percpu);
         load_gdt(&cur_percpu.gdt);
         load_idt();
 

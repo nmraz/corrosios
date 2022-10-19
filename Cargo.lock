@@ -371,6 +371,7 @@ dependencies = [
  "bootinfo",
  "intrusive-collections",
  "itertools",
+ "log",
  "num-utils",
  "paste",
  "qcell",

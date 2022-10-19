@@ -1,4 +1,5 @@
 use bootinfo::item::{MemoryKind, MemoryRange};
+use log::debug;
 
 use crate::arch::mm::{PHYS_MAP_BASE, PHYS_MAP_MAX_PAGES};
 use crate::sync::irq::IrqDisabled;
@@ -28,7 +29,7 @@ pub unsafe fn init(
         .filter(|range| range.kind == MemoryKind::USABLE);
 
     for range in usable_map {
-        println!(
+        debug!(
             "physmap: mapping frames {:#x}-{:#x}",
             range.start_page,
             range.start_page + range.page_count

@@ -5,6 +5,7 @@ use arrayvec::ArrayVec;
 use bootinfo::item::{MemoryKind, MemoryRange};
 use bootinfo::view::View;
 use bootinfo::ItemKind;
+use log::{debug, info};
 use num_utils::div_ceil;
 
 use crate::arch::mm::BOOTHEAP_EARLYMAP_MAX_PAGES;
@@ -48,7 +49,7 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled:
     let bootheap_range = largest_usable_range(mem_map, &reserved_ranges);
     let bootheap_pages = bootheap_range.end - bootheap_range.start;
 
-    println!(
+    debug!(
         "selected bootheap range: {}-{} ({} pages, {})",
         bootheap_range.start,
         bootheap_range.end,
@@ -59,7 +60,7 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled:
     let mut bootheap = BootHeap::new(bootheap_range.start.addr()..bootheap_range.end.addr());
     let bootheap_earlymap_pages = cmp::min(bootheap_pages, BOOTHEAP_EARLYMAP_MAX_PAGES);
 
-    println!(
+    debug!(
         "mapping {} bootheap pages for physmap initialization",
         bootheap_earlymap_pages
     );
@@ -82,14 +83,14 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled:
 fn print_mem_info(mem_map: &[MemoryRange]) {
     let mut usable_pages = 0;
 
-    println!("physical memory map:");
+    debug!("physical memory map:");
     for range in mem_map {
         display_range(range);
         if range.kind == MemoryKind::USABLE {
             usable_pages += range.page_count;
         }
     }
-    println!(
+    info!(
         "{} pages ({}) usable",
         usable_pages,
         display_byte_size(usable_pages * PAGE_SIZE)
@@ -144,7 +145,7 @@ fn display_range(range: &MemoryRange) {
         _ => "other",
     };
 
-    println!(
+    debug!(
         "{:#012x}-{:#012x}: {}",
         range.start_page * PAGE_SIZE,
         (range.start_page + range.page_count) * PAGE_SIZE,

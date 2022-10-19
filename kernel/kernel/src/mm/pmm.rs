@@ -7,6 +7,7 @@ use bitmap::BorrowedBitmapMut;
 use bootinfo::item::{MemoryKind, MemoryRange};
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink, UnsafeRef};
 use itertools::Itertools;
+use log::debug;
 use num_utils::{div_ceil, log2};
 
 use crate::arch::mmu::PAGE_SIZE;
@@ -48,11 +49,11 @@ pub unsafe fn init(
         assert!(manager_ref.is_none(), "pmm already initialized");
 
         let max_pfn = highest_usable_frame(mem_map);
-        println!("pmm: reserving bitmaps up to frame {}", max_pfn);
+        debug!("pmm: reserving bitmaps up to frame {}", max_pfn);
         let mut manager = PhysManager::new(max_pfn, &mut bootheap);
 
         let bootheap_used_range = bootheap.used_range();
-        println!(
+        debug!(
             "pmm: final bootheap usage: {}-{} ({})",
             bootheap_used_range.start,
             bootheap_used_range.end,
@@ -71,7 +72,7 @@ pub unsafe fn init(
         };
 
         utils::iter_usable_ranges(mem_map, &reserved_ranges, |start, end| {
-            println!("pmm: adding free range {}-{}", start, end);
+            debug!("pmm: adding free range {}-{}", start, end);
             manager.add_free_range(start, end);
         });
 
@@ -201,7 +202,7 @@ impl PhysManager {
         let free_pages = self.free_pages();
         let used_pages = self.total_pages - free_pages;
 
-        println!(
+        debug!(
             "{} pages ({}) total, {} pages ({}) in use, {} pages ({}) free",
             self.total_pages,
             display_byte_size(self.total_pages * PAGE_SIZE),
@@ -210,12 +211,12 @@ impl PhysManager {
             free_pages,
             display_byte_size(free_pages * PAGE_SIZE)
         );
-        println!("free blocks by order:");
-        println!(
+        debug!("free blocks by order:");
+        debug!(
             "order: {}",
             (0..ORDER_COUNT).format_with(" ", |order, f| f(&format_args!("{:4}", order)))
         );
-        println!(
+        debug!(
             "count: {}",
             (0..ORDER_COUNT)
                 .map(|order| self.levels[order].free_blocks)

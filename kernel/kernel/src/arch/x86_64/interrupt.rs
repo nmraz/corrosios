@@ -1,5 +1,7 @@
 use core::fmt;
 
+use log::debug;
+
 use crate::arch::x86_64::x64_cpu::read_cr2;
 
 use super::interrupt_vectors::{
@@ -149,7 +151,7 @@ fn exception_vector_to_str(vector: u64) -> &'static str {
 unsafe fn handle_nmi(_frame: &mut InterruptFrame) {}
 
 unsafe fn handle_irq(frame: &mut InterruptFrame) {
-    println!("got IRQ {}", frame.vector);
+    debug!("got IRQ {}", frame.vector);
 }
 
 #[no_mangle]
