@@ -16,6 +16,8 @@ use crate::mm::types::{PageTablePerms, PhysFrameNum, VirtPageNum};
 use crate::sync::irq::IrqDisabled;
 use crate::sync::SpinLock;
 
+use super::object::{AccessType, VmObject};
+
 const MAX_NAME_LEN: usize = 32;
 
 /// A request to flush pages from the TLB.
@@ -24,31 +26,6 @@ pub enum TlbFlush<'a> {
     Specific(&'a [VirtPageNum]),
     /// FLush the entire TLB.
     All,
-}
-
-/// The types of memory accesses that can cause a page fault.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccessType {
-    Read,
-    Write,
-    Execute,
-}
-
-/// A virtual memory object that can be mapped into an address space.
-///
-/// # Safety
-///
-/// The implementation of [`provide_page`](VmObject::provide_page) must return a frame that can be
-/// safely used by clients mapping the object.
-pub unsafe trait VmObject {
-    /// Retrieves the size of this VM object, in pages.
-    fn page_count(&self) -> usize;
-
-    /// Requests the page at offset `offset` within the object, assuming it will be accessed in
-    /// accordance with `access_type`.
-    ///
-    /// For now, this function should not block as it will be called with a spinlock held.
-    fn provide_page(&self, offset: usize, access_type: AccessType) -> Result<PhysFrameNum>;
 }
 
 /// Encapsulates the necessary low-level page table interactions required for higher-level address
