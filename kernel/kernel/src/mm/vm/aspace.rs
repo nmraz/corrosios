@@ -294,9 +294,8 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             }
         }
 
-        let mapping = Arc::clone(&mapping.mapping);
         let commit_range = CommitRange {
-            mapping: &mapping,
+            mapping: &mapping.mapping,
             offset,
             page_count,
         };
