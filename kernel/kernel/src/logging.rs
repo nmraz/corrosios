@@ -15,10 +15,10 @@ impl Log for Logger {
     }
 
     fn log(&self, record: &Record<'_>) {
-        if let Some(file) = record.file() {
-            println!("{}:{}: {}", record.level(), file, record.args());
+        if let Some(file) = record.module_path() {
+            println!("[{} {}] {}", record.level(), file, record.args());
         } else {
-            println!("{}: {}", record.level(), record.args());
+            println!("[{}] {}", record.level(), record.args());
         }
     }
 

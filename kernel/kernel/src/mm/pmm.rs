@@ -49,12 +49,12 @@ pub unsafe fn init(
         assert!(manager_ref.is_none(), "pmm already initialized");
 
         let max_pfn = highest_usable_frame(mem_map);
-        debug!("pmm: reserving bitmaps up to frame {}", max_pfn);
+        debug!("reserving bitmaps up to frame {}", max_pfn);
         let mut manager = PhysManager::new(max_pfn, &mut bootheap);
 
         let bootheap_used_range = bootheap.used_range();
         debug!(
-            "pmm: final bootheap usage: {}-{} ({})",
+            "final bootheap usage: {}-{} ({})",
             bootheap_used_range.start,
             bootheap_used_range.end,
             display_byte_size(bootheap_used_range.end - bootheap_used_range.start)
@@ -72,7 +72,7 @@ pub unsafe fn init(
         };
 
         utils::iter_usable_ranges(mem_map, &reserved_ranges, |start, end| {
-            debug!("pmm: adding free range {}-{}", start, end);
+            debug!("adding free range {}-{}", start, end);
             manager.add_free_range(start, end);
         });
 
