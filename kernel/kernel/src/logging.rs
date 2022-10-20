@@ -15,8 +15,8 @@ impl Log for Logger {
     }
 
     fn log(&self, record: &Record<'_>) {
-        if let Some(file) = record.module_path() {
-            println!("[{} {}] {}", record.level(), file, record.args());
+        if let Some(module) = record.module_path() {
+            println!("[{} {}] {}", record.level(), module, record.args());
         } else {
             println!("[{}] {}", record.level(), record.args());
         }
