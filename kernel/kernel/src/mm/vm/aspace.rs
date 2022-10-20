@@ -40,15 +40,6 @@ pub unsafe trait AddrSpaceOps {
     /// address space lock.
     fn root_pt(&self) -> PhysFrameNum;
 
-    /// Called when the address space becomes active on a specific CPU.
-    ///
-    /// **Note:** this function should not switch the hardware page table, that will be handled by
-    /// the [`AddrSpace`] itself.
-    fn enter(&self, irq_disabled: &IrqDisabled);
-
-    /// Called when the address space is switched away from on a specific CPU.
-    fn exit(&self, irq_disabled: &IrqDisabled);
-
     /// Requests a TLB flush.
     ///
     /// This function should block until the request completes.
@@ -111,6 +102,11 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             root_slice,
             ops,
         })
+    }
+
+    /// Returns the underlying page table operations.
+    pub fn ops(&self) -> &O {
+        &self.ops
     }
 
     /// Retrieves a handle to the root slice of this address space.
