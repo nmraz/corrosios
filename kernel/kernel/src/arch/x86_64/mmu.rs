@@ -3,7 +3,8 @@ use core::sync::atomic::AtomicU64;
 
 use bitflags::bitflags;
 
-use crate::mm::types::{PageTableFlags, PageTablePerms, PhysFrameNum};
+use crate::kimage;
+use crate::mm::types::{PageTableFlags, PageTablePerms, PhysFrameNum, VirtAddr};
 
 use super::x64_cpu::{read_cr3, write_cr3};
 
@@ -36,8 +37,8 @@ static KERNEL_PD: PageTableSpace = PageTableSpace::NEW;
 #[no_mangle]
 static KERNEL_PTS: [PageTableSpace; KERNEL_PT_COUNT] = [PageTableSpace::NEW; KERNEL_PT_COUNT];
 
-pub fn current_kernel_pt() -> PhysFrameNum {
-    PhysFrameNum::new(read_cr3() as usize >> 12)
+pub fn kernel_pt_root() -> PhysFrameNum {
+    kimage::pfn_from_kernel_vpn(VirtAddr::from_ptr(&KERNEL_PML4).containing_page())
 }
 
 pub fn flush_tlb() {

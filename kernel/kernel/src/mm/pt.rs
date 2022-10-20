@@ -60,14 +60,6 @@ pub struct PageTable<T> {
 impl<T: TranslatePhys> PageTable<T> {
     /// # Safety
     ///
-    /// The caller must guarantee that `translator` provides correct virtual page numbers for any
-    /// queried physical frames (from within the active page table hierarchy).
-    pub unsafe fn current_kernel(translator: T) -> Self {
-        unsafe { Self::new(current_kernel_pt(), translator) }
-    }
-
-    /// # Safety
-    ///
     /// The caller must guarantee that the provided table is correctly structured and that
     /// `translator` provides correct virtual page numbers for any queried physical frames.
     pub unsafe fn new(root_pt: PhysFrameNum, translator: T) -> Self {

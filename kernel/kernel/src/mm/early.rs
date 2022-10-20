@@ -6,7 +6,7 @@ use arrayvec::ArrayVec;
 use spin_once::Once;
 
 use crate::arch::mm::EARLY_MAP_PT_PAGES;
-use crate::arch::mmu::{flush_tlb, PageTableSpace};
+use crate::arch::mmu::{flush_tlb, kernel_pt_root, PageTableSpace};
 use crate::err::{Error, Result};
 use crate::kimage;
 
@@ -97,7 +97,7 @@ pub fn take_early_mapper() -> EarlyMapper {
         end: start + EARLY_MAP_PTS.len(),
     };
 
-    let pt = unsafe { PageTable::current_kernel(KernelPfnTranslator) };
+    let pt = unsafe { PageTable::new(kernel_pt_root(), KernelPfnTranslator) };
 
     EarlyMapper {
         slots: ArrayVec::new(),
