@@ -1,8 +1,6 @@
 use core::{cmp, result};
 
-use crate::arch::mmu::{
-    self, current_kernel_pt, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT,
-};
+use crate::arch::mmu::{self, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT};
 use crate::err::{Error, Result};
 
 use super::types::{PageTableFlags, PageTablePerms, PhysFrameNum, VirtPageNum};

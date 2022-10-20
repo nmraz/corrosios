@@ -19,7 +19,7 @@ pub enum AccessType {
 ///
 /// The implementation of [`provide_page`](VmObject::provide_page) must return a frame that can be
 /// safely used by clients mapping the object.
-pub unsafe trait VmObject {
+pub unsafe trait VmObject: Send + Sync {
     /// Retrieves the size of this VM object, in pages.
     fn page_count(&self) -> usize;
 

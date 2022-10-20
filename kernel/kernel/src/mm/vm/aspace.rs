@@ -5,7 +5,7 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 use arrayvec::ArrayString;
 use intrusive_collections::rbtree::CursorMut;
-use intrusive_collections::{intrusive_adapter, Bound, KeyAdapter, RBTree, RBTreeLink};
+use intrusive_collections::{intrusive_adapter, Bound, KeyAdapter, RBTree, RBTreeAtomicLink};
 use qcell::{QCell, QCellOwner};
 
 use crate::err::{Error, Result};
@@ -13,7 +13,6 @@ use crate::mm::physmap::PhysmapPfnTranslator;
 use crate::mm::pmm::PmmPageTableAlloc;
 use crate::mm::pt::{MappingPointer, PageTable};
 use crate::mm::types::{PageTablePerms, PhysFrameNum, VirtPageNum};
-use crate::sync::irq::IrqDisabled;
 use crate::sync::SpinLock;
 
 use super::object::{AccessType, VmObject};
@@ -21,6 +20,7 @@ use super::object::{AccessType, VmObject};
 const MAX_NAME_LEN: usize = 32;
 
 /// A request to flush pages from the TLB.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TlbFlush<'a> {
     /// Flush only the specified pages from the TLB.
     Specific(&'a [VirtPageNum]),
@@ -83,6 +83,11 @@ struct AddrSpaceInner {
 
 impl<O: AddrSpaceOps> AddrSpace<O> {
     /// Creates a new address space spanning `range`, with page table operations `ops`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `ops` can be used to manipulate any mappings in the range
+    /// `range`.
     pub unsafe fn new(range: Range<VirtPageNum>, ops: O) -> Result<Self> {
         assert!(range.end >= range.start);
 
@@ -619,7 +624,7 @@ fn finish_insert_after<R>(
     let new_child = Box::write(
         new_child,
         AddrSpaceChildNode {
-            link: RBTreeLink::new(),
+            link: RBTreeAtomicLink::new(),
             data,
         },
     );
@@ -671,7 +676,7 @@ impl MappingInner {
 }
 
 struct AddrSpaceChildNode {
-    link: RBTreeLink,
+    link: RBTreeAtomicLink,
     data: AddrSpaceChild,
 }
 
@@ -695,7 +700,7 @@ impl AddrSpaceChildNode {
     }
 }
 
-intrusive_adapter!(AddrSpaceChildAdapter = Box<AddrSpaceChildNode>: AddrSpaceChildNode { link: RBTreeLink });
+intrusive_adapter!(AddrSpaceChildAdapter = Box<AddrSpaceChildNode>: AddrSpaceChildNode { link: RBTreeAtomicLink });
 impl<'a> KeyAdapter<'a> for AddrSpaceChildAdapter {
     type Key = VirtPageNum;
 

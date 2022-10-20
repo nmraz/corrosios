@@ -1,10 +1,11 @@
+use core::arch::asm;
 use core::fmt;
 use core::sync::atomic::AtomicU64;
 
 use bitflags::bitflags;
 
 use crate::kimage;
-use crate::mm::types::{PageTableFlags, PageTablePerms, PhysFrameNum, VirtAddr};
+use crate::mm::types::{PageTableFlags, PageTablePerms, PhysFrameNum, VirtAddr, VirtPageNum};
 
 use super::x64_cpu::{read_cr3, write_cr3};
 
@@ -41,7 +42,13 @@ pub fn kernel_pt_root() -> PhysFrameNum {
     kimage::pfn_from_kernel_vpn(VirtAddr::from_ptr(&KERNEL_PML4).containing_page())
 }
 
-pub fn flush_tlb() {
+pub fn flush_kernel_tlb_page(vpn: VirtPageNum) {
+    unsafe {
+        asm!("invlpg [{}]", in(reg) vpn.addr().as_usize());
+    }
+}
+
+pub fn flush_kernel_tlb() {
     unsafe {
         write_cr3(read_cr3());
     }

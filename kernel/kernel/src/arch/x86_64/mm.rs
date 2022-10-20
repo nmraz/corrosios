@@ -3,6 +3,13 @@ use core::ops::Range;
 use crate::mm::types::PhysFrameNum;
 use crate::mm::types::VirtPageNum;
 
+pub const KERNEL_ASPACE_BASE: VirtPageNum = VirtPageNum::new(0xFFFF800000000);
+pub const KERNEL_ASPACE_END: VirtPageNum = VirtPageNum::new(0x10000000000000);
+
+// Always leave the low 2MiB unmapped to catch errors.
+pub const LOW_ASPACE_BASE: VirtPageNum = VirtPageNum::new(0x200);
+pub const LOW_ASPACE_END: VirtPageNum = VirtPageNum::new(0x800000000);
+
 pub const PHYS_MAP_BASE: VirtPageNum = VirtPageNum::new(0xFFFF800000000);
 // 64TiB
 pub const PHYS_MAP_MAX_PAGES: usize = 0x400000000;
