@@ -7,27 +7,6 @@ use crate::mm::types::PhysFrameNum;
 
 use super::aspace::{AddrSpace, AddrSpaceOps, TlbFlush};
 
-pub struct KernelAddrSpaceOps;
-
-unsafe impl AddrSpaceOps for KernelAddrSpaceOps {
-    fn root_pt(&self) -> PhysFrameNum {
-        kernel_pt_root()
-    }
-
-    fn flush(&self, request: &TlbFlush<'_>) {
-        match *request {
-            TlbFlush::Specific(pages) => {
-                for &vpn in pages {
-                    flush_kernel_tlb_page(vpn);
-                }
-            }
-            TlbFlush::All => flush_kernel_tlb(),
-        }
-    }
-}
-
-pub type KernelAddrSpace = AddrSpace<KernelAddrSpaceOps>;
-
 pub fn init() {
     let aspace = unsafe {
         AddrSpace::new(KERNEL_ASPACE_BASE..KERNEL_ASPACE_END, KernelAddrSpaceOps)
@@ -57,10 +36,29 @@ pub fn init() {
     KERNEL_ASPACE.init(aspace);
 }
 
-pub fn get() -> &'static KernelAddrSpace {
+pub fn get() -> &'static AddrSpace<impl AddrSpaceOps> {
     KERNEL_ASPACE
         .get()
         .expect("kernel address space not initialized")
 }
 
-static KERNEL_ASPACE: Once<KernelAddrSpace> = Once::new();
+struct KernelAddrSpaceOps;
+
+unsafe impl AddrSpaceOps for KernelAddrSpaceOps {
+    fn root_pt(&self) -> PhysFrameNum {
+        kernel_pt_root()
+    }
+
+    fn flush(&self, request: &TlbFlush<'_>) {
+        match *request {
+            TlbFlush::Specific(pages) => {
+                for &vpn in pages {
+                    flush_kernel_tlb_page(vpn);
+                }
+            }
+            TlbFlush::All => flush_kernel_tlb(),
+        }
+    }
+}
+
+static KERNEL_ASPACE: Once<AddrSpace<KernelAddrSpaceOps>> = Once::new();
