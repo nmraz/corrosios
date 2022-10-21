@@ -5,13 +5,7 @@ use crate::mm::pmm;
 use crate::mm::types::PhysFrameNum;
 use crate::sync::SpinLock;
 
-/// The types of memory accesses that can cause a page fault.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccessType {
-    Read,
-    Write,
-    Execute,
-}
+use super::AccessType;
 
 /// A virtual memory object that can be mapped into an address space.
 ///

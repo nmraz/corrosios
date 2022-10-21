@@ -15,7 +15,8 @@ use crate::mm::pt::{MappingPointer, PageTable};
 use crate::mm::types::{PageTablePerms, PhysFrameNum, VirtPageNum};
 use crate::sync::SpinLock;
 
-use super::object::{AccessType, VmObject};
+use super::object::VmObject;
+use super::AccessType;
 
 const MAX_NAME_LEN: usize = 32;
 

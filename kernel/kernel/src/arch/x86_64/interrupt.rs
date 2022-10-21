@@ -3,6 +3,8 @@ use core::fmt;
 use log::debug;
 
 use crate::arch::x86_64::x64_cpu::read_cr2;
+use crate::mm::types::{AccessMode, AccessType};
+use crate::mm::vm;
 
 use super::interrupt_vectors::{
     VECTOR_ALIGNMENT_CHECK, VECTOR_BOUND, VECTOR_BREAKPOINT, VECTOR_DEBUG, VECTOR_DEVICE_NOT_AVAIL,
@@ -107,22 +109,35 @@ fn handle_page_fault(frame: &InterruptFrame) {
     let was_user = (frame.error_code >> 2) & 1 != 0;
 
     let access_type = if was_instr {
-        "jump to"
+        AccessType::Execute
     } else if was_write {
-        "write to"
+        AccessType::Write
     } else {
-        "read from"
+        AccessType::Read
     };
 
     let access_mode = match was_user {
-        true => "user",
-        false => "kernel",
+        true => AccessMode::User,
+        false => AccessMode::Kernel,
     };
 
-    panic!(
-        "fatal page fault: {}-mode {} {}\n{}",
-        access_mode, access_type, addr, frame
-    );
+    if let Err(err) = vm::page_fault(addr, access_type, access_mode) {
+        let access_str = match access_type {
+            AccessType::Read => "read from",
+            AccessType::Write => "write to",
+            AccessType::Execute => "execute of",
+        };
+
+        let mode_str = match access_mode {
+            AccessMode::User => "user",
+            AccessMode::Kernel => "kernel",
+        };
+
+        panic!(
+            "fatal page fault: {}-mode {} {}: {:?}\n{}",
+            mode_str, access_str, addr, err, frame
+        );
+    }
 }
 
 fn exception_vector_to_str(vector: u64) -> &'static str {

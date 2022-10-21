@@ -6,6 +6,7 @@ use num_utils::{align_down, align_up};
 use crate::arch::mmu::{PAGE_SHIFT, PAGE_SIZE, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
 
 bitflags! {
+    /// Low-level page table permissions.
     pub struct PageTablePerms: u8 {
         const READ = 1 << 0;
         const WRITE = 1 << 1;
@@ -15,10 +16,26 @@ bitflags! {
 }
 
 bitflags! {
+    /// Additional flags that can be specified on a page table entry.
     pub struct PageTableFlags: u8 {
         const PRESENT = 1 << 0;
         const LARGE = 1 << 1;
     }
+}
+
+/// The types of memory accesses that can cause a page fault.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessType {
+    Read,
+    Write,
+    Execute,
+}
+
+/// The processor mode in which a page fault can occur.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessMode {
+    User,
+    Kernel,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
