@@ -3,7 +3,7 @@ use spin_once::Once;
 use crate::arch::mm::{KERNEL_ASPACE_BASE, KERNEL_ASPACE_END, PHYS_MAP_BASE, PHYS_MAP_MAX_PAGES};
 use crate::arch::mmu::{flush_kernel_tlb, flush_kernel_tlb_page, kernel_pt_root};
 use crate::kimage;
-use crate::mm::types::PhysFrameNum;
+use crate::mm::types::{PageTablePerms, PhysFrameNum};
 
 use super::aspace::{AddrSpace, AddrSpaceOps, TlbFlush};
 
@@ -68,6 +68,10 @@ unsafe impl AddrSpaceOps for KernelAddrSpaceOps {
             }
             TlbFlush::All => flush_kernel_tlb(),
         }
+    }
+
+    fn base_perms(&self) -> PageTablePerms {
+        PageTablePerms::empty()
     }
 }
 

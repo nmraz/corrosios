@@ -6,20 +6,11 @@ use num_utils::{align_down, align_up};
 use crate::arch::mmu::{PAGE_SHIFT, PAGE_SIZE, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
 
 bitflags! {
-    /// Low-level page table permissions.
-    pub struct PageTablePerms: u8 {
+    /// Protection that can be applied to a VM object.
+    pub struct Protection: u8 {
         const READ = 1 << 0;
         const WRITE = 1 << 1;
         const EXECUTE = 1 << 2;
-        const USER = 1 << 3;
-    }
-}
-
-bitflags! {
-    /// Additional flags that can be specified on a page table entry.
-    pub struct PageTableFlags: u8 {
-        const PRESENT = 1 << 0;
-        const LARGE = 1 << 1;
     }
 }
 
@@ -36,6 +27,24 @@ pub enum AccessType {
 pub enum AccessMode {
     User,
     Kernel,
+}
+
+bitflags! {
+    /// Low-level page table permissions.
+    pub struct PageTablePerms: u8 {
+        const READ = 1 << 0;
+        const WRITE = 1 << 1;
+        const EXECUTE = 1 << 2;
+        const USER = 1 << 3;
+    }
+}
+
+bitflags! {
+    /// Additional flags that can be specified on a page table entry.
+    pub struct PageTableFlags: u8 {
+        const PRESENT = 1 << 0;
+        const LARGE = 1 << 1;
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

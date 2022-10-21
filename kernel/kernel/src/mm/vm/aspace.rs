@@ -12,7 +12,7 @@ use crate::err::{Error, Result};
 use crate::mm::physmap::PhysmapPfnTranslator;
 use crate::mm::pmm::PmmPageTableAlloc;
 use crate::mm::pt::{MappingPointer, PageTable};
-use crate::mm::types::{PageTablePerms, PhysFrameNum, VirtPageNum};
+use crate::mm::types::{PageTablePerms, PhysFrameNum, Protection, VirtPageNum};
 use crate::sync::SpinLock;
 
 use super::object::VmObject;
@@ -45,6 +45,9 @@ pub unsafe trait AddrSpaceOps {
     ///
     /// This function should block until the request completes.
     fn flush(&self, request: &TlbFlush<'_>);
+
+    /// Returns the base page table permissions for pages mapped into this address space.
+    fn base_perms(&self) -> PageTablePerms;
 }
 
 /// Represents an address space, with its associated page tables and mappings.
@@ -231,7 +234,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         page_count: usize,
         object_offset: usize,
         object: Arc<dyn VmObject>,
-        perms: PageTablePerms,
+        prot: Protection,
     ) -> Result<MappingHandle> {
         let mapping = self.with_owner(|owner| {
             let id = owner.id();
@@ -241,7 +244,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                     page_count,
                     object_offset,
                     object,
-                    inner: QCell::new(id, Some(MappingInner::new(perms))),
+                    inner: QCell::new(id, Some(MappingInner::new(prot))),
                 })?;
 
                 let child = AddrSpaceChild::Mapping(Arc::clone(&mapping));
@@ -286,14 +289,14 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         self.with_owner(|owner| {
             let range = g.get_range(self, owner)?;
             let mapping = range.mapping;
-            let perms = mapping
+            let prot = mapping
                 .inner
                 .ro(owner)
                 .as_ref()
                 .ok_or(Error::INVALID_STATE)?
-                .perms;
+                .prot;
 
-            if !access_allowed(access_type, perms) {
+            if !access_allowed(access_type, prot) {
                 return Err(Error::NO_PERMS);
             }
 
@@ -312,7 +315,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                         &mut PmmPageTableAlloc,
                         &mut MappingPointer::new(mapping.start + range.offset, 1),
                         pfn,
-                        perms,
+                        self.perms_for_prot(prot),
                     )?;
                 };
             }
@@ -323,6 +326,16 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
 
     fn with_owner<R>(&self, f: impl FnOnce(&mut QCellOwner) -> Result<R>) -> Result<R> {
         self.inner.with(|inner, _| f(&mut inner.cell_owner))
+    }
+
+    fn perms_for_prot(&self, prot: Protection) -> PageTablePerms {
+        let mut perms = self.ops.base_perms();
+
+        perms.set(PageTablePerms::READ, prot.contains(Protection::READ));
+        perms.set(PageTablePerms::WRITE, prot.contains(Protection::WRITE));
+        perms.set(PageTablePerms::EXECUTE, prot.contains(Protection::EXECUTE));
+
+        perms
     }
 }
 
@@ -343,11 +356,11 @@ trait GetCommitRange<'a> {
         'a: 'b;
 }
 
-fn access_allowed(access_type: AccessType, perms: PageTablePerms) -> bool {
+fn access_allowed(access_type: AccessType, prot: Protection) -> bool {
     match access_type {
-        AccessType::Read => perms.contains(PageTablePerms::READ),
-        AccessType::Write => perms.contains(PageTablePerms::WRITE),
-        AccessType::Execute => perms.contains(PageTablePerms::EXECUTE),
+        AccessType::Read => prot.contains(Protection::READ),
+        AccessType::Write => prot.contains(Protection::WRITE),
+        AccessType::Execute => prot.contains(Protection::EXECUTE),
     }
 }
 
@@ -667,12 +680,12 @@ struct MappingData {
 }
 
 struct MappingInner {
-    perms: PageTablePerms,
+    prot: Protection,
 }
 
 impl MappingInner {
-    fn new(perms: PageTablePerms) -> Self {
-        Self { perms }
+    fn new(prot: Protection) -> Self {
+        Self { prot }
     }
 }
 
