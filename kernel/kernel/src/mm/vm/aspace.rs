@@ -321,6 +321,21 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         })
     }
 
+    /// Commits `page_count` pages in `mapping`, starting at `offset`, for accesses of type
+    /// `access_type`.
+    ///
+    /// Subsequent accesses of type `access_type` to the committed range are guaranteed not to cause
+    /// page faults.
+    ///
+    /// # Errors
+    ///
+    /// * `INVALID_STATE` - This function was called on a [detached](MappingHandle#states) mapping.
+    /// * `NO_PERMS` - `mapping` does not have sufficient permissions for accesses of type
+    ///                `access_type`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `mapping` belongs to a different address space.
     pub fn commit(
         &self,
         mapping: &MappingHandle,
