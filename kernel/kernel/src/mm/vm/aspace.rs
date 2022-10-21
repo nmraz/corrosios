@@ -6,6 +6,7 @@ use alloc::sync::Arc;
 use arrayvec::ArrayString;
 use intrusive_collections::rbtree::CursorMut;
 use intrusive_collections::{intrusive_adapter, Bound, KeyAdapter, RBTree, RBTreeAtomicLink};
+use log::debug;
 use qcell::{QCell, QCellOwner};
 
 use crate::err::{Error, Result};
@@ -103,7 +104,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             name: ArrayString::from("root").unwrap(),
             start: range.start,
             page_count: range.end - range.start,
-            inner: inner.cell_owner.cell(Some(SliceInner::new())),
+            inner: inner.cell_owner.cell(Some(SliceInner::new(None))),
         })?;
 
         Ok(AddrSpace {
@@ -196,7 +197,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                     name,
                     start,
                     page_count,
-                    inner: QCell::new(id, Some(SliceInner::new())),
+                    inner: QCell::new(id, Some(SliceInner::new(Some(Arc::clone(&slice.slice))))),
                 })?;
 
                 let child = AddrSpaceChild::Subslice(Arc::clone(&slice));
@@ -205,6 +206,46 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         })?;
 
         Ok(SliceHandle { slice })
+    }
+
+    /// Unmaps `slice` from this address space, recursively unmapping all nested mappings and
+    /// subslices.
+    ///
+    /// When this function returns, `slice` will be detached, and any address space operations on
+    /// it will return `INVALID_STATE`.
+    ///
+    /// # Errors
+    ///
+    /// * `INVALID_ARGUMENT` - This function was called on the root slice.
+    /// * `INVALID_STATE` - `slice` is already detached.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `slice` belongs to a different address space.
+    pub fn unmap_slice(&self, slice: &SliceHandle) -> Result<()> {
+        self.with_owner(|owner| {
+            let parent = slice
+                .slice
+                .inner_mut(owner)?
+                .parent
+                .as_ref()
+                .cloned()
+                .ok_or(Error::INVALID_ARGUMENT)?;
+
+            parent.inner_mut(owner)?.remove_child(slice.start());
+
+            slice.slice.detach_children(owner, |mapping| {
+                // TODO: actually unmap things here
+                debug!(
+                    "unmap {}-{}",
+                    mapping.start,
+                    mapping.start + mapping.page_count
+                );
+                Ok(())
+            })?;
+
+            Ok(())
+        })
     }
 
     /// Maps the range `object_offset..object_offset + page_count` of `object` into `slice`.
@@ -244,7 +285,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                     page_count,
                     object_offset,
                     object,
-                    inner: QCell::new(id, Some(MappingInner::new(prot))),
+                    inner: QCell::new(id, Some(MappingInner::new(Arc::clone(&slice.slice), prot))),
                 })?;
 
                 let child = AddrSpaceChild::Mapping(Arc::clone(&mapping));
@@ -253,6 +294,31 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         })?;
 
         Ok(MappingHandle { mapping })
+    }
+
+    /// Unmaps `mapping` from this address space.
+    ///
+    /// When this function returns, `mapping` will be detached, and any address space operations on
+    /// it will return `INVALID_STATE`.
+    ///
+    /// # Errors
+    ///
+    /// * `INVALID_STATE` - `mapping` is already detached.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `mapping` belongs to a different address space.
+    pub fn unmap(&self, mapping: &MappingHandle) -> Result<()> {
+        self.with_owner(|owner| {
+            let parent = Arc::clone(&mapping.mapping.inner_mut(owner)?.parent);
+
+            parent.inner_mut(owner)?.remove_child(mapping.start());
+
+            // TODO: actually unmap here
+            debug!("unmap {}-{}", mapping.start(), mapping.end());
+
+            Ok(())
+        })
     }
 
     pub fn commit(
@@ -336,6 +402,15 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         perms.set(PageTablePerms::EXECUTE, prot.contains(Protection::EXECUTE));
 
         perms
+    }
+}
+
+impl<O> Drop for AddrSpace<O> {
+    fn drop(&mut self) {
+        let owner = &mut self.inner.get_mut().cell_owner;
+        self.root_slice
+            .detach_children(owner, |_mapping| Ok(()))
+            .expect("final detach failed");
     }
 }
 
@@ -451,6 +526,63 @@ struct SliceData {
 }
 
 impl SliceData {
+    /// Recursively detaches all subslices and of `self`, calling `unmap` on every mapping
+    /// encountered in the region.
+    ///
+    /// When this operation completes, `self` will be in the detached state.
+    ///
+    /// # Errors
+    ///
+    /// Only propagates errors returned by `unmap`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` is already detached.
+    fn detach_children(
+        self: &Arc<Self>,
+        owner: &mut QCellOwner,
+        mut unmap: impl FnMut(Arc<MappingData>) -> Result<()>,
+    ) -> Result<()> {
+        let mut cur = Arc::clone(self);
+
+        loop {
+            let first_child = cur
+                .inner_mut(owner)
+                .expect("current slice should still be attached")
+                .children
+                .front_mut()
+                .remove();
+
+            if let Some(child) = first_child {
+                match child.data {
+                    AddrSpaceChild::Subslice(subslice) => {
+                        cur = subslice;
+                    }
+                    AddrSpaceChild::Mapping(mapping) => {
+                        unmap(mapping)?;
+                    }
+                }
+            } else {
+                // Now that we've finished detaching children, mark the current slice as detached
+                // and move back up to the parent if necessary.
+                let inner = cur
+                    .inner
+                    .rw(owner)
+                    .take()
+                    .expect("current slice should still be attached");
+
+                if !Arc::ptr_eq(&cur, self) {
+                    // We're in a (nested) child, move back up to the parent.
+                    cur = inner.parent.expect("child slice should have a parent");
+                } else {
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Retrieves the mapping containing `vpn`, recursing into subslices as necessary.
     fn get_mapping<'a>(
         &'a self,
@@ -647,22 +779,37 @@ fn finish_insert_after<R>(
 }
 
 struct SliceInner {
+    // This apparent cycle is broken by calls to `detach_children`, which guarantee that this whole
+    // inner structure is destroyed when appropriate.
+    parent: Option<Arc<SliceData>>,
     children: RBTree<AddrSpaceChildAdapter>,
 }
 
 impl SliceInner {
-    fn new() -> Self {
+    fn new(parent: Option<Arc<SliceData>>) -> Self {
         Self {
+            parent,
             children: RBTree::default(),
         }
     }
 
+    /// Retrives the direct child of `self` containing `vpn`, if one exists.
     fn get_child(&self, vpn: VirtPageNum) -> Option<&AddrSpaceChild> {
         self.children
             .upper_bound(Bound::Included(&vpn))
             .get()
             .filter(|node| vpn < node.end())
             .map(|node| &node.data)
+    }
+
+    /// Removes the direct child of `self` based at `start`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` does not have a child starting at `start`.
+    fn remove_child(&mut self, start: VirtPageNum) {
+        let mut child = self.children.find_mut(&start);
+        child.remove().expect("no child for provided start address");
     }
 }
 
@@ -679,13 +826,22 @@ struct MappingData {
     inner: QCell<Option<MappingInner>>,
 }
 
+impl MappingData {
+    fn inner_mut<'a>(&'a self, owner: &'a mut QCellOwner) -> Result<&mut MappingInner> {
+        self.inner.rw(owner).as_mut().ok_or(Error::INVALID_STATE)
+    }
+}
+
 struct MappingInner {
+    // This apparent cycle is broken by calls to `detach_children`, which guarantee that this whole
+    // inner structure is destroyed when appropriate.
+    parent: Arc<SliceData>,
     prot: Protection,
 }
 
 impl MappingInner {
-    fn new(prot: Protection) -> Self {
-        Self { prot }
+    fn new(parent: Arc<SliceData>, prot: Protection) -> Self {
+        Self { parent, prot }
     }
 }
 
