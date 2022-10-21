@@ -7,6 +7,11 @@ use crate::mm::types::PhysFrameNum;
 
 use super::aspace::{AddrSpace, AddrSpaceOps, TlbFlush};
 
+/// Initializes the (higher-half) kernel address space.
+///
+/// # Panics
+///
+/// Panics if this function is called more than once.
 pub fn init() {
     let aspace = unsafe {
         AddrSpace::new(KERNEL_ASPACE_BASE..KERNEL_ASPACE_END, KernelAddrSpaceOps)
@@ -36,6 +41,11 @@ pub fn init() {
     KERNEL_ASPACE.init(aspace);
 }
 
+/// Retrieves the global kernel address space.
+///
+/// # Panics
+///
+/// Panics if [`init`] has not yet been called.
 pub fn get() -> &'static AddrSpace<impl AddrSpaceOps> {
     KERNEL_ASPACE
         .get()
