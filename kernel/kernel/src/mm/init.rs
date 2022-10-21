@@ -12,7 +12,7 @@ use crate::arch::mm::BOOTHEAP_EARLYMAP_MAX_PAGES;
 use crate::arch::mmu::PAGE_SIZE;
 use crate::mm::early::{BootHeap, EarlyMapPfnTranslator};
 use crate::mm::utils::display_byte_size;
-use crate::mm::{physmap, pmm};
+use crate::mm::{physmap, pmm, vm};
 use crate::sync::irq::IrqDisabled;
 use crate::{arch, kimage};
 
@@ -78,6 +78,8 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled:
         );
         pmm::init(mem_map, &reserved_ranges, bootheap, irq_disabled);
     }
+
+    vm::init();
 }
 
 fn print_mem_info(mem_map: &[MemoryRange]) {
