@@ -17,6 +17,10 @@ impl<T> SpinLock<T> {
         }
     }
 
+    pub fn get_mut(&mut self) -> &mut T {
+        self.data.get_mut()
+    }
+
     pub fn with<R>(&self, f: impl FnOnce(&mut T, &IrqDisabled) -> R) -> R {
         irq::disable_with(|irq_disabled| {
             self.with_noirq(irq_disabled, |data| f(data, irq_disabled))
