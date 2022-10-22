@@ -31,9 +31,10 @@ pub struct EagerVmObject {
 impl EagerVmObject {
     pub fn new(page_count: usize) -> Result<Self> {
         let mut frames = Vec::new();
-        frames.try_reserve(page_count)?;
+        frames.try_reserve_exact(page_count)?;
 
         for _ in 0..page_count {
+            // Note: the `push` calls will never allocate as we have reserved enough space above.
             frames.push(FrameBox::new()?);
         }
 
@@ -60,7 +61,12 @@ pub struct LazyVmObject {
 impl LazyVmObject {
     pub fn new(page_count: usize) -> Result<Self> {
         let mut frames = Vec::new();
-        frames.try_reserve(page_count)?;
+        frames.try_reserve_exact(page_count)?;
+
+        for _ in 0..page_count {
+            // Note: the `push` calls will never allocate as we have reserved enough space above.
+            frames.push(None);
+        }
 
         Ok(Self {
             page_count,
