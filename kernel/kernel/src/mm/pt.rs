@@ -1,3 +1,8 @@
+//! Low-level page table manipulation and traversal.
+//!
+//! This module should generally not be used directly; it is used by early initialization code and
+//! by the VM subsystem to implement address spaces.
+
 use core::{cmp, result};
 
 use crate::arch::mmu::{self, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT};
@@ -5,18 +10,30 @@ use crate::err::{Error, Result};
 
 use super::types::{PageTableFlags, PageTablePerms, PhysFrameNum, VirtPageNum};
 
+/// An object that can translate physical frame numbers to virtual page numbers that can be used to
+/// access them.
 pub trait TranslatePhys {
+    /// Translates `phys` to a virtual page number that can be used to access it.
     fn translate(&self, phys: PhysFrameNum) -> VirtPageNum;
 }
 
+/// An allocator responsible for allocating physical frames for use as page tables.
 pub trait PageTableAlloc {
+    /// Allocates a new page table, returning its PFN.
     fn allocate(&mut self) -> Result<PhysFrameNum>;
 }
 
+/// Trait used to notify implementors that mappings have been updated and the TLB should be flushed.
 pub trait GatherInvalidations {
+    ///
     fn add_tlb_flush(&mut self, vpn: VirtPageNum);
 }
 
+/// A virtual page range along with a progress pointer within it.
+///
+/// This is the structure used to track virtual page ranges in all map/unmap operations. It enables
+/// those operations to report partial progress back to the caller even if they encounter an error
+/// in the middle of the operation.
 pub struct MappingPointer {
     base: VirtPageNum,
     size: usize,
@@ -24,6 +41,8 @@ pub struct MappingPointer {
 }
 
 impl MappingPointer {
+    /// Creates a new mapping pointer spanning the page range `base..base + size`, with the pointer
+    /// set to the start of the range.
     pub fn new(base: VirtPageNum, size: usize) -> Self {
         Self {
             base,
@@ -32,30 +51,42 @@ impl MappingPointer {
         }
     }
 
+    /// Returns the current offset of this mapping pointer, measured in pages from the base.
     pub fn offset(&self) -> usize {
         self.offset
     }
 
+    /// Returns the current virtual page number pointed to by this mapping pointer.
     pub fn virt(&self) -> VirtPageNum {
         self.base + self.offset
     }
 
+    /// Returns the number of pages remaining in the range, past the current offset.
     pub fn remaining_pages(&self) -> usize {
         self.size - self.offset
     }
 
+    /// Advances the pointer forward by `pages`.
+    ///
+    /// The provided size should not cause the offset to exceed the total page count of the mapping
+    /// pointer.
     pub fn advance(&mut self, pages: usize) {
         self.offset += pages;
         debug_assert!(self.offset <= self.size);
     }
 }
 
+/// Structure for accessing and manipulating page tables.
 pub struct PageTable<T> {
     root: PhysFrameNum,
     inner: PageTableInner<T>,
 }
 
 impl<T: TranslatePhys> PageTable<T> {
+    /// Creates a new page table accessor for a page table rooted at `root_pt`, using `translator`
+    /// to translate physical frames to virtual page numbers when necessary during traversal and
+    /// manipulation.
+    ///
     /// # Safety
     ///
     /// The caller must guarantee that the provided table is correctly structured and that
@@ -67,6 +98,21 @@ impl<T: TranslatePhys> PageTable<T> {
         }
     }
 
+    /// Maps the virtual page range spanned by `pointer` to a contiguous physical range starting at
+    /// `phys_base`, with permissions `perms`.
+    ///
+    /// This function does not support overwriting existing mappings, and will fail if it encounters
+    /// a page that is already mapped.
+    ///
+    /// When this function returns, `pointer` will point past the last page mapped successfully. On
+    /// success, this will always be the last page, but if the function returns early due to an
+    /// error, the reported progress can be used to take appropriate action.
+    ///
+    /// # Errors
+    ///
+    /// * `OUT_OF_MEMORY` - A page table allocation failed.
+    /// * `RESOURCE_OVERLAP` - A page in the range was already mapped.
+    ///
     /// # Safety
     ///
     /// * The page table must not be accessed concurrently by other cores/interrupts during the
@@ -89,21 +135,30 @@ impl<T: TranslatePhys> PageTable<T> {
         )
     }
 
+    /// Unmaps any pages in the range covered by `pointer`.
+    ///
+    /// This function will skip any unmapped "holes" encountered in the range.
+    ///
+    /// This function currently cannot split large pages, and will return an error if the range
+    /// partially intersects one.
+    ///
+    /// When this function returns, `pointer` will point past the last page unmapped successfully.
+    /// On success, this will always be the last page, but if the function returns early due to an
+    /// error, the reported progress can be used to take appropriate action.
+    ///
     /// # Safety
     ///
     /// * The page table must not be accessed concurrently by other cores/interrupts during the
     ///   unmapping
-    /// * The provided allocator must return physical frames usable as page tables
     /// * Any cores on which the page table is active must not access the virtual addresses unmapped
     ///   by the call
     pub unsafe fn unmap(
         &mut self,
-        alloc: &mut impl PageTableAlloc,
         gather: &mut impl GatherInvalidations,
         pointer: &mut MappingPointer,
     ) -> Result<()> {
         self.inner
-            .unmap(alloc, gather, pointer, self.root, PT_LEVEL_COUNT - 1)
+            .unmap(gather, pointer, self.root, PT_LEVEL_COUNT - 1)
     }
 }
 
@@ -145,7 +200,6 @@ impl<T: TranslatePhys> PageTableInner<T> {
 
     fn unmap(
         &mut self,
-        alloc: &mut impl PageTableAlloc,
         gather: &mut impl GatherInvalidations,
         pointer: &mut MappingPointer,
         table: PhysFrameNum,
@@ -168,7 +222,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
                             self.unmap_terminal(gather, pointer, table, level);
                             return Ok(());
                         } else {
-                            todo!("Split large page")
+                            return Err(Error::RESOURCE_OVERLAP);
                         }
                     }
 
@@ -178,7 +232,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
                     }
                 };
 
-                self.unmap(alloc, gather, pointer, next, level - 1)?;
+                self.unmap(gather, pointer, next, level - 1)?;
             }
 
             Ok(())

@@ -143,7 +143,6 @@ impl Drop for EarlyMapper {
             unsafe {
                 self.pt
                     .unmap(
-                        &mut self.alloc,
                         &mut NoopGather,
                         &mut MappingPointer::new(
                             VirtPageNum::new(slot.base.as_usize()),

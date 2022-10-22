@@ -391,8 +391,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                 // Safety: we're holding the page table lock, and our translator and allocator perform
                 // correctly.
                 unsafe {
-                    let mut pt = PageTable::new(self.ops.root_pt(), PhysmapPfnTranslator);
-                    pt.map(
+                    self.pt().map(
                         &mut PmmPageTableAlloc,
                         &mut MappingPointer::new(mapping.start + range.offset, 1),
                         pfn,
@@ -405,7 +404,13 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         })
     }
 
-    fn with_owner<R>(&self, f: impl FnOnce(&mut QCellOwner) -> Result<R>) -> Result<R> {
+    fn pt(&self) -> PageTable<PhysmapPfnTranslator> {
+        // Safety: the physmap covers all normal memory, which is the only place we can allocate
+        // page tables.
+        unsafe { PageTable::new(self.ops.root_pt(), PhysmapPfnTranslator) }
+    }
+
+    fn with_owner<R>(&self, f: impl FnOnce(&mut QCellOwner) -> R) -> R {
         self.inner.with(|inner, _| f(&mut inner.cell_owner))
     }
 
