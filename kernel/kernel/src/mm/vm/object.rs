@@ -24,6 +24,11 @@ pub unsafe trait VmObject: Send + Sync {
     fn provide_page(&self, offset: usize, access_type: AccessType) -> Result<PhysFrameNum>;
 }
 
+/// A VM object that allocates all of its backing page frames upon construction.
+///
+/// Prefer using this to [`LazyVmObject`] if the object is going to be committed in its entirety
+/// immediately after being mapped (as is the case for kernel mappings), as it will use less memory
+/// for redundant metadata.
 pub struct EagerVmObject {
     frames: Vec<FrameBox>,
 }
@@ -52,6 +57,11 @@ unsafe impl VmObject for EagerVmObject {
     }
 }
 
+/// A VM object that lazily allocates its backing page frames as they are requested.
+///
+/// If the entire object is going to be committed immediately when it is mapped (as is the case for
+/// all kernel mappings), prefer [`EagerVmObject`], as it will behave identically but use less
+/// memory for bookkeeping.
 pub struct LazyVmObject {
     page_count: usize,
     // TODO: maybe not a spinlock?
@@ -97,6 +107,7 @@ unsafe impl VmObject for LazyVmObject {
     }
 }
 
+/// A VM object backed by a contiguous range of physical memory.
 pub struct PhysVmObject {
     base: PhysFrameNum,
     page_count: usize,
