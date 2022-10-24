@@ -136,7 +136,8 @@ impl<T: TranslatePhys> PageTable<T> {
         )
     }
 
-    /// Unmaps any pages in the range covered by `pointer`.
+    /// Unmaps any pages in the range covered by `pointer`, reporting any virtual pages that need
+    /// TLB invalidation to `gather`.
     ///
     /// This function will skip any unmapped "holes" encountered in the range.
     ///
