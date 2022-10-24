@@ -59,8 +59,8 @@ unsafe impl AddrSpaceOps for KernelAddrSpaceOps {
         kernel_pt_root()
     }
 
-    fn flush(&self, request: &TlbFlush<'_>) {
-        match *request {
+    fn flush(&self, request: TlbFlush<'_>) {
+        match request {
             TlbFlush::Specific(pages) => {
                 for &vpn in pages {
                     flush_kernel_tlb_page(vpn);

@@ -25,7 +25,8 @@ pub trait PageTableAlloc {
 
 /// Trait used to notify implementors that mappings have been updated and the TLB should be flushed.
 pub trait GatherInvalidations {
-    ///
+    /// Notifies the implementor of the trait that the mapping for `vpn` has been modified and
+    /// should be flushed from the TLB.
     fn add_tlb_flush(&mut self, vpn: VirtPageNum);
 }
 
@@ -145,6 +146,10 @@ impl<T: TranslatePhys> PageTable<T> {
     /// When this function returns, `pointer` will point past the last page unmapped successfully.
     /// On success, this will always be the last page, but if the function returns early due to an
     /// error, the reported progress can be used to take appropriate action.
+    ///
+    /// # Errors
+    ///
+    /// * `RESOURCE_OVERLAP` - The unmapping range partially intersected a large page.
     ///
     /// # Safety
     ///

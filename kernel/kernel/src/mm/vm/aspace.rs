@@ -3,16 +3,15 @@ use core::ops::{ControlFlow, Range};
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
-use arrayvec::ArrayString;
+use arrayvec::{ArrayString, ArrayVec};
 use intrusive_collections::rbtree::CursorMut;
 use intrusive_collections::{intrusive_adapter, Bound, KeyAdapter, RBTree, RBTreeAtomicLink};
-use log::debug;
 use qcell::{QCell, QCellOwner};
 
 use crate::err::{Error, Result};
 use crate::mm::physmap::PhysmapPfnTranslator;
 use crate::mm::pmm::PmmPageTableAlloc;
-use crate::mm::pt::{MappingPointer, PageTable};
+use crate::mm::pt::{GatherInvalidations, MappingPointer, PageTable};
 use crate::mm::types::{PageTablePerms, PhysFrameNum, Protection, VirtPageNum};
 use crate::sync::SpinLock;
 
@@ -45,7 +44,7 @@ pub unsafe trait AddrSpaceOps {
     /// Requests a TLB flush.
     ///
     /// This function should block until the request completes.
-    fn flush(&self, request: &TlbFlush<'_>);
+    fn flush(&self, request: TlbFlush<'_>);
 
     /// Returns the base page table permissions for pages mapped into this address space.
     fn base_perms(&self) -> PageTablePerms;
@@ -77,6 +76,7 @@ pub unsafe trait AddrSpaceOps {
 /// responsible for providing access to the root page table for this address space and maintaining
 /// consistency across processors.
 pub struct AddrSpace<O> {
+    // TODO: probably don't want a spinlock here
     inner: SpinLock<AddrSpaceInner>,
     root_slice: Arc<SliceData>,
     ops: O,
@@ -222,7 +222,11 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     /// # Panics
     ///
     /// Panics if `slice` belongs to a different address space.
-    pub fn unmap_slice(&self, slice: &SliceHandle) -> Result<()> {
+    ///
+    /// # Safety
+    ///
+    /// * The range unmapped must not be accessed after this function returns
+    pub unsafe fn unmap_slice(&self, slice: &SliceHandle) -> Result<()> {
         self.with_owner(|owner| {
             let parent = slice
                 .slice
@@ -234,17 +238,26 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
 
             parent.inner_mut(owner)?.remove_child(slice.start());
 
-            slice.slice.detach_children(owner, |mapping| {
-                // TODO: actually unmap things here
-                debug!(
-                    "unmap {}-{}",
-                    mapping.start,
-                    mapping.start + mapping.page_count
-                );
-                Ok(())
-            })?;
+            self.with_flush(|gather| {
+                slice.slice.detach_children(owner, |mapping| {
+                    // Safety: we're holding the lock, the caller guarantees they won't touch addresses
+                    // that have just been unmapped.
+                    unsafe {
+                        // This only ever fails if the range partially intersects a large page, but we never
+                        // create large pages spanning across slice boundaries.
+                        self.pt()
+                            .unmap(
+                                gather,
+                                &mut MappingPointer::new(mapping.start, mapping.page_count),
+                            )
+                            .expect("failed to unmap page range");
+                    }
 
-            Ok(())
+                    Ok(())
+                })?;
+
+                Ok(())
+            })
         })
     }
 
@@ -308,14 +321,30 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     /// # Panics
     ///
     /// Panics if `mapping` belongs to a different address space.
-    pub fn unmap(&self, mapping: &MappingHandle) -> Result<()> {
+    ///
+    /// # Safety
+    ///
+    /// * The range unmapped must not be accessed after this function returns
+    pub unsafe fn unmap(&self, mapping: &MappingHandle) -> Result<()> {
         self.with_owner(|owner| {
             let parent = Arc::clone(&mapping.mapping.inner_mut(owner)?.parent);
 
             parent.inner_mut(owner)?.remove_child(mapping.start());
 
-            // TODO: actually unmap here
-            debug!("unmap {}-{}", mapping.start(), mapping.end());
+            self.with_flush(|gather| {
+                // Safety: we're holding the lock, the caller guarantees they won't touch addresses
+                // that have just been unmapped.
+                unsafe {
+                    // This only ever fails if the range partially intersects a large page, but we never
+                    // create large pages spanning across mapping boundaries.
+                    self.pt()
+                        .unmap(
+                            gather,
+                            &mut MappingPointer::new(mapping.start(), mapping.page_count()),
+                        )
+                        .expect("failed to unmap page range");
+                }
+            });
 
             Ok(())
         })
@@ -404,14 +433,21 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         })
     }
 
-    fn pt(&self) -> PageTable<PhysmapPfnTranslator> {
-        // Safety: the physmap covers all normal memory, which is the only place we can allocate
-        // page tables.
-        unsafe { PageTable::new(self.ops.root_pt(), PhysmapPfnTranslator) }
+    fn with_flush<R>(&self, f: impl FnOnce(&mut PendingInvalidationGather) -> R) -> R {
+        let mut gather = PendingInvalidationGather::new();
+        let ret = f(&mut gather);
+        self.ops.flush(gather.as_tlb_flush());
+        ret
     }
 
     fn with_owner<R>(&self, f: impl FnOnce(&mut QCellOwner) -> R) -> R {
         self.inner.with(|inner, _| f(&mut inner.cell_owner))
+    }
+
+    fn pt(&self) -> PageTable<PhysmapPfnTranslator> {
+        // Safety: the physmap covers all normal memory, which is the only place we can allocate
+        // page tables.
+        unsafe { PageTable::new(self.ops.root_pt(), PhysmapPfnTranslator) }
     }
 
     fn perms_for_prot(&self, prot: Protection) -> PageTablePerms {
@@ -449,6 +485,42 @@ trait GetCommitRange<'a> {
     ) -> Result<CommitRange<'b>>
     where
         'a: 'b;
+}
+
+// TODO: this value was selected at random and needs verification/tuning.
+const MAX_PAGE_INVALIDATIONS: usize = 10;
+
+enum PendingInvalidationGather {
+    Specific(ArrayVec<VirtPageNum, MAX_PAGE_INVALIDATIONS>),
+    All,
+}
+
+impl PendingInvalidationGather {
+    fn new() -> Self {
+        Self::Specific(ArrayVec::new())
+    }
+
+    fn as_tlb_flush(&self) -> TlbFlush<'_> {
+        match self {
+            PendingInvalidationGather::Specific(pages) => TlbFlush::Specific(pages),
+            PendingInvalidationGather::All => TlbFlush::All,
+        }
+    }
+}
+
+impl GatherInvalidations for PendingInvalidationGather {
+    fn add_tlb_flush(&mut self, vpn: VirtPageNum) {
+        match self {
+            PendingInvalidationGather::Specific(pages) => {
+                if pages.try_push(vpn).is_err() {
+                    // We've exceeded the maximum number of single-page invalidations we're willing
+                    // to perform, fall back to a full flush
+                    *self = Self::All;
+                }
+            }
+            PendingInvalidationGather::All => {}
+        }
+    }
 }
 
 fn access_allowed(access_type: AccessType, prot: Protection) -> bool {
