@@ -39,14 +39,6 @@ bitflags! {
     }
 }
 
-bitflags! {
-    /// Additional flags that can be specified on a page table entry.
-    pub struct PageTableFlags: u8 {
-        const PRESENT = 1 << 0;
-        const LARGE = 1 << 1;
-    }
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct PhysAddr(usize);

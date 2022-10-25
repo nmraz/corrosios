@@ -1,11 +1,10 @@
 use core::arch::asm;
-use core::fmt;
 use core::sync::atomic::AtomicU64;
 
 use bitflags::bitflags;
 
 use crate::kimage;
-use crate::mm::types::{PageTableFlags, PageTablePerms, PhysFrameNum, VirtAddr, VirtPageNum};
+use crate::mm::types::{PageTablePerms, PhysFrameNum, VirtAddr, VirtPageNum};
 
 use super::x64_cpu::{read_cr3, write_cr3};
 
@@ -58,97 +57,55 @@ pub fn supports_page_size(level: usize) -> bool {
     matches!(level, 0 | 1)
 }
 
+pub fn make_empty_pte() -> PageTableEntry {
+    PageTableEntry(0)
+}
+
+pub fn make_pte(
+    level: usize,
+    terminal: bool,
+    frame: PhysFrameNum,
+    perms: PageTablePerms,
+) -> PageTableEntry {
+    let mut x86_flags = X86PageTableFlags::PRESENT;
+
+    x86_flags.set(
+        X86PageTableFlags::WRITABLE,
+        perms.contains(PageTablePerms::WRITE),
+    );
+    x86_flags.set(
+        X86PageTableFlags::USER_MODE,
+        perms.contains(PageTablePerms::USER),
+    );
+    x86_flags.set(
+        X86PageTableFlags::NO_EXEC,
+        !perms.contains(PageTablePerms::EXECUTE),
+    );
+
+    x86_flags.set(X86PageTableFlags::LARGE, level > 0 && terminal);
+
+    PageTableEntry(frame.addr().as_u64() | x86_flags.bits())
+}
+
+pub fn get_pte_frame(pte: PageTableEntry, _level: usize) -> PhysFrameNum {
+    PhysFrameNum::new(((pte.0 & PADDR_MASK) >> PAGE_SHIFT) as usize)
+}
+
+pub fn pte_is_present(pte: PageTableEntry, _level: usize) -> bool {
+    X86PageTableFlags::from_bits_truncate(pte.0).contains(X86PageTableFlags::PRESENT)
+}
+
+pub fn pte_is_terminal(pte: PageTableEntry, level: usize) -> bool {
+    if level == 0 {
+        true
+    } else {
+        X86PageTableFlags::from_bits_truncate(pte.0).contains(X86PageTableFlags::LARGE)
+    }
+}
+
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct PageTableEntry(u64);
-
-impl PageTableEntry {
-    pub const fn empty() -> Self {
-        Self(0)
-    }
-
-    pub fn new(page: PhysFrameNum, perms: PageTablePerms, flags: PageTableFlags) -> Self {
-        let mut x86_flags = X86PageTableFlags::empty();
-
-        x86_flags.set(
-            X86PageTableFlags::WRITABLE,
-            perms.contains(PageTablePerms::WRITE),
-        );
-        x86_flags.set(
-            X86PageTableFlags::USER_MODE,
-            perms.contains(PageTablePerms::USER),
-        );
-        x86_flags.set(
-            X86PageTableFlags::NO_EXEC,
-            !perms.contains(PageTablePerms::EXECUTE),
-        );
-
-        x86_flags.set(
-            X86PageTableFlags::PRESENT,
-            flags.contains(PageTableFlags::PRESENT),
-        );
-        x86_flags.set(
-            X86PageTableFlags::LARGE,
-            flags.contains(PageTableFlags::LARGE),
-        );
-
-        Self(page.addr().as_u64() | x86_flags.bits())
-    }
-
-    pub fn perms(self) -> PageTablePerms {
-        let flags = self.x86_flags();
-        let mut ret = PageTablePerms::READ;
-
-        ret.set(
-            PageTablePerms::WRITE,
-            flags.contains(X86PageTableFlags::WRITABLE),
-        );
-        ret.set(
-            PageTablePerms::USER,
-            flags.contains(X86PageTableFlags::USER_MODE),
-        );
-        ret.set(
-            PageTablePerms::EXECUTE,
-            !flags.contains(X86PageTableFlags::NO_EXEC),
-        );
-
-        ret
-    }
-
-    pub fn flags(self) -> PageTableFlags {
-        let flags = self.x86_flags();
-        let mut ret = PageTableFlags::empty();
-
-        ret.set(
-            PageTableFlags::PRESENT,
-            flags.contains(X86PageTableFlags::PRESENT),
-        );
-        ret.set(
-            PageTableFlags::LARGE,
-            flags.contains(X86PageTableFlags::LARGE),
-        );
-
-        ret
-    }
-
-    pub const fn page(self) -> PhysFrameNum {
-        PhysFrameNum::new(((self.0 & PADDR_MASK) >> PAGE_SHIFT) as usize)
-    }
-
-    const fn x86_flags(self) -> X86PageTableFlags {
-        X86PageTableFlags::from_bits_truncate(self.0)
-    }
-}
-
-impl fmt::Debug for PageTableEntry {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PageTableEntry")
-            .field("page", &self.page())
-            .field("perms", &self.perms())
-            .field("flags", &self.flags())
-            .finish()
-    }
-}
 
 #[repr(C, align(0x1000))]
 pub struct PageTableSpace {
@@ -161,7 +118,7 @@ impl PageTableSpace {
 
     pub const fn new() -> Self {
         #[allow(clippy::declare_interior_mutable_const)]
-        const INIT_ENTRY: AtomicU64 = AtomicU64::new(PageTableEntry::empty().0);
+        const INIT_ENTRY: AtomicU64 = AtomicU64::new(0);
         Self {
             entries: [INIT_ENTRY; PT_ENTRY_COUNT],
         }

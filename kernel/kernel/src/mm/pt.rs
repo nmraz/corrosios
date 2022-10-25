@@ -5,10 +5,13 @@
 
 use core::{cmp, result};
 
-use crate::arch::mmu::{self, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT};
+use crate::arch::mmu::{
+    self, get_pte_frame, make_empty_pte, make_pte, pte_is_present, pte_is_terminal, PageTableEntry,
+    PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT,
+};
 use crate::err::{Error, Result};
 
-use super::types::{PageTableFlags, PageTablePerms, PhysFrameNum, VirtPageNum};
+use super::types::{PageTablePerms, PhysFrameNum, VirtPageNum};
 
 /// An object that can translate physical frame numbers to virtual page numbers that can be used to
 /// access them.
@@ -196,7 +199,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
                 self.map_terminal(pointer, table, level, phys_base, perms)?;
             } else {
                 let next =
-                    self.next_table_or_create(alloc, table, pointer.virt().pt_index(level))?;
+                    self.next_table_or_create(alloc, table, pointer.virt().pt_index(level), level)?;
                 self.map(alloc, pointer, next, level - 1, phys_base, perms)?;
             }
 
@@ -216,7 +219,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
                 self.unmap_terminal(gather, pointer, table, level);
             } else {
                 let index = pointer.virt().pt_index(level);
-                let next = match self.next_table(table, index) {
+                let next = match self.next_table(table, index, level) {
                     Ok(next_ptr) => next_ptr,
 
                     Err(NextTableError::LargePage(_entry)) => {
@@ -250,13 +253,14 @@ impl<T: TranslatePhys> PageTableInner<T> {
         alloc: &mut impl PageTableAlloc,
         table: PhysFrameNum,
         index: usize,
+        level: usize,
     ) -> Result<PhysFrameNum> {
         let perms: PageTablePerms = PageTablePerms::READ
             | PageTablePerms::WRITE
             | PageTablePerms::EXECUTE
             | PageTablePerms::USER;
 
-        match self.next_table(table, index) {
+        match self.next_table(table, index, level) {
             Ok(next) => return Ok(next),
             Err(NextTableError::LargePage(_)) => return Err(Error::RESOURCE_OVERLAP),
             Err(NextTableError::NotPresent) => {}
@@ -264,11 +268,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
 
         let new_table = alloc.allocate()?;
         self.clear_table(new_table);
-        self.set(
-            table,
-            index,
-            PageTableEntry::new(new_table, perms, PageTableFlags::PRESENT),
-        );
+        self.set(table, index, make_pte(level, false, new_table, perms));
 
         Ok(new_table)
     }
@@ -277,19 +277,19 @@ impl<T: TranslatePhys> PageTableInner<T> {
         &self,
         table: PhysFrameNum,
         index: usize,
+        level: usize,
     ) -> result::Result<PhysFrameNum, NextTableError> {
-        let entry = self.get(table, index);
-        let flags = entry.flags();
+        let pte = self.get(table, index);
 
-        if !flags.contains(PageTableFlags::PRESENT) {
+        if !pte_is_present(pte, level) {
             return Err(NextTableError::NotPresent);
         }
 
-        if flags.contains(PageTableFlags::LARGE) {
-            return Err(NextTableError::LargePage(entry));
+        if pte_is_terminal(pte, level) {
+            return Err(NextTableError::LargePage(pte));
         }
 
-        Ok(entry.page())
+        Ok(get_pte_frame(pte, level))
     }
 
     fn map_terminal(
@@ -302,23 +302,14 @@ impl<T: TranslatePhys> PageTableInner<T> {
     ) -> Result<()> {
         let index = pointer.virt().pt_index(level);
 
-        if self
-            .get(table, index)
-            .flags()
-            .contains(PageTableFlags::PRESENT)
-        {
+        if pte_is_present(self.get(table, index), level) {
             return Err(Error::RESOURCE_OVERLAP);
-        }
-
-        let mut flags = PageTableFlags::PRESENT;
-        if level > 0 {
-            flags |= PageTableFlags::LARGE;
         }
 
         self.set(
             table,
             index,
-            PageTableEntry::new(phys_base + pointer.offset(), perms, flags),
+            make_pte(level, true, phys_base + pointer.offset(), perms),
         );
 
         pointer.advance(level_page_count(level));
@@ -333,11 +324,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         table: PhysFrameNum,
         level: usize,
     ) {
-        self.set(
-            table,
-            pointer.virt().pt_index(level),
-            PageTableEntry::empty(),
-        );
+        self.set(table, pointer.virt().pt_index(level), make_empty_pte());
         gather.add_tlb_flush(pointer.virt());
         pointer.advance(level_page_count(level));
     }
@@ -351,7 +338,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         let table_virt: *mut PageTableEntry = self.translator.translate(table).addr().as_mut_ptr();
         unsafe {
             for i in 0..PT_ENTRY_COUNT {
-                table_virt.add(i).write(PageTableEntry::empty());
+                table_virt.add(i).write(make_empty_pte());
             }
         }
     }
