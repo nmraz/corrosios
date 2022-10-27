@@ -175,6 +175,22 @@ impl<T: TranslatePhys> PageTable<T> {
         self.inner
             .unmap(gather, pointer, self.root, PT_LEVEL_COUNT - 1)
     }
+
+    /// Invokes `cull` on any nested page tables in the range `base..base + size` and unlinks them
+    /// from their parents.
+    pub unsafe fn cull_tables(
+        &mut self,
+        mut cull: impl FnMut(PhysFrameNum),
+        base: VirtPageNum,
+        size: usize,
+    ) {
+        self.inner.cull_tables(
+            &mut cull,
+            &mut MappingPointer::new(base, size),
+            self.root,
+            PT_LEVEL_COUNT - 1,
+        );
+    }
 }
 
 enum NextTableError {
@@ -229,11 +245,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
                     Ok(next_ptr) => next_ptr,
 
                     Err(NextTableError::LargePage(_entry)) => {
-                        let page_count = level_page_count(level);
-
-                        if aligned_for_level(pointer.virt().as_usize(), level)
-                            && pointer.remaining_pages() >= page_count
-                        {
+                        if covers_level_entry(pointer, level) {
                             self.unmap_terminal(gather, pointer, table, level);
                             return Ok(());
                         } else {
@@ -252,6 +264,36 @@ impl<T: TranslatePhys> PageTableInner<T> {
 
             Ok(())
         })
+    }
+
+    fn cull_tables(
+        &mut self,
+        cull: &mut impl FnMut(PhysFrameNum),
+        pointer: &mut MappingPointer,
+        table: PhysFrameNum,
+        level: usize,
+    ) {
+        walk_level(level, pointer, |pointer| -> result::Result<(), ()> {
+            let next_table_covered = covers_level_entry(pointer, level);
+
+            let index = pointer.virt().pt_index(level);
+            let Ok(next) = self.next_table(table, index, level) else {
+                pointer.advance_clamped(level_page_count(level));
+                return Ok(());
+            };
+
+            if level > 1 {
+                self.cull_tables(cull, pointer, next, level - 1);
+            }
+
+            if next_table_covered || self.table_is_empty(next, level - 1) {
+                self.set(table, index, make_empty_pte());
+                cull(next);
+            }
+
+            Ok(())
+        })
+        .unwrap();
     }
 
     fn next_table_or_create(
@@ -335,6 +377,10 @@ impl<T: TranslatePhys> PageTableInner<T> {
         pointer.advance(level_page_count(level));
     }
 
+    fn table_is_empty(&self, table: PhysFrameNum, level: usize) -> bool {
+        (0..PT_ENTRY_COUNT).all(|i| !pte_is_present(self.get(table, i), level))
+    }
+
     fn get(&self, table: PhysFrameNum, index: usize) -> PageTableEntry {
         let entry_ptr = self.entry(table, index);
         unsafe { entry_ptr.read() }
@@ -387,10 +433,13 @@ fn walk_level<E>(
 }
 
 fn can_use_level_page(level: usize, pointer: &MappingPointer, phys_base: PhysFrameNum) -> bool {
-    let min_pages = level_page_count(level);
-    pointer.remaining_pages() >= min_pages
-        && aligned_for_level(pointer.virt().as_usize(), level)
+    covers_level_entry(pointer, level)
         && aligned_for_level(phys_base.as_usize() + pointer.offset(), level)
+}
+
+fn covers_level_entry(pointer: &MappingPointer, level: usize) -> bool {
+    aligned_for_level(pointer.virt().as_usize(), level)
+        && pointer.remaining_pages() >= level_page_count(level)
 }
 
 fn aligned_for_level(page_num: usize, level: usize) -> bool {
