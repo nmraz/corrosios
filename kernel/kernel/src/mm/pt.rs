@@ -78,6 +78,12 @@ impl MappingPointer {
         self.offset += pages;
         debug_assert!(self.offset <= self.size);
     }
+
+    /// Advances the pointer forward by at most `pages`, or less if there are less than `pages`
+    /// pages remaining.
+    pub fn advance_clamped(&mut self, pages: usize) {
+        self.offset = cmp::min(self.offset + pages, self.size);
+    }
 }
 
 /// Structure for accessing and manipulating page tables.
@@ -236,7 +242,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
                     }
 
                     Err(NextTableError::NotPresent) => {
-                        pointer.advance(level_page_count(level));
+                        pointer.advance_clamped(level_page_count(level));
                         return Ok(());
                     }
                 };
