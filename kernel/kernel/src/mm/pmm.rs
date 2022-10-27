@@ -92,14 +92,6 @@ pub fn dump_usage() {
     with(|pmm| pmm.dump_usage());
 }
 
-pub struct PmmPageTableAlloc;
-
-impl PageTableAlloc for PmmPageTableAlloc {
-    fn allocate(&mut self) -> Result<PhysFrameNum> {
-        allocate(0).ok_or(Error::OUT_OF_MEMORY)
-    }
-}
-
 fn with<R>(f: impl FnOnce(&mut PhysManager) -> R) -> R {
     PHYS_MANAGER.with(|pmm, _| f(pmm.as_mut().expect("pmm not initialized")))
 }

@@ -10,8 +10,8 @@ use qcell::{QCell, QCellOwner};
 
 use crate::err::{Error, Result};
 use crate::mm::physmap::PhysmapPfnTranslator;
-use crate::mm::pmm::PmmPageTableAlloc;
-use crate::mm::pt::{GatherInvalidations, MappingPointer, PageTable};
+use crate::mm::pmm;
+use crate::mm::pt::{GatherInvalidations, MappingPointer, PageTable, PageTableAlloc};
 use crate::mm::types::{PageTablePerms, PhysFrameNum, Protection, VirtPageNum};
 use crate::sync::SpinLock;
 
@@ -238,26 +238,13 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
 
             parent.inner_mut(owner)?.remove_child(slice.start());
 
-            self.with_flush(|gather| {
-                slice.slice.detach_children(owner, |mapping| {
-                    // Safety: we're holding the lock, the caller guarantees they won't touch addresses
-                    // that have just been unmapped.
-                    unsafe {
-                        // This only ever fails if the range partially intersects a large page, but we never
-                        // create large pages spanning across slice boundaries.
-                        self.pt()
-                            .unmap(
-                                gather,
-                                &mut MappingPointer::new(mapping.start, mapping.page_count),
-                            )
-                            .expect("failed to unmap page range");
-                    }
+            slice.slice.detach_children(owner)?;
 
-                    Ok(())
-                })?;
+            unsafe {
+                self.do_unmap(slice.start(), slice.page_count());
+            }
 
-                Ok(())
-            })
+            Ok(())
         })
     }
 
@@ -331,20 +318,9 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
 
             parent.inner_mut(owner)?.remove_child(mapping.start());
 
-            self.with_flush(|gather| {
-                // Safety: we're holding the lock, the caller guarantees they won't touch addresses
-                // that have just been unmapped.
-                unsafe {
-                    // This only ever fails if the range partially intersects a large page, but we never
-                    // create large pages spanning across mapping boundaries.
-                    self.pt()
-                        .unmap(
-                            gather,
-                            &mut MappingPointer::new(mapping.start(), mapping.page_count()),
-                        )
-                        .expect("failed to unmap page range");
-                }
-            });
+            unsafe {
+                self.do_unmap(mapping.start(), mapping.page_count());
+            }
 
             Ok(())
         })
@@ -433,11 +409,21 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         })
     }
 
-    fn with_flush<R>(&self, f: impl FnOnce(&mut PendingInvalidationGather) -> R) -> R {
+    /// # Safety
+    ///
+    /// * This function must be called with the lock held
+    /// * The range must not be accessed when this function returns
+    /// * The page tables mapping the range must have been allocated by the PMM
+    unsafe fn do_unmap(&self, start: VirtPageNum, page_count: usize) {
+        let mut pt = self.pt();
         let mut gather = PendingInvalidationGather::new();
-        let ret = f(&mut gather);
-        self.ops.flush(gather.as_tlb_flush());
-        ret
+
+        unsafe {
+            pt.unmap(&mut gather, &mut MappingPointer::new(start, page_count))
+                .expect("failed to unmap page range");
+            self.ops.flush(gather.as_tlb_flush());
+            pt.cull_tables(|table| pmm::deallocate(table, 0), start, page_count);
+        }
     }
 
     fn with_owner<R>(&self, f: impl FnOnce(&mut QCellOwner) -> R) -> R {
@@ -465,7 +451,7 @@ impl<O> Drop for AddrSpace<O> {
     fn drop(&mut self) {
         let owner = &mut self.inner.get_mut().cell_owner;
         self.root_slice
-            .detach_children(owner, |_mapping| Ok(()))
+            .detach_children(owner)
             .expect("final detach failed");
     }
 }
@@ -520,6 +506,14 @@ impl GatherInvalidations for PendingInvalidationGather {
             }
             PendingInvalidationGather::All => {}
         }
+    }
+}
+
+struct PmmPageTableAlloc;
+
+impl PageTableAlloc for PmmPageTableAlloc {
+    fn allocate(&mut self) -> Result<PhysFrameNum> {
+        pmm::allocate(0).ok_or(Error::OUT_OF_MEMORY)
     }
 }
 
@@ -630,11 +624,7 @@ impl SliceData {
     /// # Panics
     ///
     /// Panics if `self` is already detached.
-    fn detach_children(
-        self: &Arc<Self>,
-        owner: &mut QCellOwner,
-        mut unmap: impl FnMut(Arc<MappingData>) -> Result<()>,
-    ) -> Result<()> {
+    fn detach_children(self: &Arc<Self>, owner: &mut QCellOwner) -> Result<()> {
         let mut cur = Arc::clone(self);
 
         loop {
@@ -650,9 +640,7 @@ impl SliceData {
                     AddrSpaceChild::Subslice(subslice) => {
                         cur = subslice;
                     }
-                    AddrSpaceChild::Mapping(mapping) => {
-                        unmap(mapping)?;
-                    }
+                    AddrSpaceChild::Mapping(mapping) => {}
                 }
             } else {
                 // Now that we've finished detaching children, mark the current slice as detached
