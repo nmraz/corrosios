@@ -6,9 +6,8 @@ use crate::err::{Error, Result};
 use super::types::{AccessMode, AccessType, VirtAddr};
 
 pub mod aspace;
+pub mod kernel_aspace;
 pub mod object;
-
-mod kernel_aspace;
 
 pub fn init() {
     debug!("initializing VM system");

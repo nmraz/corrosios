@@ -1,18 +1,57 @@
+use alloc::sync::Arc;
 use spin_once::Once;
 
 use crate::arch::mm::{KERNEL_ASPACE_BASE, KERNEL_ASPACE_END, PHYS_MAP_BASE, PHYS_MAP_MAX_PAGES};
 use crate::arch::mmu::{flush_kernel_tlb, flush_kernel_tlb_page, kernel_pt_root};
+use crate::err::Result;
 use crate::kimage;
-use crate::mm::types::{PageTablePerms, PhysFrameNum};
+use crate::mm::types::{PageTablePerms, PhysFrameNum, Protection, VirtAddr};
 
-use super::aspace::{AddrSpace, AddrSpaceOps, TlbFlush};
+use super::aspace::{AddrSpace, AddrSpaceOps, MappingHandle, TlbFlush};
+use super::object::VmObject;
+
+/// An owned pointer to a mapping of a VM object into the kernel address space.
+pub struct KernelMapping(MappingHandle);
+
+impl KernelMapping {
+    /// Returns the base address of the mapping.
+    pub fn addr(&self) -> VirtAddr {
+        self.0.start().addr()
+    }
+}
+
+impl Drop for KernelMapping {
+    fn drop(&mut self) {
+        // Safety: we have unique ownership of
+        unsafe {
+            get()
+                .unmap(&self.0)
+                .expect("kernel mapping already detached");
+        }
+    }
+}
+
+/// Maps the entirety of `object` into the kernel address space with protection `prot`.
+pub fn kmap(object: Arc<dyn VmObject>, prot: Protection) -> Result<KernelMapping> {
+    let kernel_aspace = get();
+    kernel_aspace
+        .map(
+            &kernel_aspace.root_slice(),
+            None,
+            object.page_count(),
+            0,
+            object,
+            prot,
+        )
+        .map(KernelMapping)
+}
 
 /// Initializes the (higher-half) kernel address space.
 ///
 /// # Panics
 ///
 /// Panics if this function is called more than once.
-pub fn init() {
+pub(super) fn init() {
     let aspace = unsafe {
         AddrSpace::new(KERNEL_ASPACE_BASE..KERNEL_ASPACE_END, KernelAddrSpaceOps)
             .expect("failed to create kernel address space")
@@ -46,7 +85,7 @@ pub fn init() {
 /// # Panics
 ///
 /// Panics if [`init`] has not yet been called.
-pub fn get() -> &'static AddrSpace<impl AddrSpaceOps> {
+pub(super) fn get() -> &'static AddrSpace<impl AddrSpaceOps> {
     KERNEL_ASPACE
         .get()
         .expect("kernel address space not initialized")
