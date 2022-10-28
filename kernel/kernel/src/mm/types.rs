@@ -14,6 +14,14 @@ bitflags! {
     }
 }
 
+/// Caching modes that can be applied to a range of memory.
+pub enum CacheMode {
+    WriteBack,
+    WriteThrough,
+    WriteCombining,
+    Uncached,
+}
+
 /// The types of memory accesses that can cause a page fault.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessType {

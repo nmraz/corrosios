@@ -4,6 +4,7 @@ use bitflags::bitflags;
 
 use crate::mm::types::VirtAddr;
 
+const IA32_PAT: u32 = 0x277;
 const IA32_GS_BASE: u32 = 0xc0000101;
 const IA32_EFER: u32 = 0xc0000080;
 
