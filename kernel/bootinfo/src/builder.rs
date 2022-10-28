@@ -5,34 +5,25 @@ use num_utils::align_up;
 use uninit::extension_traits::AsOut;
 use uninit::out_ref::Out;
 
-use crate::{ItemHeader, ItemKind, ITEM_ALIGN};
-
-#[derive(Debug, Clone, Copy)]
-pub enum BuildError {
-    BadSize,
-    BadAlign,
-}
+use crate::{Error, ItemHeader, ItemKind, ITEM_ALIGN};
 
 pub struct Builder<'a> {
-    buf: Out<'a, [u8]>,
+    buffer: Out<'a, [u8]>,
     off: usize,
 }
 
 impl<'a> Builder<'a> {
-    pub fn new(buf: Out<'a, [u8]>) -> Result<Self, BuildError> {
-        if buf.as_ptr() as usize % ITEM_ALIGN != 0 {
-            return Err(BuildError::BadAlign);
+    pub fn new(buffer: Out<'a, [u8]>) -> Result<Self, Error> {
+        if buffer.as_ptr() as usize % ITEM_ALIGN != 0 {
+            return Err(Error::BadAlign);
         }
 
-        let len = buf.len();
-        if len < mem::size_of::<ItemHeader>() || len >= i32::MAX as usize {
-            return Err(BuildError::BadSize);
+        let len = buffer.len();
+        if len >= i32::MAX as usize {
+            return Err(Error::BadSize);
         }
 
-        Ok(Self {
-            buf,
-            off: mem::size_of::<ItemHeader>(),
-        })
+        Ok(Self { buffer, off: 0 })
     }
 
     /// # Safety
@@ -42,24 +33,24 @@ impl<'a> Builder<'a> {
         &mut self,
         kind: ItemKind,
         count: usize,
-    ) -> Result<&mut [MaybeUninit<T>], BuildError> {
+    ) -> Result<&mut [MaybeUninit<T>], Error> {
         if mem::align_of::<T>() > ITEM_ALIGN {
-            return Err(BuildError::BadAlign);
+            return Err(Error::BadAlign);
         }
 
         let size = mem::size_of::<T>()
             .checked_mul(count)
-            .ok_or(BuildError::BadSize)?;
+            .ok_or(Error::BadSize)?;
 
         let total_size = size
             .checked_add(mem::size_of::<ItemHeader>())
-            .ok_or(BuildError::BadSize)?;
+            .ok_or(Error::BadSize)?;
 
         let off = align_up(self.off, ITEM_ALIGN);
-        let next_off = off.checked_add(total_size).ok_or(BuildError::BadSize)?;
+        let next_off = off.checked_add(total_size).ok_or(Error::BadSize)?;
 
-        if next_off > self.buf.len() {
-            return Err(BuildError::BadSize);
+        if next_off > self.buffer.len() {
+            return Err(Error::BadSize);
         }
 
         self.off = next_off;
@@ -67,7 +58,7 @@ impl<'a> Builder<'a> {
         // Safety: offset has been checked, pointer is suitably aligned thanks to `align_to_offset`.
         unsafe {
             ptr::write(
-                self.buf.as_mut_ptr().add(off) as *mut _,
+                self.buffer.as_mut_ptr().add(off) as *mut _,
                 ItemHeader {
                     kind,
                     payload_len: size as u32,
@@ -78,7 +69,7 @@ impl<'a> Builder<'a> {
         // Safety: alignment and validity of offset checked above.
         unsafe {
             Ok(slice::from_raw_parts_mut(
-                self.buf
+                self.buffer
                     .as_mut_ptr()
                     .add(off + mem::size_of::<ItemHeader>())
                     .cast(),
@@ -87,26 +78,28 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn append<T>(&mut self, kind: ItemKind, val: T) -> Result<(), BuildError> {
+    pub fn append<T>(&mut self, kind: ItemKind, val: T) -> Result<(), Error> {
         // Safety: the single reserved element is initialized below.
         let buf = unsafe { self.reserve(kind, 1)? };
         buf[0].write(val);
         Ok(())
     }
 
-    pub fn append_slice<T: Copy>(&mut self, kind: ItemKind, val: &[T]) -> Result<(), BuildError> {
+    pub fn append_slice<T: Copy>(&mut self, kind: ItemKind, val: &[T]) -> Result<(), Error> {
         // Safety: the buffer is initialized below.
         let buf = unsafe { self.reserve(kind, val.len())? };
         buf.as_out().copy_from_slice(val);
         Ok(())
     }
 
-    pub fn finish(mut self) -> &'a ItemHeader {
-        // Safety: buffer size, alignment checked in `new`.
-        let header = unsafe { &mut *(self.buf.as_mut_ptr() as *mut MaybeUninit<ItemHeader>) };
-        header.write(ItemHeader {
-            kind: ItemKind::CONTAINER,
-            payload_len: self.off as u32,
-        })
+    pub fn finish(self) -> &'a [u8] {
+        // Safety: this entire portion of the buffer should have been initialized by previous
+        // calls to `append` and the like.
+        unsafe {
+            self.buffer
+                .get_out(..self.off)
+                .expect("offset exceeded buffer size")
+                .assume_all_init()
+        }
     }
 }

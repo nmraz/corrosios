@@ -67,8 +67,13 @@ boottext_pd:
 .global boot_main
 .type boot_main, @function
 boot_main:
-    // NOTE: We must avoid clobbering `rdi` for the duration of this function as
-    // it contains the physical address of the data provided by the bootloader.
+    // Parameters:
+    // 1 (rdi) - Bootinfo physical address
+    // 2 (rs1) - Bootinfo size
+
+    // NOTE: We must avoid clobbering `rdi` and `rsi` for the duration of this
+    // function as they contain the physical address and size of the bootinfo,
+    // respectively.
 
     // Disable interrupts until we have a proper IDT set up
     cli
@@ -100,8 +105,8 @@ boot_main:
 
     lea rax, [rip + boottext_pd + 0x3]
     boottext_pt_index rbx, 2
-    lea rsi, [rip + boottext_pdpt]
-    mov [rsi + 8 * rbx], rax
+    lea rcx, [rip + boottext_pdpt]
+    mov [rcx + 8 * rbx], rax
 
     lea rax, [rip + __boottext_start]
     and rax, -({PAGE_SIZE} << {PT_LEVEL_SHIFT})
@@ -110,10 +115,10 @@ boot_main:
     boottext_pt_index rbx, 1
 
     // Map with 5 large 2MiB pages
-    lea rsi, [rip + boottext_pd]
+    lea rdx, [rip + boottext_pd]
     mov rcx, 5
 .Lfill_boottext_pd:
-    mov [rsi + 8 * rbx], rax
+    mov [rdx + 8 * rbx], rax
     add rax, {PAGE_SIZE} << {PT_LEVEL_SHIFT}
     add rbx, 1
     loop .Lfill_boottext_pd
@@ -138,11 +143,11 @@ boot_main:
     lea rax, [KERNEL_PTS + r9 + 0x3]
 
     initial_kernel_pt_index rdx, 1
-    lea rsi, [KERNEL_PD + r9 + 8 * rdx]
+    lea rbx, [KERNEL_PD + r9 + 8 * rdx]
 
 .Lfill_kernel_pd:
-    mov [rsi], rax
-    add rsi, 8
+    mov [rbx], rax
+    add rbx, 8
     add rax, {PAGE_SIZE}
     loop .Lfill_kernel_pd
 
@@ -150,20 +155,14 @@ boot_main:
     lea rbx, [rip + __phys_end]
 
     initial_kernel_pt_index rdx, 0
-    lea rsi, [KERNEL_PTS + r9 + 8 * rdx]
+    lea rcx, [KERNEL_PTS + r9 + 8 * rdx]
 
 .Lfill_kernel_pts:
-    mov [rsi], rax
-    add rsi, 8
+    mov [rcx], rax
+    add rcx, 8
     add rax, {PAGE_SIZE}
     cmp rax, rbx
     jl .Lfill_kernel_pts
-
-    // Grab the bootdata size while we still can (when it is still guaranteed
-    // to be identity-mapped).
-    mov edx, [rdi + 4]
-    // Account for container header
-    add edx, 8
 
     lea rax, [KERNEL_PML4 + r9]
     mov cr3, rax
@@ -172,7 +171,10 @@ boot_main:
     mov [rip + early_gdtr_ptr], rax
     lgdt [rip + early_gdtr]
 
-    // Bootdata physical address
+    // Bootinfo size
+    mov rdx, rsi
+
+    // Bootinfo physical address
     mov rsi, rdi
 
     // Kernel physical address
@@ -194,8 +196,8 @@ boot_main:
 high_entry:
     // Parameters:
     // 1 (rdi) - Kernel physical address
-    // 2 (rsi) - Bootdata physical address
-    // 3 (rdx) - Bootdata size
+    // 2 (rsi) - Bootinfo physical address
+    // 3 (rdx) - Bootinfo size
     // 4 (rcx) - Top-level page table index of early boot code mapping
 
     xor eax, eax

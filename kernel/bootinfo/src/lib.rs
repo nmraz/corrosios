@@ -2,11 +2,19 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
 
+use core::mem;
+
 use struct_enum::struct_enum;
 
 pub mod builder;
 pub mod item;
 pub mod view;
+
+#[derive(Debug, Clone, Copy)]
+pub enum Error {
+    BadSize,
+    BadAlign,
+}
 
 pub const ITEM_ALIGN: usize = 8;
 
@@ -25,3 +33,9 @@ pub struct ItemHeader {
     pub kind: ItemKind,
     pub payload_len: u32,
 }
+
+#[deny(const_err)]
+const _: () = {
+    assert!(mem::align_of::<ItemHeader>() <= ITEM_ALIGN);
+    assert!(mem::size_of::<ItemHeader>() == ITEM_ALIGN);
+};

@@ -1,73 +1,65 @@
-use core::marker::PhantomData;
 use core::{iter, mem, slice};
 
 use num_utils::align_up;
 
-use crate::{ItemHeader, ItemKind, ITEM_ALIGN};
+use crate::{Error, ItemHeader, ItemKind, ITEM_ALIGN};
 
-#[derive(Debug, Clone, Copy)]
-pub struct BadMagic;
-
-#[derive(Debug, Clone, Copy)]
-pub struct InvalidPayload;
-
+/// A view into bootinfo data packed by a builder.
 #[derive(Debug, Clone, Copy)]
 pub struct View<'a> {
-    // Note: we use a raw pointer here to avoid provenance issues
-    header: *const ItemHeader,
-    _marker: PhantomData<&'a ()>,
+    buffer: &'a [u8],
 }
 
 impl<'a> View<'a> {
-    /// # Safety
+    /// Returs a new view suitable for reading bootinfo out of `buffer`.
     ///
-    /// `header` must be the header of a valid boot info structure in memory. The boot info should
-    /// not be mutated for the remainder of `'a`.
-    pub unsafe fn new(header: *const ItemHeader) -> Result<Self, BadMagic> {
-        let header_ref = unsafe { &*header };
-        if header_ref.kind != ItemKind::CONTAINER {
-            Err(BadMagic)
-        } else {
-            Ok(Self {
-                header,
-                _marker: PhantomData,
-            })
+    /// # Errors
+    ///
+    /// Returns an error if `buffer` is not suitably aligned.
+    pub fn new(buffer: &'a [u8]) -> Result<Self, Error> {
+        if buffer.as_ptr() as usize % ITEM_ALIGN != 0 {
+            return Err(Error::BadAlign);
         }
+
+        Ok(Self { buffer })
     }
 
-    pub fn content_size(&self) -> usize {
-        // Safety: guaranteed by the contract of `new`
-        unsafe { *self.header }.payload_len as usize
+    /// Returns the total size of the bootinfo covered by this view.
+    pub fn size(&self) -> usize {
+        self.buffer.len()
     }
 
-    pub fn total_size(&self) -> usize {
-        self.content_size() + mem::size_of::<ItemHeader>()
-    }
-
+    /// Returns an iterator over all the items in this bootinfo.
+    ///
+    /// # Panics
+    ///
+    /// The returned iterator will panic if it encounters malformed bootinfo ()
     pub fn items(&self) -> impl Iterator<Item = ItemView<'a>> + Clone {
-        // Safety: we can always move to the byte just past the end of the allocation (though there
-        // will generally be additional payload data after the header).
-        let base = unsafe { self.header.add(1) as *const u8 };
-
-        let len = self.content_size();
+        let buffer = self.buffer;
+        let size = self.size();
         let mut off = 0;
 
         iter::from_fn(move || {
-            if off >= len {
+            if off >= size {
                 return None;
             }
 
-            // Safety: per the safety contract of `new`, this offset should still point into the
-            // allocation and point to a valid `ItemHeader`.
-            let header = unsafe { &*(base.add(off) as *const ItemHeader) };
-            off = align_up(
-                off + mem::size_of::<ItemHeader>() + header.payload_len as usize,
-                ITEM_ALIGN,
-            );
+            let payload_off = off + mem::size_of::<ItemHeader>();
+
+            // Safety: `ItemHeader` is a POD
+            let header: &ItemHeader =
+                unsafe { get_slice_ref(&buffer[off..payload_off]) }.expect("malformed bootinfo");
+
+            debug_assert_eq!(payload_off % ITEM_ALIGN, 0);
+
+            let payload_end_off = payload_off + header.payload_len as usize;
+            let payload = &buffer[payload_off..payload_end_off];
+
+            off = align_up(payload_end_off, ITEM_ALIGN);
 
             Some(ItemView {
-                header,
-                _marker: PhantomData,
+                kind: header.kind,
+                payload,
             })
         })
     }
@@ -75,47 +67,32 @@ impl<'a> View<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ItemView<'a> {
-    header: *const ItemHeader,
-    _marker: PhantomData<&'a ()>,
+    kind: ItemKind,
+    payload: &'a [u8],
 }
 
 impl<'a> ItemView<'a> {
     pub fn kind(&self) -> ItemKind {
-        unsafe { *self.header }.kind
+        self.kind
     }
 
     pub fn payload(&self) -> &'a [u8] {
-        // Safety: this item view could only have been created by a `View`, and the contract of
-        // `View::new` requires that the boot info be valid (in particular, every header is followed
-        // by `payload_len` bytes of payload).
-        unsafe {
-            slice::from_raw_parts(
-                self.header.add(1) as *const _,
-                (*self.header).payload_len as usize,
-            )
-        }
+        self.payload
     }
 
     /// # Safety
     ///
     /// `T` must have a stable, well-defined layout, and the contents of the payload must be a
     /// valid value of type `T`.
-    pub unsafe fn get<T>(&self) -> Result<&'a T, InvalidPayload> {
-        let payload = self.payload();
-        if payload.len() != mem::size_of::<T>()
-            || payload.as_ptr() as usize % mem::align_of::<T>() != 0
-        {
-            return Err(InvalidPayload);
-        }
-
-        Ok(unsafe { &*(payload.as_ptr() as *const T) })
+    pub unsafe fn get<T>(&self) -> Result<&'a T, Error> {
+        unsafe { get_slice_ref(self.payload()) }
     }
 
     /// # Safety
     ///
     /// `T` must have a stable, well-defined layout, and the contents of the payload must be a
     /// valid value of type `T`.
-    pub unsafe fn read<T: Copy>(&self) -> Result<T, InvalidPayload> {
+    pub unsafe fn read<T: Copy>(&self) -> Result<T, Error> {
         unsafe { self.get().map(|p| *p) }
     }
 
@@ -123,12 +100,15 @@ impl<'a> ItemView<'a> {
     ///
     /// `T` must have a stable, well-defined layout, and the contents of the payload must be a
     /// sequence of valid values of type `T`.
-    pub unsafe fn get_slice<T>(&self) -> Result<&'a [T], InvalidPayload> {
+    pub unsafe fn get_slice<T>(&self) -> Result<&'a [T], Error> {
         let payload = self.payload();
-        if payload.len() % mem::size_of::<T>() != 0
-            || payload.as_ptr() as usize % mem::align_of::<T>() != 0
-        {
-            return Err(InvalidPayload);
+
+        if payload.len() % mem::size_of::<T>() != 0 {
+            return Err(Error::BadSize);
+        }
+
+        if payload.as_ptr() as usize % mem::align_of::<T>() != 0 {
+            return Err(Error::BadAlign);
         }
 
         Ok(unsafe {
@@ -138,4 +118,20 @@ impl<'a> ItemView<'a> {
             )
         })
     }
+}
+
+/// # Safety
+///
+/// `T` must have a stable, well-defined layout and the contents of the slice must be a valid value
+/// of type `T`.
+unsafe fn get_slice_ref<T>(slice: &[u8]) -> Result<&T, Error> {
+    if mem::size_of::<T>() != slice.len() {
+        return Err(Error::BadSize);
+    }
+
+    if slice.as_ptr() as usize % mem::align_of::<T>() != 0 {
+        return Err(Error::BadAlign);
+    }
+
+    Ok(unsafe { &*(slice.as_ptr() as *const T) })
 }

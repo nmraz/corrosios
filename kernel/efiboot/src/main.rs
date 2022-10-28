@@ -62,10 +62,11 @@ fn run(image_handle: Handle, boot_table: BootTable) -> Result<()> {
 
             append_mmap(&mut builder, mmap, bootinfo_ctx.mmap_scratch);
 
-            let bootinfo_header = builder.finish();
-            let entry: extern "sysv64" fn(usize) -> ! = unsafe { mem::transmute(kernel_entry) };
+            let bootinfo_slice = builder.finish();
+            let entry: extern "sysv64" fn(usize, usize) -> ! =
+                unsafe { mem::transmute(kernel_entry) };
 
-            entry(bootinfo_header as *const _ as usize);
+            entry(bootinfo_slice.as_ptr() as usize, bootinfo_slice.len());
         },
     )?;
 }

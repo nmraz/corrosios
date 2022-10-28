@@ -1,5 +1,5 @@
-use core::cmp;
 use core::ops::Range;
+use core::{cmp, slice};
 
 use arrayvec::ArrayVec;
 use bootinfo::item::{MemoryKind, MemoryRange};
@@ -36,8 +36,10 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled:
         .addr()
         .as_ptr();
 
-    // Safety: the bootinfo has now been identity mapped and is valid by the function contract
-    let bootinfo_view = unsafe { View::new(bootinfo_ptr) }.expect("bad bootinfo");
+    // Safety: function contract, the physical address has now been mapped to `bootinfo_ptr`
+    let bootinfo_slice = unsafe { slice::from_raw_parts(bootinfo_ptr, bootinfo_size) };
+
+    let bootinfo_view = View::new(bootinfo_slice).expect("bad bootinfo");
     let mem_map = get_mem_map(bootinfo_view);
 
     print_mem_info(mem_map);
