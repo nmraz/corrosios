@@ -258,9 +258,9 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     /// # Errors
     ///
     /// * `INVALID_STATE` - This function was called on a [detached](SliceHandle#states) slice.
-    /// * `INVALID_ARGUMENT` - The requested range is too large or does not lie in the virtual
-    ///                        address range managed by this slice, or `page_count` is larger
-    ///                        than the size of the object.
+    /// * `INVALID_ARGUMENT` - The requested address range is too large or does not lie in the
+    ///                        virtual address range managed by this slice, or the requested offset
+    ///                        range does not fit within the object.
     /// * `OUT_OF_MEMORY` - Allocation of the new metadata failed.
     /// * `RESOURCE_OVERLAP` - The requested range overlaps an existing subslice or mapping.
     /// * `OUT_OF_RESOURCES` - No available regions of the requested size were found.
@@ -277,20 +277,31 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         object: Arc<dyn VmObject>,
         prot: Protection,
     ) -> Result<MappingHandle> {
+        let total_page_count = object.page_count();
+
+        if object_offset > total_page_count || page_count > total_page_count - object_offset {
+            return Err(Error::INVALID_ARGUMENT);
+        }
+
         let mapping = self.with_owner(|owner| {
             let id = owner.id();
-            slice.slice.alloc_spot(owner, start, page_count, |start| {
-                let mapping = Arc::try_new(MappingData {
-                    start,
-                    page_count,
-                    object_offset,
-                    object,
-                    inner: QCell::new(id, Some(MappingInner::new(Arc::clone(&slice.slice), prot))),
-                })?;
+            slice
+                .slice
+                .alloc_spot(owner, start, total_page_count, |start| {
+                    let mapping = Arc::try_new(MappingData {
+                        start,
+                        page_count,
+                        object_offset,
+                        object,
+                        inner: QCell::new(
+                            id,
+                            Some(MappingInner::new(Arc::clone(&slice.slice), prot)),
+                        ),
+                    })?;
 
-                let child = AddrSpaceChild::Mapping(Arc::clone(&mapping));
-                Ok((child, mapping))
-            })
+                    let child = AddrSpaceChild::Mapping(Arc::clone(&mapping));
+                    Ok((child, mapping))
+                })
         })?;
 
         Ok(MappingHandle { mapping })
