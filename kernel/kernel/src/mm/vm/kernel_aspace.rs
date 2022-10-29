@@ -5,10 +5,10 @@ use crate::arch::mm::{KERNEL_ASPACE_BASE, KERNEL_ASPACE_END, PHYS_MAP_BASE, PHYS
 use crate::arch::mmu::{flush_kernel_tlb, flush_kernel_tlb_page, kernel_pt_root};
 use crate::err::Result;
 use crate::kimage;
-use crate::mm::types::{PageTablePerms, PhysFrameNum, Protection, VirtAddr};
+use crate::mm::types::{CacheMode, PageTablePerms, PhysFrameNum, Protection, VirtAddr};
 
 use super::aspace::{AddrSpace, AddrSpaceOps, MappingHandle, TlbFlush};
-use super::object::VmObject;
+use super::object::{PhysVmObject, VmObject};
 
 /// An owned pointer to a mapping of a VM object into the kernel address space.
 pub struct KernelMapping(MappingHandle);
@@ -44,6 +44,24 @@ pub fn kmap(object: Arc<dyn VmObject>, prot: Protection) -> Result<KernelMapping
             prot,
         )
         .map(KernelMapping)
+}
+
+/// Maps the physical memory range `base..base + page_count` into the kernel address space with
+/// protection `prot` and cache mode `cache_mode`.
+///
+/// # Safety
+///
+/// The caller must guarantee that the specified range of physical memory is safe to access with
+/// the specified cache mode, respecting any platform limitations.
+pub unsafe fn iomap(
+    base: PhysFrameNum,
+    page_count: usize,
+    prot: Protection,
+    cache_mode: CacheMode,
+) -> Result<KernelMapping> {
+    // Safety: function contract
+    let object = unsafe { PhysVmObject::new(base, page_count, cache_mode)? };
+    kmap(object, prot)
 }
 
 /// Initializes the (higher-half) kernel address space.

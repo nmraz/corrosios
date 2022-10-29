@@ -128,6 +128,8 @@ impl<T: TranslatePhys> PageTable<T> {
     /// * The page table must not be accessed concurrently by other cores/interrupts during the
     ///   mapping
     /// * The provided allocator must return physical frames usable as page tables
+    /// * `cache_mode` must be a cache mode that can safely be applied to the provided pages,
+    ///   respecting any platform limitations
     pub unsafe fn map(
         &mut self,
         alloc: &mut impl PageTableAlloc,

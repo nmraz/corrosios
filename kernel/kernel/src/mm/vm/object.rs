@@ -1,3 +1,4 @@
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use crate::err::{Error, Result};
@@ -12,9 +13,9 @@ use super::AccessType;
 /// # Safety
 ///
 /// * The implementation of [`provide_page`](VmObject::provide_page) must return a frame that can be
-/// safely used by clients mapping the object
+///   safely used by clients mapping the object
 /// * The implementation of [`cache_mode`](VmObject::cache_mode) must return a cache mode that can
-/// safely be applied to the provided pages, respecting any platform limitations.
+///   safely be applied to the provided pages, respecting any platform limitations.
 pub unsafe trait VmObject: Send + Sync {
     /// Retrieves the size of this VM object, in pages.
     fn page_count(&self) -> usize;
@@ -44,7 +45,7 @@ pub struct EagerVmObject {
 }
 
 impl EagerVmObject {
-    pub fn new(page_count: usize) -> Result<Self> {
+    pub fn new(page_count: usize) -> Result<Arc<Self>> {
         let mut frames = Vec::new();
         frames.try_reserve_exact(page_count)?;
 
@@ -53,7 +54,7 @@ impl EagerVmObject {
             frames.push(FrameBox::new()?);
         }
 
-        Ok(Self { frames })
+        Ok(Arc::try_new(Self { frames })?)
     }
 }
 
@@ -79,7 +80,7 @@ pub struct LazyVmObject {
 }
 
 impl LazyVmObject {
-    pub fn new(page_count: usize) -> Result<Self> {
+    pub fn new(page_count: usize) -> Result<Arc<Self>> {
         let mut frames = Vec::new();
         frames.try_reserve_exact(page_count)?;
 
@@ -88,10 +89,10 @@ impl LazyVmObject {
             frames.push(None);
         }
 
-        Ok(Self {
+        Ok(Arc::try_new(Self {
             page_count,
             frames: SpinLock::new(frames),
-        })
+        })?)
     }
 }
 
@@ -121,14 +122,24 @@ unsafe impl VmObject for LazyVmObject {
 pub struct PhysVmObject {
     base: PhysFrameNum,
     page_count: usize,
+    cache_mode: CacheMode,
 }
 
 impl PhysVmObject {
     /// # Safety
     ///
-    /// The caller must guarantee that the specified range of physical memory is safe to access.
-    pub unsafe fn new(base: PhysFrameNum, page_count: usize) -> Self {
-        Self { base, page_count }
+    /// The caller must guarantee that the specified range of physical memory is safe to access with
+    /// the specified cache mode.
+    pub unsafe fn new(
+        base: PhysFrameNum,
+        page_count: usize,
+        cache_mode: CacheMode,
+    ) -> Result<Arc<Self>> {
+        Ok(Arc::try_new(Self {
+            base,
+            page_count,
+            cache_mode,
+        })?)
     }
 }
 
@@ -140,6 +151,10 @@ unsafe impl VmObject for PhysVmObject {
     fn provide_page(&self, offset: usize, _access_type: AccessType) -> Result<PhysFrameNum> {
         assert!(offset < self.page_count);
         Ok(self.base + offset)
+    }
+
+    fn cache_mode(&self) -> CacheMode {
+        self.cache_mode
     }
 }
 
