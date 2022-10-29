@@ -20,7 +20,6 @@ pub const ITEM_ALIGN: usize = 8;
 
 struct_enum! {
     pub struct ItemKind: u32 {
-        CONTAINER = 0xb007b081;
         EFI_SYSTEM_TABLE = 1;
         MEMORY_MAP = 2;
         FRAMEBUFFER = 3;
