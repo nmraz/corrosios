@@ -411,7 +411,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                 unsafe {
                     self.pt().map(
                         &mut PmmPageTableAlloc,
-                        &mut MappingPointer::new(mapping.start + range.offset, 1),
+                        &mut MappingPointer::new(mapping.start + offset, 1),
                         pfn,
                         self.perms_for_prot(prot),
                         cache_mode,
