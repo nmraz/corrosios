@@ -5,7 +5,7 @@ use crate::arch::mm::{KERNEL_ASPACE_BASE, KERNEL_ASPACE_END, PHYS_MAP_BASE, PHYS
 use crate::arch::mmu::{flush_kernel_tlb, flush_kernel_tlb_page, kernel_pt_root};
 use crate::err::Result;
 use crate::kimage;
-use crate::mm::types::{CacheMode, PageTablePerms, PhysFrameNum, Protection, VirtAddr};
+use crate::mm::types::{AccessType, CacheMode, PageTablePerms, PhysFrameNum, Protection, VirtAddr};
 
 use super::aspace::{AddrSpace, AddrSpaceOps, MappingHandle, TlbFlush};
 use super::object::{PhysVmObject, VmObject};
@@ -33,17 +33,27 @@ impl Drop for KernelMapping {
 
 /// Maps the entirety of `object` into the kernel address space with protection `prot`.
 pub fn kmap(object: Arc<dyn VmObject>, prot: Protection) -> Result<KernelMapping> {
+    let page_count = object.page_count();
+
     let kernel_aspace = get();
-    kernel_aspace
-        .map(
-            &kernel_aspace.root_slice(),
-            None,
-            object.page_count(),
-            0,
-            object,
-            prot,
-        )
-        .map(KernelMapping)
+    let mapping = kernel_aspace.map(
+        &kernel_aspace.root_slice(),
+        None,
+        page_count,
+        0,
+        object,
+        prot,
+    )?;
+
+    let commit_type = if prot.contains(Protection::WRITE) {
+        AccessType::Write
+    } else {
+        AccessType::Read
+    };
+
+    kernel_aspace.commit(&mapping, commit_type, 0, page_count)?;
+
+    Ok(KernelMapping(mapping))
 }
 
 /// Maps the physical memory range `base..base + page_count` into the kernel address space with
