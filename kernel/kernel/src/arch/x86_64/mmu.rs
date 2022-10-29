@@ -5,7 +5,7 @@ use bitflags::bitflags;
 
 use crate::arch::x86_64::x64_cpu::write_pat;
 use crate::kimage;
-use crate::mm::types::{PageTablePerms, PhysFrameNum, VirtAddr, VirtPageNum};
+use crate::mm::types::{CacheMode, PageTablePerms, PhysFrameNum, VirtAddr, VirtPageNum};
 use crate::sync::irq::IrqDisabled;
 
 use super::x64_cpu::{
@@ -197,6 +197,7 @@ pub fn make_terminal_pte(
     level: usize,
     frame: PhysFrameNum,
     perms: PageTablePerms,
+    cache_mode: CacheMode,
 ) -> PageTableEntry {
     let mut x86_flags = X86PageTableFlags::PRESENT;
 
@@ -215,7 +216,11 @@ pub fn make_terminal_pte(
 
     x86_flags.set(X86PageTableFlags::LARGE, level > 0);
 
-    PageTableEntry(frame.addr().as_u64() | x86_flags.bits())
+    PageTableEntry(
+        frame.addr().as_u64()
+            | x86_flags.bits()
+            | pat_selector_to_pte_bits(pat_selector_for_cache_mode(cache_mode)),
+    )
 }
 
 /// Creates a PTE referring to a lower-level page table `next_table` for use with the specified page
@@ -240,4 +245,18 @@ pub fn pte_is_terminal(pte: PageTableEntry, level: usize) -> bool {
     } else {
         X86PageTableFlags::from_bits_truncate(pte.0).contains(X86PageTableFlags::LARGE)
     }
+}
+
+fn pat_selector_for_cache_mode(cache_mode: CacheMode) -> u64 {
+    match cache_mode {
+        CacheMode::WriteBack => PAT_SELECTOR_WB,
+        CacheMode::WriteThrough => PAT_SELECTOR_WT,
+        CacheMode::WriteCombining => PAT_SELECTOR_WC,
+        CacheMode::Uncached => PAT_SELECTOR_UC,
+    }
+}
+
+fn pat_selector_to_pte_bits(pat_selector: u64) -> u64 {
+    // Split the 3 bits of the pat selector across the `PWT`, `PCD` and `PAT` bits.
+    ((pat_selector & 0b001) << 3) | ((pat_selector & 0b010) << 4) | ((pat_selector & 0b100) << 7)
 }

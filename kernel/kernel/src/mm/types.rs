@@ -15,10 +15,23 @@ bitflags! {
 }
 
 /// Caching modes that can be applied to a range of memory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheMode {
+    /// "Full" cache operation: reads are cached, writes update the cache and can be written back
+    /// later.
+    ///
+    /// This is the mode that should be used for all system (non-IO) memory.
     WriteBack,
+
+    /// Reads are cached, but writes always write back to system memory in addition to possibly
+    /// updating the cache.
     WriteThrough,
+
+    /// Reads are not cached and always read from memory, writes are batched and written in larger
+    /// chunks.
     WriteCombining,
+
+    /// Neither reads nor writes use the cache; all operations access memory directly.
     Uncached,
 }
 

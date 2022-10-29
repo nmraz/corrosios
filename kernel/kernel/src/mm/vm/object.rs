@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use crate::err::{Error, Result};
 use crate::mm::pmm;
-use crate::mm::types::PhysFrameNum;
+use crate::mm::types::{CacheMode, PhysFrameNum};
 use crate::sync::SpinLock;
 
 use super::AccessType;
@@ -11,8 +11,10 @@ use super::AccessType;
 ///
 /// # Safety
 ///
-/// The implementation of [`provide_page`](VmObject::provide_page) must return a frame that can be
-/// safely used by clients mapping the object.
+/// * The implementation of [`provide_page`](VmObject::provide_page) must return a frame that can be
+/// safely used by clients mapping the object
+/// * The implementation of [`cache_mode`](VmObject::cache_mode) must return a cache mode that can
+/// safely be applied to the provided pages, respecting any platform limitations.
 pub unsafe trait VmObject: Send + Sync {
     /// Retrieves the size of this VM object, in pages.
     fn page_count(&self) -> usize;
@@ -22,6 +24,14 @@ pub unsafe trait VmObject: Send + Sync {
     ///
     /// For now, this function should not block as it will be called with a spinlock held.
     fn provide_page(&self, offset: usize, access_type: AccessType) -> Result<PhysFrameNum>;
+
+    /// Returns the cache mode that should be used when mapping this object.
+    ///
+    /// By default, returns [`CacheMode::WriteBack`], which is suitable for "ordinary" (non-IO)
+    /// memory.
+    fn cache_mode(&self) -> CacheMode {
+        CacheMode::WriteBack
+    }
 }
 
 /// A VM object that allocates all of its backing page frames upon construction.

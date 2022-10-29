@@ -3,6 +3,7 @@ use log::debug;
 
 use crate::arch::mm::{PHYS_MAP_BASE, PHYS_MAP_MAX_PAGES};
 use crate::arch::mmu::kernel_pt_root;
+use crate::mm::types::CacheMode;
 use crate::sync::irq::IrqDisabled;
 
 use super::pt::{MappingPointer, PageTable, PageTableAlloc, TranslatePhys};
@@ -52,6 +53,7 @@ pub unsafe fn init(
                 &mut pointer,
                 pfn,
                 PageTablePerms::READ | PageTablePerms::WRITE,
+                CacheMode::WriteBack,
             )
             .expect("failed to map physmap region");
         }

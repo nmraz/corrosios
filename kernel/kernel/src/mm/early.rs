@@ -11,7 +11,7 @@ use crate::err::{Error, Result};
 use crate::kimage;
 
 use super::pt::{GatherInvalidations, MappingPointer, PageTable, PageTableAlloc, TranslatePhys};
-use super::types::{PageTablePerms, PhysAddr, PhysFrameNum, VirtAddr, VirtPageNum};
+use super::types::{CacheMode, PageTablePerms, PhysAddr, PhysFrameNum, VirtAddr, VirtPageNum};
 
 const EARLY_MAP_MAX_SLOTS: usize = 5;
 
@@ -127,6 +127,7 @@ impl EarlyMapper {
                     &mut MappingPointer::new(virt, pages),
                     base,
                     PageTablePerms::READ | PageTablePerms::WRITE,
+                    CacheMode::WriteBack,
                 )
                 .expect("early map failed");
         }

@@ -397,6 +397,8 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                 return Err(Error::NO_PERMS);
             }
 
+            let cache_mode = mapping.object.cache_mode();
+
             // TODO: refactor this and find some way for `provide_page` to block outside the
             // critical section
             for offset in range.offset..range.offset + range.page_count {
@@ -412,6 +414,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                         &mut MappingPointer::new(mapping.start + range.offset, 1),
                         pfn,
                         self.perms_for_prot(prot),
+                        cache_mode,
                     )?;
                 };
             }

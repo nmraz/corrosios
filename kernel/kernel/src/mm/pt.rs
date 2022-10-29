@@ -11,7 +11,7 @@ use crate::arch::mmu::{
 };
 use crate::err::{Error, Result};
 
-use super::types::{PageTablePerms, PhysFrameNum, VirtPageNum};
+use super::types::{CacheMode, PageTablePerms, PhysFrameNum, VirtPageNum};
 
 /// An object that can translate physical frame numbers to virtual page numbers that can be used to
 /// access them.
@@ -109,7 +109,7 @@ impl<T: TranslatePhys> PageTable<T> {
     }
 
     /// Maps the virtual page range spanned by `pointer` to a contiguous physical range starting at
-    /// `phys_base`, with permissions `perms`.
+    /// `phys_base`, with permissions `perms` and cache mode `cache_mode`.
     ///
     /// This function does not support overwriting existing mappings, and will fail if it encounters
     /// a page that is already mapped.
@@ -134,6 +134,7 @@ impl<T: TranslatePhys> PageTable<T> {
         pointer: &mut MappingPointer,
         phys_base: PhysFrameNum,
         perms: PageTablePerms,
+        cache_mode: CacheMode,
     ) -> Result<()> {
         self.inner.map(
             alloc,
@@ -142,6 +143,7 @@ impl<T: TranslatePhys> PageTable<T> {
             PT_LEVEL_COUNT - 1,
             phys_base,
             perms,
+            cache_mode,
         )
     }
 
@@ -207,6 +209,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         Self { translator }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn map(
         &mut self,
         alloc: &mut impl PageTableAlloc,
@@ -215,14 +218,23 @@ impl<T: TranslatePhys> PageTableInner<T> {
         level: usize,
         phys_base: PhysFrameNum,
         perms: PageTablePerms,
+        cache_mode: CacheMode,
     ) -> Result<()> {
         walk_level(level, pointer, |pointer| {
             if mmu::supports_page_size(level) && can_use_level_page(level, pointer, phys_base) {
-                self.map_terminal(pointer, table, level, phys_base, perms)?;
+                self.map_terminal(pointer, table, level, phys_base, perms, cache_mode)?;
             } else {
                 let next =
                     self.next_table_or_create(alloc, table, pointer.virt().pt_index(level), level)?;
-                self.map(alloc, pointer, next, level - 1, phys_base, perms)?;
+                self.map(
+                    alloc,
+                    pointer,
+                    next,
+                    level - 1,
+                    phys_base,
+                    perms,
+                    cache_mode,
+                )?;
             }
 
             Ok(())
@@ -342,6 +354,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         level: usize,
         phys_base: PhysFrameNum,
         perms: PageTablePerms,
+        cache_mode: CacheMode,
     ) -> Result<()> {
         let index = pointer.virt().pt_index(level);
 
@@ -352,7 +365,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         self.set(
             table,
             index,
-            make_terminal_pte(level, phys_base + pointer.offset(), perms),
+            make_terminal_pte(level, phys_base + pointer.offset(), perms, cache_mode),
         );
 
         pointer.advance(level_page_count(level));
