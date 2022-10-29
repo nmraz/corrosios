@@ -30,6 +30,10 @@ use super::{early, utils};
 pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled: &IrqDisabled) {
     let mut mapper = early::take_early_mapper();
 
+    unsafe {
+        arch::mmu::early_init(irq_disabled);
+    }
+
     let bootinfo_pages = div_ceil(bootinfo_size, PAGE_SIZE);
     let bootinfo_ptr = mapper
         .map(bootinfo_paddr.containing_frame(), bootinfo_pages)

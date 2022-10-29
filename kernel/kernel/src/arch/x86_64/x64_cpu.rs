@@ -5,6 +5,7 @@ use bitflags::bitflags;
 use crate::mm::types::VirtAddr;
 
 const IA32_PAT: u32 = 0x277;
+const IA32_MTRR_DEF_TYPE: u32 = 0x2ff;
 const IA32_GS_BASE: u32 = 0xc0000101;
 const IA32_EFER: u32 = 0xc0000080;
 
@@ -154,6 +155,13 @@ pub fn hlt() {
 }
 
 #[inline]
+pub fn wbinvd() {
+    unsafe {
+        asm!("wbinvd", options(nostack));
+    }
+}
+
+#[inline]
 pub unsafe fn lgdt(desc: &DescriptorRegister) {
     unsafe {
         asm!("lgdt [{}]", in(reg) desc, options(nostack));
@@ -258,6 +266,25 @@ pub fn read_ia32_efer() -> Ia32Efer {
 pub unsafe fn write_ia32_efer(ia32_efer: Ia32Efer) {
     unsafe {
         wrmsr(IA32_EFER, ia32_efer.bits());
+    }
+}
+
+#[inline]
+pub fn read_mtrr_def_type() -> u64 {
+    unsafe { rdmsr(IA32_MTRR_DEF_TYPE) }
+}
+
+#[inline]
+pub unsafe fn write_mtrr_def_type(def_type: u64) {
+    unsafe {
+        wrmsr(IA32_MTRR_DEF_TYPE, def_type);
+    }
+}
+
+#[inline]
+pub unsafe fn write_pat(pat: u64) {
+    unsafe {
+        wrmsr(IA32_PAT, pat);
     }
 }
 
