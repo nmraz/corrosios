@@ -6,8 +6,8 @@
 use core::{cmp, result};
 
 use crate::arch::mmu::{
-    self, get_pte_frame, make_empty_pte, make_pte, pte_is_present, pte_is_terminal, PageTableEntry,
-    PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT,
+    self, get_pte_frame, make_empty_pte, make_intermediate_pte, make_terminal_pte, pte_is_present,
+    pte_is_terminal, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT,
 };
 use crate::err::{Error, Result};
 
@@ -195,7 +195,7 @@ impl<T: TranslatePhys> PageTable<T> {
 
 enum NextTableError {
     NotPresent,
-    LargePage(PageTableEntry),
+    TerminalEntry(PageTableEntry),
 }
 
 struct PageTableInner<T> {
@@ -244,7 +244,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
                 let next = match self.next_table(table, index, level) {
                     Ok(next_ptr) => next_ptr,
 
-                    Err(NextTableError::LargePage(_entry)) => {
+                    Err(NextTableError::TerminalEntry(_entry)) => {
                         if covers_level_entry(pointer, level) {
                             self.unmap_terminal(gather, pointer, table, level);
                             return Ok(());
@@ -303,20 +303,15 @@ impl<T: TranslatePhys> PageTableInner<T> {
         index: usize,
         level: usize,
     ) -> Result<PhysFrameNum> {
-        let perms: PageTablePerms = PageTablePerms::READ
-            | PageTablePerms::WRITE
-            | PageTablePerms::EXECUTE
-            | PageTablePerms::USER;
-
         match self.next_table(table, index, level) {
             Ok(next) => return Ok(next),
-            Err(NextTableError::LargePage(_)) => return Err(Error::RESOURCE_OVERLAP),
+            Err(NextTableError::TerminalEntry(_)) => return Err(Error::RESOURCE_OVERLAP),
             Err(NextTableError::NotPresent) => {}
         };
 
         let new_table = alloc.allocate()?;
         self.clear_table(new_table);
-        self.set(table, index, make_pte(level, false, new_table, perms));
+        self.set(table, index, make_intermediate_pte(level, new_table));
 
         Ok(new_table)
     }
@@ -334,7 +329,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         }
 
         if pte_is_terminal(pte, level) {
-            return Err(NextTableError::LargePage(pte));
+            return Err(NextTableError::TerminalEntry(pte));
         }
 
         Ok(get_pte_frame(pte, level))
@@ -357,7 +352,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         self.set(
             table,
             index,
-            make_pte(level, true, phys_base + pointer.offset(), perms),
+            make_terminal_pte(level, phys_base + pointer.offset(), perms),
         );
 
         pointer.advance(level_page_count(level));

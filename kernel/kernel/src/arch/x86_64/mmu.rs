@@ -66,14 +66,10 @@ pub fn make_empty_pte() -> PageTableEntry {
     PageTableEntry(0)
 }
 
-/// Creates a PTE for use at the specified page table level with the specified permissions and
-/// physical frame.
-///
-/// If `terminal` is true, the PTE will be set up as a pointer to a leaf entry mapping a physical
-/// frame. Otherwise, the PTE will be set up to point to the next-level page table at `frame`.
-pub fn make_pte(
+/// Creates leaf a PTE mapping `frame` with permissions `perms` for use with the specified page
+/// table level.
+pub fn make_terminal_pte(
     level: usize,
-    terminal: bool,
     frame: PhysFrameNum,
     perms: PageTablePerms,
 ) -> PageTableEntry {
@@ -92,9 +88,17 @@ pub fn make_pte(
         !perms.contains(PageTablePerms::EXECUTE),
     );
 
-    x86_flags.set(X86PageTableFlags::LARGE, level > 0 && terminal);
+    x86_flags.set(X86PageTableFlags::LARGE, level > 0);
 
     PageTableEntry(frame.addr().as_u64() | x86_flags.bits())
+}
+
+/// Creates a PTE referring to a lower-level page table `next_table` for use with the specified page
+/// table level.
+pub fn make_intermediate_pte(_level: usize, next_table: PhysFrameNum) -> PageTableEntry {
+    let x86_flags =
+        X86PageTableFlags::PRESENT | X86PageTableFlags::WRITABLE | X86PageTableFlags::USER_MODE;
+    PageTableEntry(next_table.addr().as_u64() | x86_flags.bits())
 }
 
 pub fn get_pte_frame(pte: PageTableEntry, _level: usize) -> PhysFrameNum {
