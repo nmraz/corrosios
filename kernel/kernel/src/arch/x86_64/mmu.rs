@@ -37,30 +37,40 @@ static KERNEL_PD: PageTableSpace = PageTableSpace::NEW;
 #[no_mangle]
 static KERNEL_PTS: [PageTableSpace; KERNEL_PT_COUNT] = [PageTableSpace::NEW; KERNEL_PT_COUNT];
 
+/// Returns the physical frame of the kernel root page table.
 pub fn kernel_pt_root() -> PhysFrameNum {
     kimage::pfn_from_kernel_vpn(VirtAddr::from_ptr(&KERNEL_PML4).containing_page())
 }
 
+/// Flushes the specified page from the kernel TLB.
 pub fn flush_kernel_tlb_page(vpn: VirtPageNum) {
     unsafe {
         asm!("invlpg [{}]", in(reg) vpn.addr().as_usize());
     }
 }
 
+/// Flushes the entire kernel TLB.
 pub fn flush_kernel_tlb() {
     unsafe {
         write_cr3(read_cr3());
     }
 }
 
+/// Queries whether the processor supports large pages at level `level` of the page table hierarchy.
 pub fn supports_page_size(level: usize) -> bool {
     matches!(level, 0 | 1)
 }
 
+/// Creates an empty (non-present) PTE.
 pub fn make_empty_pte() -> PageTableEntry {
     PageTableEntry(0)
 }
 
+/// Creates a PTE for use at the specified page table level with the specified permissions and
+/// physical frame.
+///
+/// If `terminal` is true, the PTE will be set up as a pointer to a leaf entry mapping a physical
+/// frame. Otherwise, the PTE will be set up to point to the next-level page table at `frame`.
 pub fn make_pte(
     level: usize,
     terminal: bool,
