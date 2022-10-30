@@ -125,6 +125,8 @@ extern "C" fn kernel_main(
         )
     };
 
+    debug!("writing to framebuffer");
+
     for row in 0..framebuffer_desc.height {
         for col in 0..framebuffer_desc.width {
             framebuffer_slice[(row * framebuffer_desc.stride + col) as usize] = 0xff;
