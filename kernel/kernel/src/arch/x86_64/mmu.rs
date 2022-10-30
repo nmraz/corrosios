@@ -22,7 +22,6 @@ pub const PT_ENTRY_COUNT: usize = 1 << PT_LEVEL_SHIFT;
 pub const PT_LEVEL_MASK: usize = PT_ENTRY_COUNT - 1;
 
 const MTRR_DEF_TYPE_E: u64 = 1 << 11;
-const MTRR_DEF_TYPE_FE: u64 = 1 << 10;
 const MTRR_DEF_TYPE_TYPE_MASK: u64 = 0xff;
 
 const MEM_TYPE_UC: u64 = 0;
