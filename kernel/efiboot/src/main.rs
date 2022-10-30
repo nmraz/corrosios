@@ -128,7 +128,6 @@ fn mem_kind_from_efi(efi_type: MemoryType) -> bootitem::MemoryKind {
     match efi_type {
         MemoryType::CONVENTIONAL
         | MemoryType::BOOT_SERVICES_CODE
-        | MemoryType::BOOT_SERVICES_DATA
         | MemoryType::LOADER_CODE
         | MemoryType::LOADER_DATA => bootitem::MemoryKind::USABLE,
 
@@ -136,8 +135,10 @@ fn mem_kind_from_efi(efi_type: MemoryType) -> bootitem::MemoryKind {
 
         MemoryType::ACPI_RECLAIM => bootitem::MemoryKind::ACPI_TABLES,
 
+        MemoryType::BOOT_SERVICES_DATA => bootitem::MemoryKind::FIRMWARE_BOOT,
+
         MemoryType::RUNTIME_SERVICES_CODE | MemoryType::RUNTIME_SERVICES_DATA => {
-            bootitem::MemoryKind::FIRMWARE
+            bootitem::MemoryKind::FIRMWARE_RUNIME
         }
 
         _ => bootitem::MemoryKind::RESERVED,

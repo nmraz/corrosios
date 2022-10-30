@@ -4,9 +4,10 @@ struct_enum! {
     pub struct MemoryKind: u32 {
         RESERVED = 0;
         USABLE = 1;
-        FIRMWARE = 2;
-        ACPI_TABLES = 3;
-        UNUSABLE = 4;
+        FIRMWARE_BOOT = 2;
+        FIRMWARE_RUNIME = 3;
+        ACPI_TABLES = 4;
+        UNUSABLE = 5;
     }
 }
 

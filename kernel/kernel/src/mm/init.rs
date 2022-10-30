@@ -147,7 +147,8 @@ fn display_range(range: &MemoryRange) {
     let kind = match range.kind {
         MemoryKind::RESERVED => "reserved",
         MemoryKind::USABLE => "usable",
-        MemoryKind::FIRMWARE => "firmware",
+        MemoryKind::FIRMWARE_BOOT => "firmware (boot)",
+        MemoryKind::FIRMWARE_RUNIME => "firmware (runtime)",
         MemoryKind::ACPI_TABLES => "ACPI tables",
         MemoryKind::UNUSABLE => "unusable",
         _ => "other",
