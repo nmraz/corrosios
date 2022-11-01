@@ -33,7 +33,6 @@ pub struct ItemHeader {
     pub payload_len: u32,
 }
 
-#[deny(const_err)]
 const _: () = {
     assert!(mem::align_of::<ItemHeader>() <= ITEM_ALIGN);
     assert!(mem::size_of::<ItemHeader>() == ITEM_ALIGN);
