@@ -1,23 +1,35 @@
 use core::fmt;
 use core::ops::Range;
 
-use bootinfo::item::{MemoryKind, MemoryRange};
+use bootinfo::item::MemoryKind;
 
 use super::types::PhysFrameNum;
 
-/// Invoke `func` for every memory range reported as usable in `mem_map`, carving out holes for
-/// any ranges in `reserved_ranges`.
+pub fn is_usable(kind: MemoryKind) -> bool {
+    // Note: we include boot services here as they can be reclaimed once we are done parsing
+    // data provided by the firmware.
+    matches!(kind, MemoryKind::USABLE | MemoryKind::FIRMWARE_BOOT)
+}
+
+pub fn is_early_usable(kind: MemoryKind) -> bool {
+    // Note: we intentionally exclude boot services here, as we may still need to access data stored
+    // in that kind of memory and will explicitly reclaim it later.
+    kind == MemoryKind::USABLE
+}
+
+/// Invokes `func` for every memory range reported as usable in `usable_ranges`, carving out holes
+/// for any ranges in `reserved_ranges`.
 ///
-/// **Note**: This function assumes that both `mem_map` and `reserved_ranges` are sorted in
+/// **Note**: This function assumes that both `usable_ranges` and `reserved_ranges` are sorted in
 /// ascending order, and that the ranges contained in each are disjoint.
 pub fn iter_usable_ranges(
-    mem_map: &[MemoryRange],
+    usable_ranges: impl Iterator<Item = Range<PhysFrameNum>>,
     reserved_ranges: &[Range<PhysFrameNum>],
     mut func: impl FnMut(PhysFrameNum, PhysFrameNum),
 ) {
     let mut reserved_ranges = reserved_ranges.iter().peekable();
 
-    'outer: for Range { mut start, end } in usable_ranges(mem_map) {
+    'outer: for Range { mut start, end } in usable_ranges {
         // Chop up our usable range based on the reserved ranges that intersect it. This loop should
         // always consume all reserved ranges contained in `[0, end)`.
         while let Some(reserved) = reserved_ranges.peek().copied() {
@@ -53,18 +65,6 @@ pub fn iter_usable_ranges(
             func(start, end);
         }
     }
-}
-
-pub fn usable_ranges(
-    mem_map: &[MemoryRange],
-) -> impl DoubleEndedIterator<Item = Range<PhysFrameNum>> + '_ {
-    mem_map
-        .iter()
-        .filter(|range| range.kind == MemoryKind::USABLE)
-        .map(|range| {
-            let start = PhysFrameNum::new(range.start_page);
-            start..start + range.page_count
-        })
 }
 
 pub fn display_byte_size(bytes: usize) -> impl fmt::Display {

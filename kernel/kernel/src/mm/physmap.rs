@@ -1,4 +1,5 @@
-use bootinfo::item::{MemoryKind, MemoryRange};
+use bootinfo::item::MemoryRange;
+use itertools::Itertools;
 use log::debug;
 
 use crate::arch::mm::{PHYS_MAP_BASE, PHYS_MAP_MAX_PAGES};
@@ -8,6 +9,7 @@ use crate::sync::irq::IrqDisabled;
 
 use super::pt::{MappingPointer, PageTable, PageTableAlloc, TranslatePhys};
 use super::types::{PageTablePerms, PhysAddr, PhysFrameNum, VirtAddr, VirtPageNum};
+use super::utils::is_usable;
 
 /// Initializes the mapping of all regular physical memory at `PHYS_MAP_BASE`
 ///
@@ -25,25 +27,31 @@ pub unsafe fn init(
     // Safety: the function contract guarantees that `pt_mapping` can be used here
     let mut pt = unsafe { PageTable::new(kernel_pt_root(), pt_mapping) };
 
-    // Note: the bootloader is responsible for sorting/coalescing the memory map
+    // Note: the bootloader is responsible for sorting the memory map
     let usable_map = mem_map
         .iter()
-        .filter(|range| range.kind == MemoryKind::USABLE);
+        .filter(|range| is_usable(range.kind))
+        .map(|range| {
+            let start = PhysFrameNum::new(range.start_page);
+            (start, start + range.page_count)
+        })
+        .coalesce(|(cur_start, cur_end), (next_start, next_end)| {
+            if cur_end == next_start {
+                Ok((cur_start, next_end))
+            } else {
+                Err(((cur_start, cur_end), (next_start, next_end)))
+            }
+        });
 
-    for range in usable_map {
-        debug!(
-            "mapping frames {:#x}-{:#x}",
-            range.start_page,
-            range.start_page + range.page_count
-        );
+    for (start, end) in usable_map {
+        debug!("mapping frames {}-{}", start, end);
 
         assert!(
-            range.start_page + range.page_count < PHYS_MAP_MAX_PAGES,
+            end.as_usize() < PHYS_MAP_MAX_PAGES,
             "too much physical memory"
         );
 
-        let pfn = PhysFrameNum::new(range.start_page);
-        let mut pointer = MappingPointer::new(pfn_to_physmap(pfn), range.page_count);
+        let mut pointer = MappingPointer::new(pfn_to_physmap(start), end - start);
 
         // Safety: our allocator is valid as per function contract, we know that interrupts are
         // disabled, and the function contract guarantees that no other cores are up at the moment.
@@ -51,7 +59,7 @@ pub unsafe fn init(
             pt.map(
                 pt_alloc,
                 &mut pointer,
-                pfn,
+                start,
                 PageTablePerms::READ | PageTablePerms::WRITE,
                 CacheMode::WriteBack,
             )

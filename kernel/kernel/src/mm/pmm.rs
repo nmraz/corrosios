@@ -1,34 +1,30 @@
 use core::alloc::Layout;
-use core::ops::Range;
 use core::{array, cmp, ptr, slice};
 
-use arrayvec::ArrayVec;
-use bitmap::BorrowedBitmapMut;
-use bootinfo::item::{MemoryKind, MemoryRange};
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink, UnsafeRef};
 use itertools::Itertools;
 use log::debug;
+
+use bitmap::BorrowedBitmapMut;
 use num_utils::{div_ceil, log2};
 
 use crate::arch::mmu::PAGE_SIZE;
-use crate::err::{Error, Result};
 use crate::mm::physmap::{paddr_to_physmap, physmap_to_pfn};
 use crate::mm::types::PhysFrameNum;
-use crate::mm::utils::{self, display_byte_size};
+use crate::mm::utils::display_byte_size;
 use crate::sync::irq::IrqDisabled;
 use crate::sync::SpinLock;
 
 use super::early::BootHeap;
 use super::physmap::pfn_to_physmap;
-use super::pt::PageTableAlloc;
 use super::types::VirtAddr;
 
 const ORDER_COUNT: usize = 16;
 
 static PHYS_MANAGER: SpinLock<Option<PhysManager>> = SpinLock::new(None);
 
-/// Initializes the physical memory manager (PMM) for all usable ranges in `mem_map`, carving out
-/// holes as specified in `reserved_ranges`.
+/// Initializes the physical memory manager (PMM) with space for tracking physical frames up to
+/// `max_pfn`.
 ///
 /// `bootheap` will be used for any necessary metadata allocations, the page range covered by it
 /// will also be marked as reserved when the manager is initialized. Frames in entries marked as
@@ -37,72 +33,58 @@ static PHYS_MANAGER: SpinLock<Option<PhysManager>> = SpinLock::new(None);
 ///
 /// # Safety
 ///
-/// * `mem_map` must contain non-overlapping entries
-/// * Entries marked as usable in `mem_map` must point to valid, usable memory
-pub unsafe fn init(
-    mem_map: &[MemoryRange],
-    reserved_ranges: &[Range<PhysFrameNum>],
-    mut bootheap: BootHeap,
-    irq_disabled: &IrqDisabled,
-) {
+/// * `bootheap` must point to safely usable free memory
+pub unsafe fn init(max_pfn: PhysFrameNum, bootheap: &mut BootHeap, irq_disabled: &IrqDisabled) {
     PHYS_MANAGER.with_noirq(irq_disabled, |manager_ref| {
         assert!(manager_ref.is_none(), "pmm already initialized");
 
-        let max_pfn = highest_usable_frame(mem_map);
         debug!("reserving bitmaps up to frame {}", max_pfn);
-        let mut manager = PhysManager::new(max_pfn, &mut bootheap);
-
-        let bootheap_used_range = bootheap.used_range();
-        debug!(
-            "final bootheap usage: {}-{} ({})",
-            bootheap_used_range.start,
-            bootheap_used_range.end,
-            display_byte_size(bootheap_used_range.end - bootheap_used_range.start)
-        );
-
-        let bootheap_used_frames = bootheap_used_range.start.containing_frame()
-            ..bootheap_used_range.end.containing_tail_frame();
-
-        let reserved_ranges = {
-            let mut final_reserved_ranges: ArrayVec<_, 5> = ArrayVec::new();
-            final_reserved_ranges.extend(reserved_ranges.iter().cloned());
-            final_reserved_ranges.push(bootheap_used_frames);
-            final_reserved_ranges.sort_unstable_by_key(|range| range.start);
-            final_reserved_ranges
-        };
-
-        utils::iter_usable_ranges(mem_map, &reserved_ranges, |start, end| {
-            debug!("adding free range {}-{}", start, end);
-            manager.add_free_range(start, end);
-        });
-
+        let manager = PhysManager::new(max_pfn, bootheap);
         *manager_ref = Some(manager);
     });
 }
 
+/// Allocates a block of physical pages of size and alignment `2 ** order`, returning the base
+/// of the allocated block, or `None` if not enough memory is available.
 pub fn allocate(order: usize) -> Option<PhysFrameNum> {
     with(|pmm| pmm.allocate(order))
 }
 
+/// Frees a block of physical pages previously allocated by [`allocate`].
+///
+/// # Safety
+///
+/// * `pfn` must have been obtained by a previous successfull call to [`allocate`] with `order`
+/// * The pages should no longer be accessed after this function returns
 pub unsafe fn deallocate(pfn: PhysFrameNum, order: usize) {
     with(|pmm| unsafe { pmm.deallocate(pfn, order) })
+}
+
+/// Marks the range `start..end` as free in the PMM.
+///
+/// # Safety
+///
+/// The reported range should contain free memory that can safely be repurposed, and should not
+/// overlap any ranges added to the PMM by previous calls to `add_free_range`. The range should also
+/// be present in the physmap.
+pub unsafe fn add_free_range(start: PhysFrameNum, end: PhysFrameNum, irq_disabled: &IrqDisabled) {
+    debug!("adding free range {}-{}", start, end);
+    with_noirq(irq_disabled, |pmm| unsafe {
+        pmm.add_free_range(start, end)
+    })
 }
 
 pub fn dump_usage() {
     with(|pmm| pmm.dump_usage());
 }
 
+fn with_noirq<R>(irq_disabled: &IrqDisabled, f: impl FnOnce(&mut PhysManager) -> R) -> R {
+    PHYS_MANAGER.with_noirq(irq_disabled, |pmm| {
+        f(pmm.as_mut().expect("pmm not initialized"))
+    })
+}
 fn with<R>(f: impl FnOnce(&mut PhysManager) -> R) -> R {
     PHYS_MANAGER.with(|pmm, _| f(pmm.as_mut().expect("pmm not initialized")))
-}
-
-fn highest_usable_frame(mem_map: &[MemoryRange]) -> PhysFrameNum {
-    mem_map
-        .iter()
-        .filter(|range| range.kind == MemoryKind::USABLE)
-        .map(|range| PhysFrameNum::new(range.start_page) + range.page_count)
-        .max()
-        .expect("no usable memory")
 }
 
 struct PhysManager {
@@ -216,7 +198,7 @@ impl PhysManager {
         );
     }
 
-    fn add_free_range(&mut self, mut start: PhysFrameNum, end: PhysFrameNum) {
+    unsafe fn add_free_range(&mut self, mut start: PhysFrameNum, end: PhysFrameNum) {
         let size = end - start;
 
         while start < end {

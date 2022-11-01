@@ -16,8 +16,9 @@ use crate::mm::{physmap, pmm, vm};
 use crate::sync::irq::IrqDisabled;
 use crate::{arch, kimage};
 
+use super::early;
 use super::types::{PhysAddr, PhysFrameNum};
-use super::{early, utils};
+use super::utils::{is_early_usable, is_usable, iter_usable_ranges};
 
 /// # Safety
 ///
@@ -50,9 +51,9 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled:
 
     let bootinfo_frame_range =
         bootinfo_paddr.containing_frame()..(bootinfo_paddr + bootinfo_size).containing_tail_frame();
-    let reserved_ranges = gather_reserved_ranges(bootinfo_frame_range);
+    let mut reserved_ranges = gather_reserved_ranges(bootinfo_frame_range);
 
-    let bootheap_range = largest_usable_range(mem_map, &reserved_ranges);
+    let bootheap_range = largest_early_usable_range(mem_map, &reserved_ranges);
     let bootheap_pages = bootheap_range.end - bootheap_range.start;
 
     debug!(
@@ -82,7 +83,17 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled:
             ),
             irq_disabled,
         );
-        pmm::init(mem_map, &reserved_ranges, bootheap, irq_disabled);
+    }
+
+    let max_pfn = highest_usable_pfn(mem_map);
+
+    unsafe {
+        pmm::init(max_pfn, &mut bootheap, irq_disabled);
+
+        reserve_bootheap(&mut reserved_ranges, bootheap);
+        iter_early_usable_ranges(mem_map, &reserved_ranges, |start, end| {
+            pmm::add_free_range(start, end, irq_disabled);
+        })
     }
 
     vm::init();
@@ -91,7 +102,7 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled:
 fn print_mem_info(mem_map: &[MemoryRange]) {
     let mut usable_pages = 0;
 
-    debug!("physical memory map:");
+    debug!("physical memory map ({} entries):", mem_map.len());
     for range in mem_map {
         display_range(range);
         if range.kind == MemoryKind::USABLE {
@@ -115,21 +126,43 @@ fn get_mem_map(bootinfo: View<'_>) -> &[MemoryRange] {
     unsafe { mem_map_item.get_slice() }.expect("invalid bootinfo memory map")
 }
 
-fn gather_reserved_ranges(bootinfo_range: Range<PhysFrameNum>) -> ArrayVec<Range<PhysFrameNum>, 5> {
-    let mut ret = ArrayVec::new();
+type ReservedRanges = ArrayVec<Range<PhysFrameNum>, 5>;
+
+fn gather_reserved_ranges(bootinfo_range: Range<PhysFrameNum>) -> ReservedRanges {
+    let mut ret = ReservedRanges::new();
     ret.extend([kimage::phys_base()..kimage::phys_end(), bootinfo_range]);
     ret.extend(arch::mm::RESERVED_RANGES);
-    ret.sort_unstable_by_key(|range| range.start);
+    sort_reserved_ranges(&mut ret);
     ret
 }
 
-fn largest_usable_range(
+fn reserve_bootheap(reserved_ranges: &mut ReservedRanges, bootheap: BootHeap) {
+    let bootheap_used_range = bootheap.used_range();
+    debug!(
+        "final bootheap usage: {}-{} ({})",
+        bootheap_used_range.start,
+        bootheap_used_range.end,
+        display_byte_size(bootheap_used_range.end - bootheap_used_range.start)
+    );
+
+    let bootheap_used_frames = bootheap_used_range.start.containing_frame()
+        ..bootheap_used_range.end.containing_tail_frame();
+
+    reserved_ranges.push(bootheap_used_frames);
+    sort_reserved_ranges(reserved_ranges);
+}
+
+fn sort_reserved_ranges(reserved_ranges: &mut ReservedRanges) {
+    reserved_ranges.sort_unstable_by_key(|range| range.start);
+}
+
+fn largest_early_usable_range(
     mem_map: &[MemoryRange],
     reserved_ranges: &[Range<PhysFrameNum>],
 ) -> Range<PhysFrameNum> {
     let mut largest: Option<Range<PhysFrameNum>> = None;
 
-    utils::iter_usable_ranges(mem_map, reserved_ranges, |start, end| match &largest {
+    iter_early_usable_ranges(mem_map, reserved_ranges, |start, end| match &largest {
         Some(cur_largest) => {
             if end - start > cur_largest.end - cur_largest.start {
                 largest = Some(start..end);
@@ -141,6 +174,35 @@ fn largest_usable_range(
     });
 
     largest.expect("no usable memory")
+}
+
+pub fn iter_early_usable_ranges(
+    mem_map: &[MemoryRange],
+    reserved_ranges: &[Range<PhysFrameNum>],
+    func: impl FnMut(PhysFrameNum, PhysFrameNum),
+) {
+    iter_usable_ranges(early_usable_ranges(mem_map), reserved_ranges, func);
+}
+
+pub fn early_usable_ranges(
+    mem_map: &[MemoryRange],
+) -> impl DoubleEndedIterator<Item = Range<PhysFrameNum>> + '_ {
+    mem_map
+        .iter()
+        .filter(|range| is_early_usable(range.kind))
+        .map(|range| {
+            let start = PhysFrameNum::new(range.start_page);
+            start..start + range.page_count
+        })
+}
+
+fn highest_usable_pfn(mem_map: &[MemoryRange]) -> PhysFrameNum {
+    mem_map
+        .iter()
+        .filter(|range| is_usable(range.kind))
+        .map(|range| PhysFrameNum::new(range.start_page) + range.page_count)
+        .max()
+        .expect("no usable memory")
 }
 
 fn display_range(range: &MemoryRange) {
