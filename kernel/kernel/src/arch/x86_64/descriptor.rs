@@ -160,10 +160,17 @@ pub fn init_idt() {
     macro_rules! idt_entry {
         ($vector:literal, $slots:ident) => {
             paste! {
-                {
+                // Workaround for debug builds: using a separate function ensures that the stack
+                // space will be reused across assignments to different entries. As of
+                // nightly-2022-09-28, assigning the entries directly causes separate stack slots
+                // to be allocated for every `entry_point` variable, which ultimately overflows the
+                // early stack and clobbers the image.
+                fn [<set_entry_ $vector>](slots: &mut [MaybeUninit<IdtEntry>]) {
                     let entry_point = [<interrupt_vector_ $vector>] as unsafe extern "C" fn() as u64;
-                    $slots[$vector].write(make_idt_entry(entry_point, KERNEL_CODE_SELECTOR, get_ist($vector)));
+                    slots[$vector].write(make_idt_entry(entry_point, KERNEL_CODE_SELECTOR, get_ist($vector)));
                 }
+
+                [<set_entry_ $vector>]($slots);
             }
         };
     }

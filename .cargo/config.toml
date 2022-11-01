@@ -13,7 +13,6 @@ gdbmux = "hosttools gdbmux"
 
 [profile.dev.package.kernel]
 # We need this in order to prevent dumb stack overflows in various places
-opt-level = 1
 
 [profile.release]
 lto = "thin"
