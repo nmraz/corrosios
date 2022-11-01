@@ -100,16 +100,16 @@ extern "C" fn kernel_main(
     debug!(
         "framebuffer: phys range {}-{}, dimensions {}x{}, format {:?}",
         framebuffer_paddr,
-        framebuffer_paddr + framebuffer_desc.size,
-        framebuffer_desc.width,
-        framebuffer_desc.height,
-        framebuffer_desc.format
+        framebuffer_paddr + framebuffer_desc.byte_size,
+        framebuffer_desc.pixel_width,
+        framebuffer_desc.pixel_height,
+        framebuffer_desc.pixel_format
     );
 
     let framebuffer_mapping = unsafe {
         iomap(
             framebuffer_paddr.containing_frame(),
-            div_ceil(framebuffer_desc.size, PAGE_SIZE),
+            div_ceil(framebuffer_desc.byte_size, PAGE_SIZE),
             Protection::READ | Protection::WRITE,
             CacheMode::WriteCombining,
         )
@@ -121,15 +121,15 @@ extern "C" fn kernel_main(
     let framebuffer_slice: &mut [u32] = unsafe {
         slice::from_raw_parts_mut(
             framebuffer_mapping.addr().as_mut_ptr(),
-            framebuffer_desc.size / mem::size_of::<u32>(),
+            framebuffer_desc.byte_size / mem::size_of::<u32>(),
         )
     };
 
     debug!("writing to framebuffer");
 
-    for row in 0..framebuffer_desc.height {
-        for col in 0..framebuffer_desc.width {
-            framebuffer_slice[(row * framebuffer_desc.stride + col) as usize] = 0xff;
+    for row in 0..framebuffer_desc.pixel_height {
+        for col in 0..framebuffer_desc.pixel_width {
+            framebuffer_slice[(row * framebuffer_desc.pixel_stride + col) as usize] = 0xff;
         }
     }
 

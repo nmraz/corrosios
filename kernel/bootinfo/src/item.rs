@@ -30,9 +30,9 @@ struct_enum! {
 #[repr(C)]
 pub struct Framebuffer {
     pub paddr: usize,
-    pub size: usize,
-    pub width: u32,
-    pub height: u32,
-    pub stride: u32,
-    pub format: PixelFormat,
+    pub byte_size: usize,
+    pub pixel_width: u32,
+    pub pixel_height: u32,
+    pub pixel_stride: u32,
+    pub pixel_format: PixelFormat,
 }

@@ -70,11 +70,11 @@ fn get_framebuffer(boot_table: &BootTable) -> Result<bootitem::Framebuffer> {
 
     Ok(bootitem::Framebuffer {
         paddr: gop_framebuffer.base as usize,
-        size: gop_framebuffer.size,
-        width: mode_info.hres,
-        height: mode_info.vres,
-        stride: mode_info.pixels_per_scanline,
-        format,
+        byte_size: gop_framebuffer.size,
+        pixel_width: mode_info.hres,
+        pixel_height: mode_info.vres,
+        pixel_stride: mode_info.pixels_per_scanline,
+        pixel_format: format,
     })
 }
 
