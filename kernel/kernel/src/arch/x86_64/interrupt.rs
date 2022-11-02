@@ -80,7 +80,7 @@ impl fmt::Display for InterruptFrame {
             self.r9, self.r10, self.r11, self.r12
         )?;
 
-        writeln!(
+        write!(
             f,
             "r13: {:#018x}  r14: {:#018x}  r15: {:#018x}",
             self.r13, self.r14, self.r15

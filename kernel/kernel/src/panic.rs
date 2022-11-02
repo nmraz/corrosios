@@ -13,7 +13,7 @@ fn handle_panic(info: &PanicInfo<'_>) -> ! {
         }
 
         if let Some(location) = info.location() {
-            println!("at {}", location);
+            println!("\nat {}", location);
         }
 
         println!("**************************************\n");
