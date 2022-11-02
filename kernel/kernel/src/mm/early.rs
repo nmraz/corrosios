@@ -132,6 +132,8 @@ impl EarlyMapper {
                 .expect("early map failed");
         }
 
+        self.slots.push(EarlyMapperSlot { base, pages });
+
         virt
     }
 }
