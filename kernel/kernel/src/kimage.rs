@@ -5,6 +5,12 @@ static mut KERNEL_PHYS: PhysFrameNum = PhysFrameNum::new(0);
 extern "C" {
     static __virt_start: u8;
     static __virt_end: u8;
+    static __code_start: u8;
+    static __code_end: u8;
+    static __rodata_start: u8;
+    static __rodata_end: u8;
+    static __data_start: u8;
+    static __data_end: u8;
 }
 
 /// # Safety
@@ -33,13 +39,41 @@ pub fn contains_phys(pfn: PhysFrameNum) -> bool {
 pub fn virt_base() -> VirtPageNum {
     VirtAddr::from_ptr(unsafe { &__virt_start }).containing_page()
 }
-
 pub fn virt_end() -> VirtPageNum {
     VirtAddr::from_ptr(unsafe { &__virt_end }).containing_page()
 }
-
 pub fn total_pages() -> usize {
     virt_end() - virt_base()
+}
+
+pub fn code_base() -> VirtPageNum {
+    VirtAddr::from_ptr(unsafe { &__code_start }).containing_page()
+}
+pub fn code_end() -> VirtPageNum {
+    VirtAddr::from_ptr(unsafe { &__code_end }).containing_page()
+}
+pub fn code_pages() -> usize {
+    code_end() - code_base()
+}
+
+pub fn rodata_base() -> VirtPageNum {
+    VirtAddr::from_ptr(unsafe { &__rodata_start }).containing_page()
+}
+pub fn rodata_end() -> VirtPageNum {
+    VirtAddr::from_ptr(unsafe { &__rodata_end }).containing_page()
+}
+pub fn rodata_pages() -> usize {
+    rodata_end() - rodata_base()
+}
+
+pub fn data_base() -> VirtPageNum {
+    VirtAddr::from_ptr(unsafe { &__data_start }).containing_page()
+}
+pub fn data_end() -> VirtPageNum {
+    VirtAddr::from_ptr(unsafe { &__data_end }).containing_page()
+}
+pub fn data_pages() -> usize {
+    data_end() - data_base()
 }
 
 pub fn vpn_from_kernel_pfn(pfn: PhysFrameNum) -> VirtPageNum {

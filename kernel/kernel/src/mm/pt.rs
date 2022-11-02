@@ -34,6 +34,16 @@ pub trait GatherInvalidations {
     fn add_tlb_flush(&mut self, vpn: VirtPageNum);
 }
 
+/// [`GatherInvalidations`] implementation that does nothing.
+///
+/// This is useful when fine-grained invalidation tracking is not necessary, as the entire TLB will
+/// be flushed anyway.
+pub struct NoopGather;
+
+impl GatherInvalidations for NoopGather {
+    fn add_tlb_flush(&mut self, _vpn: VirtPageNum) {}
+}
+
 /// A virtual page range along with a progress pointer within it.
 ///
 /// This is the structure used to track virtual page ranges in all map/unmap operations. It enables

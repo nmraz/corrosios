@@ -1,10 +1,13 @@
 use alloc::sync::Arc;
+use log::debug;
 use spin_once::Once;
 
 use crate::arch::mm::{KERNEL_ASPACE_BASE, KERNEL_ASPACE_END, PHYS_MAP_BASE, PHYS_MAP_MAX_PAGES};
 use crate::arch::mmu::{flush_kernel_tlb, flush_kernel_tlb_page, kernel_pt_root};
 use crate::err::Result;
 use crate::kimage;
+use crate::mm::physmap::PhysmapPfnTranslator;
+use crate::mm::pt::{MappingPointer, NoopGather, PageTable};
 use crate::mm::types::{AccessType, CacheMode, PageTablePerms, PhysFrameNum, Protection, VirtAddr};
 
 use super::aspace::{AddrSpace, AddrSpaceOps, MappingHandle, TlbFlush};
@@ -106,6 +109,10 @@ pub(super) fn init() {
         .expect("failed to reserve kernel image virtual address space");
 
     KERNEL_ASPACE.init(aspace);
+
+    unsafe {
+        protect_kimage();
+    }
 }
 
 /// Retrieves the global kernel address space.
@@ -117,6 +124,37 @@ pub(super) fn get() -> &'static AddrSpace<impl AddrSpaceOps> {
     KERNEL_ASPACE
         .get()
         .expect("kernel address space not initialized")
+}
+
+unsafe fn protect_kimage() {
+    debug!("protecting kernel image");
+
+    unsafe {
+        let mut pt = PageTable::new(kernel_pt_root(), PhysmapPfnTranslator);
+
+        pt.protect(
+            &mut NoopGather,
+            &mut MappingPointer::new(kimage::code_base(), kimage::code_pages()),
+            PageTablePerms::EXECUTE,
+        )
+        .expect("failed to protect kernel code");
+
+        pt.protect(
+            &mut NoopGather,
+            &mut MappingPointer::new(kimage::rodata_base(), kimage::rodata_pages()),
+            PageTablePerms::READ,
+        )
+        .expect("failed to protect kernel rodata");
+
+        pt.protect(
+            &mut NoopGather,
+            &mut MappingPointer::new(kimage::data_base(), kimage::data_pages()),
+            PageTablePerms::READ | PageTablePerms::WRITE,
+        )
+        .expect("failed to protect kernel data");
+
+        flush_kernel_tlb();
+    }
 }
 
 struct KernelAddrSpaceOps;

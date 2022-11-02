@@ -10,7 +10,7 @@ use crate::arch::mmu::{flush_kernel_tlb, kernel_pt_root, PageTableSpace};
 use crate::err::{Error, Result};
 use crate::kimage;
 
-use super::pt::{GatherInvalidations, MappingPointer, PageTable, PageTableAlloc, TranslatePhys};
+use super::pt::{MappingPointer, NoopGather, PageTable, PageTableAlloc, TranslatePhys};
 use super::types::{CacheMode, PageTablePerms, PhysAddr, PhysFrameNum, VirtAddr, VirtPageNum};
 
 const EARLY_MAP_MAX_SLOTS: usize = 5;
@@ -181,12 +181,6 @@ impl PageTableAlloc for BumpPageTableAlloc {
 
         Ok(ret)
     }
-}
-
-struct NoopGather;
-
-impl GatherInvalidations for NoopGather {
-    fn add_tlb_flush(&mut self, _vpn: VirtPageNum) {}
 }
 
 struct KernelPfnTranslator;
