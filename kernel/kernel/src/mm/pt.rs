@@ -7,7 +7,8 @@ use core::{cmp, result};
 
 use crate::arch::mmu::{
     self, get_pte_frame, make_empty_pte, make_intermediate_pte, make_terminal_pte, pte_is_present,
-    pte_is_terminal, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT, PT_LEVEL_SHIFT,
+    pte_is_terminal, update_pte_perms, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT,
+    PT_LEVEL_SHIFT,
 };
 use crate::err::{Error, Result};
 
@@ -176,12 +177,59 @@ impl<T: TranslatePhys> PageTable<T> {
         gather: &mut impl GatherInvalidations,
         pointer: &mut MappingPointer,
     ) -> Result<()> {
-        self.inner
-            .unmap(gather, pointer, self.root, PT_LEVEL_COUNT - 1)
+        self.inner.walk_update(
+            gather,
+            pointer,
+            &mut |_pte, _level| make_empty_pte(),
+            self.root,
+            PT_LEVEL_COUNT - 1,
+        )
+    }
+
+    /// Updates the protection permissions of all pages in the range covered by `pointer`, reporting
+    /// any virtual pages that need TLB invalidation to `gather`.
+    ///
+    /// This function will skip any "holes" encountered in the range.
+    ///
+    /// This function currently cannot split large pages, and will return an error if the range
+    /// partially intersects one.
+    ///
+    /// When this function returns, `pointer` will point past the last page updated successfully.
+    /// On success, this will always be the last page, but if the function returns early due to an
+    /// error, the reported progress can be used to take appropriate action.
+    ///
+    /// # Errors
+    ///
+    /// * `RESOURCE_OVERLAP` - The unmapping range partially intersected a large page.
+    ///
+    /// # Safety
+    ///
+    /// * The page table must not be accessed concurrently by other cores/interrupts during the
+    ///   operation
+    /// * The caller must guarantee that any page faults caused by accesses after the protection has
+    ///   been updated will be handled correctly.
+    pub unsafe fn protect(
+        &mut self,
+        gather: &mut impl GatherInvalidations,
+        pointer: &mut MappingPointer,
+        perms: PageTablePerms,
+    ) -> Result<()> {
+        self.inner.walk_update(
+            gather,
+            pointer,
+            &mut |pte, level| update_pte_perms(pte, level, perms),
+            self.root,
+            PT_LEVEL_COUNT - 1,
+        )
     }
 
     /// Invokes `cull` on any nested page tables in the range `base..base + size` and unlinks them
     /// from their parents.
+    ///
+    /// # Safety
+    ///
+    /// * The page table must not be accessed concurrently by other cores/interrupts during the
+    ///   operation
     pub unsafe fn cull_tables(
         &mut self,
         mut cull: impl FnMut(PhysFrameNum),
@@ -243,16 +291,17 @@ impl<T: TranslatePhys> PageTableInner<T> {
         })
     }
 
-    fn unmap(
+    fn walk_update(
         &mut self,
         gather: &mut impl GatherInvalidations,
         pointer: &mut MappingPointer,
+        update: &mut impl FnMut(PageTableEntry, usize) -> PageTableEntry,
         table: PhysFrameNum,
         level: usize,
     ) -> Result<()> {
         walk_level(level, pointer, |pointer| {
             if level == 0 {
-                self.unmap_terminal(gather, pointer, table, level);
+                self.update_terminal(gather, pointer, update, table, level);
             } else {
                 let index = pointer.virt().pt_index(level);
                 let next = match self.next_table(table, index, level) {
@@ -260,7 +309,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
 
                     Err(NextTableError::TerminalEntry(_entry)) => {
                         if covers_level_entry(pointer, level) {
-                            self.unmap_terminal(gather, pointer, table, level);
+                            self.update_terminal(gather, pointer, update, table, level);
                             return Ok(());
                         } else {
                             return Err(Error::RESOURCE_OVERLAP);
@@ -273,7 +322,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
                     }
                 };
 
-                self.unmap(gather, pointer, next, level - 1)?;
+                self.walk_update(gather, pointer, update, next, level - 1)?;
             }
 
             Ok(())
@@ -375,14 +424,16 @@ impl<T: TranslatePhys> PageTableInner<T> {
         Ok(())
     }
 
-    fn unmap_terminal(
+    fn update_terminal(
         &mut self,
         gather: &mut impl GatherInvalidations,
         pointer: &mut MappingPointer,
+        update: &mut impl FnMut(PageTableEntry, usize) -> PageTableEntry,
         table: PhysFrameNum,
         level: usize,
     ) {
-        self.set(table, pointer.virt().pt_index(level), make_empty_pte());
+        let index = pointer.virt().pt_index(level);
+        self.set(table, index, update(self.get(table, index), level));
         gather.add_tlb_flush(pointer.virt());
         pointer.advance(level_page_count(level));
     }

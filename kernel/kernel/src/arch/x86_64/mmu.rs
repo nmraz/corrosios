@@ -97,6 +97,8 @@ bitflags! {
         const WRITABLE = 1 << 1;
         const USER_MODE = 1 << 2;
 
+        const PERMS_MASK = Self::WRITABLE.bits | Self::USER_MODE.bits | Self::NO_EXEC.bits;
+
         const ACCESSED = 1 << 5;
         const DIRTY = 1 << 6;
         const LARGE = 1 << 7;
@@ -198,20 +200,7 @@ pub fn make_terminal_pte(
     perms: PageTablePerms,
     cache_mode: CacheMode,
 ) -> PageTableEntry {
-    let mut x86_flags = X86PageTableFlags::PRESENT;
-
-    x86_flags.set(
-        X86PageTableFlags::WRITABLE,
-        perms.contains(PageTablePerms::WRITE),
-    );
-    x86_flags.set(
-        X86PageTableFlags::USER_MODE,
-        perms.contains(PageTablePerms::USER),
-    );
-    x86_flags.set(
-        X86PageTableFlags::NO_EXEC,
-        !perms.contains(PageTablePerms::EXECUTE),
-    );
+    let mut x86_flags = X86PageTableFlags::PRESENT | flags_from_perms(perms);
 
     x86_flags.set(X86PageTableFlags::LARGE, level > 0);
 
@@ -230,6 +219,14 @@ pub fn make_intermediate_pte(_level: usize, next_table: PhysFrameNum) -> PageTab
     PageTableEntry(next_table.addr().as_u64() | x86_flags.bits())
 }
 
+pub fn update_pte_perms(
+    pte: PageTableEntry,
+    _level: usize,
+    perms: PageTablePerms,
+) -> PageTableEntry {
+    PageTableEntry((pte.0 & !X86PageTableFlags::PERMS_MASK.bits()) | flags_from_perms(perms).bits())
+}
+
 pub fn get_pte_frame(pte: PageTableEntry, _level: usize) -> PhysFrameNum {
     PhysFrameNum::new(((pte.0 & PADDR_MASK) >> PAGE_SHIFT) as usize)
 }
@@ -244,6 +241,25 @@ pub fn pte_is_terminal(pte: PageTableEntry, level: usize) -> bool {
     } else {
         X86PageTableFlags::from_bits_truncate(pte.0).contains(X86PageTableFlags::LARGE)
     }
+}
+
+fn flags_from_perms(perms: PageTablePerms) -> X86PageTableFlags {
+    let mut x86_flags = X86PageTableFlags::empty();
+
+    x86_flags.set(
+        X86PageTableFlags::WRITABLE,
+        perms.contains(PageTablePerms::WRITE),
+    );
+    x86_flags.set(
+        X86PageTableFlags::USER_MODE,
+        perms.contains(PageTablePerms::USER),
+    );
+    x86_flags.set(
+        X86PageTableFlags::NO_EXEC,
+        !perms.contains(PageTablePerms::EXECUTE),
+    );
+
+    x86_flags
 }
 
 fn pat_selector_for_cache_mode(cache_mode: CacheMode) -> u64 {
