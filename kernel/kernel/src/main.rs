@@ -133,9 +133,13 @@ extern "C" fn kernel_main(
         }
     }
 
-    debug!("causing irrecoverable page fault");
+    debug!("attempting to write to kernel code");
     unsafe {
-        *(0x1234 as *mut u64) = 0;
+        extern "C" {
+            static mut __code_start: u8;
+        }
+
+        __code_start = 0xab;
     }
 
     cpu::halt();
