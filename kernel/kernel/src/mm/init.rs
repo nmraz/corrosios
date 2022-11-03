@@ -9,7 +9,7 @@ use log::{debug, info};
 use num_utils::div_ceil;
 
 use crate::arch::mm::BOOTHEAP_EARLYMAP_MAX_PAGES;
-use crate::arch::mmu::{flush_kernel_tlb, PAGE_SIZE};
+use crate::arch::mmu::PAGE_SIZE;
 use crate::mm::early::{BootHeap, EarlyMapPfnTranslator};
 use crate::mm::utils::display_byte_size;
 use crate::mm::{physmap, pmm, vm};
