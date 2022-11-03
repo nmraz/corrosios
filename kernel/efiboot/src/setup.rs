@@ -53,7 +53,7 @@ pub fn prepare_bootinfo(boot_table: &BootTable) -> Result<BootinfoCtx> {
     })
 }
 
-fn get_framebuffer(boot_table: &BootTable) -> Result<bootitem::Framebuffer> {
+fn get_framebuffer(boot_table: &BootTable) -> Result<bootitem::FramebufferInfo> {
     let current_mode = boot_table
         .boot_services()
         .locate_protocol::<GraphicsOutput>()?
@@ -68,7 +68,7 @@ fn get_framebuffer(boot_table: &BootTable) -> Result<bootitem::Framebuffer> {
         _ => return Err(Status::UNSUPPORTED),
     };
 
-    Ok(bootitem::Framebuffer {
+    Ok(bootitem::FramebufferInfo {
         paddr: gop_framebuffer.base as usize,
         byte_size: gop_framebuffer.size,
         pixel_width: mode_info.hres,

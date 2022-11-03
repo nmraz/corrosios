@@ -12,7 +12,7 @@ extern crate alloc;
 use core::{mem, slice};
 
 use arch::cpu;
-use bootinfo::item::Framebuffer;
+use bootinfo::item::FramebufferInfo;
 use bootinfo::view::View;
 use bootinfo::ItemKind;
 use log::{debug, info};
@@ -92,24 +92,24 @@ extern "C" fn kernel_main(
         .find(|item| item.kind() == ItemKind::FRAMEBUFFER)
         .expect("no framebuffer");
 
-    let framebuffer_desc: &Framebuffer =
+    let framebuffer_info: &FramebufferInfo =
         unsafe { framebuffer_item.get() }.expect("framebuffer info invalid");
 
-    let framebuffer_paddr = PhysAddr::new(framebuffer_desc.paddr);
+    let framebuffer_paddr = PhysAddr::new(framebuffer_info.paddr);
 
     debug!(
         "framebuffer: phys range {}-{}, dimensions {}x{}, format {:?}",
         framebuffer_paddr,
-        framebuffer_paddr + framebuffer_desc.byte_size,
-        framebuffer_desc.pixel_width,
-        framebuffer_desc.pixel_height,
-        framebuffer_desc.pixel_format
+        framebuffer_paddr + framebuffer_info.byte_size,
+        framebuffer_info.pixel_width,
+        framebuffer_info.pixel_height,
+        framebuffer_info.pixel_format
     );
 
     let framebuffer_mapping = unsafe {
         iomap(
             framebuffer_paddr.containing_frame(),
-            div_ceil(framebuffer_desc.byte_size, PAGE_SIZE),
+            div_ceil(framebuffer_info.byte_size, PAGE_SIZE),
             Protection::READ | Protection::WRITE,
             CacheMode::WriteCombining,
         )
@@ -121,15 +121,15 @@ extern "C" fn kernel_main(
     let framebuffer_slice: &mut [u32] = unsafe {
         slice::from_raw_parts_mut(
             framebuffer_mapping.addr().as_mut_ptr(),
-            framebuffer_desc.byte_size / mem::size_of::<u32>(),
+            framebuffer_info.byte_size / mem::size_of::<u32>(),
         )
     };
 
     debug!("writing to framebuffer");
 
-    for row in 0..framebuffer_desc.pixel_height {
-        for col in 0..framebuffer_desc.pixel_width {
-            framebuffer_slice[(row * framebuffer_desc.pixel_stride + col) as usize] = 0xff;
+    for row in 0..framebuffer_info.pixel_height {
+        for col in 0..framebuffer_info.pixel_width {
+            framebuffer_slice[(row * framebuffer_info.pixel_stride + col) as usize] = 0xff;
         }
     }
 

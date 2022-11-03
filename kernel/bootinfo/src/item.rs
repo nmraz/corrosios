@@ -28,7 +28,7 @@ struct_enum! {
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
-pub struct Framebuffer {
+pub struct FramebufferInfo {
     pub paddr: usize,
     pub byte_size: usize,
     pub pixel_width: u32,
