@@ -9,7 +9,7 @@ use log::{debug, info};
 use num_utils::div_ceil;
 
 use crate::arch::mm::BOOTHEAP_EARLYMAP_MAX_PAGES;
-use crate::arch::mmu::PAGE_SIZE;
+use crate::arch::mmu::{flush_kernel_tlb, PAGE_SIZE};
 use crate::mm::early::{BootHeap, EarlyMapPfnTranslator};
 use crate::mm::utils::display_byte_size;
 use crate::mm::{physmap, pmm, vm};
@@ -29,6 +29,11 @@ use super::utils::{is_early_usable, is_usable, iter_usable_ranges};
 ///
 /// Panics if this function is called more than once.
 pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled: &IrqDisabled) {
+    init_phys(irq_disabled, bootinfo_size, bootinfo_paddr);
+    vm::init();
+}
+
+fn init_phys(irq_disabled: &IrqDisabled, bootinfo_size: usize, bootinfo_paddr: PhysAddr) {
     let mut mapper = early::take_early_mapper();
 
     unsafe {
@@ -95,8 +100,6 @@ pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled:
             pmm::add_free_range(start, end, irq_disabled);
         })
     }
-
-    vm::init();
 }
 
 fn print_mem_info(mem_map: &[MemoryRange]) {
