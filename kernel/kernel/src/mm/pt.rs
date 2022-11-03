@@ -182,6 +182,8 @@ impl<T: TranslatePhys> PageTable<T> {
     ///   unmapping
     /// * Any cores on which the page table is active must not access the virtual addresses unmapped
     ///   by the call
+    /// * Any pages reported to `gather` must be flushed from the TLB before later attempts to
+    ///   re-map them.
     pub unsafe fn unmap(
         &mut self,
         gather: &mut impl GatherInvalidations,
@@ -218,6 +220,8 @@ impl<T: TranslatePhys> PageTable<T> {
     ///   operation
     /// * The caller must guarantee that any page faults caused by accesses after the protection has
     ///   been updated will be handled correctly.
+    /// * Any pages reported to `gather` must be flushed from the TLB before the new permissions
+    ///   can be relied on.
     pub unsafe fn protect(
         &mut self,
         gather: &mut impl GatherInvalidations,
