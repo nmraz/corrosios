@@ -57,6 +57,6 @@ SECTIONS {
     __virt_end = .;
     __phys_end = . - __virt_start + __phys_start;
 
-    /* Keep in sync with size reserved in `kernel_tables.rs` and early mapping */
+    /* Keep in sync with `KERNEL_MAX` in `mmu.rs` and early mapping */
     ASSERT(__phys_end - __boottext_start < 8M, "Kernel too large")
 }
