@@ -20,6 +20,7 @@ use mm::types::PhysAddr;
 use num_utils::div_ceil;
 
 use crate::arch::mmu::PAGE_SIZE;
+use crate::bootparse::BootinfoData;
 use crate::mm::physmap::paddr_to_physmap;
 use crate::mm::types::{CacheMode, Protection};
 use crate::mm::vm::kernel_aspace::iomap;
@@ -29,6 +30,7 @@ use crate::sync::irq::IrqDisabled;
 mod console;
 
 mod arch;
+mod bootparse;
 mod err;
 mod global_alloc;
 mod kimage;
@@ -75,63 +77,54 @@ extern "C" fn kernel_main(
         arch::cpu::init_bsp(irq_disabled);
     }
 
-    mm::pmm::dump_usage();
-
     debug!("triggering IRQ 55");
     unsafe {
         core::arch::asm!("int 55");
     }
 
-    let bootinfo_slice =
-        unsafe { slice::from_raw_parts(paddr_to_physmap(bootinfo_paddr).as_ptr(), bootinfo_size) };
+    // Safety: we trust the loader
+    let bootinfo = unsafe { BootinfoData::parse(bootinfo_paddr, bootinfo_size) };
+    if let Some(framebuffer_info) = bootinfo.framebuffer_info() {
+        let framebuffer_paddr = PhysAddr::new(framebuffer_info.paddr);
 
-    let bootinfo = View::new(bootinfo_slice).expect("bad bootinfo");
+        debug!(
+            "framebuffer: phys range {}-{}, dimensions {}x{}, format {:?}",
+            framebuffer_paddr,
+            framebuffer_paddr + framebuffer_info.byte_size,
+            framebuffer_info.pixel_width,
+            framebuffer_info.pixel_height,
+            framebuffer_info.pixel_format
+        );
 
-    let framebuffer_item = bootinfo
-        .items()
-        .find(|item| item.kind() == ItemKind::FRAMEBUFFER)
-        .expect("no framebuffer");
+        let framebuffer_mapping = unsafe {
+            iomap(
+                framebuffer_paddr.containing_frame(),
+                div_ceil(framebuffer_info.byte_size, PAGE_SIZE),
+                Protection::READ | Protection::WRITE,
+                CacheMode::WriteCombining,
+            )
+        }
+        .expect("failed to map framebuffer");
 
-    let framebuffer_info: &FramebufferInfo =
-        unsafe { framebuffer_item.get() }.expect("framebuffer info invalid");
+        debug!("framebuffer mapped at {}", framebuffer_mapping.addr());
 
-    let framebuffer_paddr = PhysAddr::new(framebuffer_info.paddr);
+        let framebuffer_slice: &mut [u32] = unsafe {
+            slice::from_raw_parts_mut(
+                framebuffer_mapping.addr().as_mut_ptr(),
+                framebuffer_info.byte_size / mem::size_of::<u32>(),
+            )
+        };
 
-    debug!(
-        "framebuffer: phys range {}-{}, dimensions {}x{}, format {:?}",
-        framebuffer_paddr,
-        framebuffer_paddr + framebuffer_info.byte_size,
-        framebuffer_info.pixel_width,
-        framebuffer_info.pixel_height,
-        framebuffer_info.pixel_format
-    );
+        debug!("writing to framebuffer");
 
-    let framebuffer_mapping = unsafe {
-        iomap(
-            framebuffer_paddr.containing_frame(),
-            div_ceil(framebuffer_info.byte_size, PAGE_SIZE),
-            Protection::READ | Protection::WRITE,
-            CacheMode::WriteCombining,
-        )
-    }
-    .expect("failed to map framebuffer");
-
-    debug!("framebuffer mapped at {}", framebuffer_mapping.addr());
-
-    let framebuffer_slice: &mut [u32] = unsafe {
-        slice::from_raw_parts_mut(
-            framebuffer_mapping.addr().as_mut_ptr(),
-            framebuffer_info.byte_size / mem::size_of::<u32>(),
-        )
-    };
-
-    debug!("writing to framebuffer");
-
-    for row in 0..framebuffer_info.pixel_height {
-        for col in 0..framebuffer_info.pixel_width {
-            framebuffer_slice[(row * framebuffer_info.pixel_stride + col) as usize] = 0xff;
+        for row in 0..framebuffer_info.pixel_height {
+            for col in 0..framebuffer_info.pixel_width {
+                framebuffer_slice[(row * framebuffer_info.pixel_stride + col) as usize] = 0xff;
+            }
         }
     }
+
+    mm::pmm::dump_usage();
 
     debug!("attempting to write to kernel code");
     unsafe {
