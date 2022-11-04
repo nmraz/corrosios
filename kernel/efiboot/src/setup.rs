@@ -38,13 +38,14 @@ pub fn load_kernel(image_handle: Handle, boot_services: &BootServices) -> Result
 pub fn prepare_bootinfo(boot_table: &BootTable) -> Result<BootinfoCtx> {
     let boot_services = boot_table.boot_services();
 
-    let framebuffer = get_framebuffer(boot_table)?;
-
     let (mmap_size, desc_size) = boot_services.memory_map_size()?;
     let max_mmap_entries = mmap_size / desc_size + MMAP_EXTRA_ENTRIES;
 
     let mut bootinfo_builder = make_bootinfo_builder(boot_services, max_mmap_entries)?;
-    append_bootinfo(&mut bootinfo_builder, ItemKind::FRAMEBUFFER, framebuffer)?;
+
+    if let Ok(framebuffer) = get_framebuffer(boot_table) {
+        append_bootinfo(&mut bootinfo_builder, ItemKind::FRAMEBUFFER, framebuffer)?;
+    }
 
     Ok(BootinfoCtx {
         efi_mmap_buf: alloc_uninit_data(boot_services, max_mmap_entries * desc_size)?,
