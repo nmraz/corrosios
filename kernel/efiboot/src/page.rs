@@ -1,4 +1,5 @@
-use core::mem::MaybeUninit;
+use core::mem::{self, MaybeUninit};
+use core::slice;
 
 use num_utils::div_ceil;
 use uefi::table::{AllocMode, BootServices};
@@ -13,4 +14,12 @@ pub fn alloc_uninit_pages(
     let pages = div_ceil(bytes, PAGE_SIZE);
     let p = boot_services.alloc_pages(AllocMode::Any, pages)?;
     Ok(unsafe { core::slice::from_raw_parts_mut(p as *mut _, pages * PAGE_SIZE) })
+}
+
+pub fn alloc_uninit_data<T>(
+    boot_services: &BootServices,
+    len: usize,
+) -> Result<&'static mut [MaybeUninit<T>]> {
+    let p = boot_services.alloc(len * mem::size_of::<T>())?;
+    Ok(unsafe { slice::from_raw_parts_mut(p.cast(), len) })
 }

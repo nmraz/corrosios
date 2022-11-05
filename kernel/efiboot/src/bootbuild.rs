@@ -1,5 +1,4 @@
 use core::mem::{self, MaybeUninit};
-use core::slice;
 
 use uninit::extension_traits::AsOut;
 
@@ -10,7 +9,7 @@ use uefi::proto::gop::{self, GraphicsOutput};
 use uefi::table::{BootServices, BootTable};
 use uefi::{MemoryDescriptor, MemoryType, Result, Status};
 
-use crate::page::{self, PAGE_SIZE};
+use crate::page::{alloc_uninit_data, alloc_uninit_pages, PAGE_SIZE};
 
 const BOOTINFO_FIXED_SIZE: usize = 0x1000;
 const MMAP_EXTRA_ENTRIES: usize = 8;
@@ -21,7 +20,10 @@ pub struct BootinfoCtx {
     pub builder: Builder<'static>,
 }
 
-pub fn prepare_bootinfo(boot_table: &BootTable) -> Result<BootinfoCtx> {
+pub fn prepare_bootinfo(
+    command_line: Option<&[u8]>,
+    boot_table: &BootTable,
+) -> Result<BootinfoCtx> {
     let boot_services = boot_table.boot_services();
 
     let (mmap_size, desc_size) = boot_services.memory_map_size()?;
@@ -33,11 +35,9 @@ pub fn prepare_bootinfo(boot_table: &BootTable) -> Result<BootinfoCtx> {
         append_bootinfo(&mut bootinfo_builder, ItemKind::FRAMEBUFFER, framebuffer)?;
     }
 
-    append_bootinfo_slice(
-        &mut bootinfo_builder,
-        ItemKind::COMMAND_LINE,
-        b"x86.serial=3f8 loglevel=debug",
-    )?;
+    if let Some(command_line) = command_line {
+        append_bootinfo_slice(&mut bootinfo_builder, ItemKind::COMMAND_LINE, command_line)?;
+    }
 
     Ok(BootinfoCtx {
         efi_mmap_buf: alloc_uninit_data(boot_services, max_mmap_entries * desc_size)?,
@@ -165,17 +165,9 @@ fn make_bootinfo_builder(
     boot_services: &BootServices,
     max_mmap_entries: usize,
 ) -> Result<Builder<'static>> {
-    let buf = page::alloc_uninit_pages(
+    let buf = alloc_uninit_pages(
         boot_services,
         BOOTINFO_FIXED_SIZE + max_mmap_entries * mem::size_of::<bootitem::MemoryRange>(),
     )?;
     Ok(Builder::new(buf.as_out()).expect("buffer should be large and aligned"))
-}
-
-fn alloc_uninit_data<T>(
-    boot_services: &BootServices,
-    len: usize,
-) -> Result<&'static mut [MaybeUninit<T>]> {
-    let p = boot_services.alloc(len * mem::size_of::<T>())?;
-    Ok(unsafe { slice::from_raw_parts_mut(p.cast(), len) })
 }
