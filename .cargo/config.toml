@@ -9,7 +9,7 @@ xclippy-json = "hosttools-raw --message-format=json -- cross clippy -- --message
 image = "hosttools image"
 qemu = "hosttools qemu"
 gdb-attach = "hosttools gdb-attach"
-gdbmux = "hosttools gdbmux"
+gdb-split = "hosttools gdb-split"
 
 [profile.release]
 lto = "thin"

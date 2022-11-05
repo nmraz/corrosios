@@ -21,7 +21,7 @@ enum Command {
     Image(ImageCommand),
     Qemu(QemuCommand),
     GdbAttach(GdbAttachCommand),
-    Gdbmux(GdbmuxSubcommand),
+    GdbSplit(GdbSplitSubcommand),
 }
 
 /// Run cargo subcommand with appropriate cross-compilation flags.
@@ -66,9 +66,9 @@ struct QemuCommand {
     image: ImageArgs,
 }
 
-/// Run QEMU and GDB together in tmux.
+/// Run QEMU and GDB together in Tilix.
 #[derive(Args)]
-struct GdbmuxSubcommand {
+struct GdbSplitSubcommand {
     #[clap(flatten)]
     qemu: QemuArgs,
 }
@@ -145,7 +145,7 @@ fn main() -> Result<()> {
             run_gdb(&sh, &gdb_opts)
         }
 
-        Command::Gdbmux(gdbmux) => {
+        Command::GdbSplit(gdbmux) => {
             let image_opts = ImageOptions {
                 release: false,
                 additional_build_args: &[],
@@ -164,7 +164,8 @@ fn main() -> Result<()> {
             };
 
             let cargo = env!("CARGO");
-            cmd!(sh, "tmux split-pane -h {cargo} gdb-attach")
+            let attach_command = format!("{cargo} gdb-attach");
+            cmd!(sh, "tilix -a session-add-auto -x {attach_command}")
                 .quiet()
                 .run()?;
 
