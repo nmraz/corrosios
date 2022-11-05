@@ -26,14 +26,15 @@ static PHYS_MANAGER: SpinLock<Option<PhysManager>> = SpinLock::new(None);
 /// Initializes the physical memory manager (PMM) with space for tracking physical frames up to
 /// `max_pfn`.
 ///
-/// `bootheap` will be used for any necessary metadata allocations, the page range covered by it
-/// will also be marked as reserved when the manager is initialized. Frames in entries marked as
-/// usable in `mem_map` should no longer be accessed directly when this function returns, as they
-/// are now owned by the PMM.
+/// `bootheap` will be used for any necessary metadata allocations.
 ///
 /// # Safety
 ///
 /// * `bootheap` must point to safely usable free memory
+///
+/// # Panics
+///
+/// Panics if this function is called more than once.
 pub unsafe fn init(max_pfn: PhysFrameNum, bootheap: &mut BootHeap, irq_disabled: &IrqDisabled) {
     PHYS_MANAGER.with_noirq(irq_disabled, |manager_ref| {
         assert!(manager_ref.is_none(), "pmm already initialized");

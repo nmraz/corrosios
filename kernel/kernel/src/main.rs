@@ -13,16 +13,12 @@ extern crate alloc;
 use core::{mem, slice};
 
 use arch::cpu;
-use bootinfo::item::FramebufferInfo;
-use bootinfo::view::View;
-use bootinfo::ItemKind;
 use log::{debug, info};
 use mm::types::PhysAddr;
 use num_utils::div_ceil;
 
 use crate::arch::mmu::PAGE_SIZE;
 use crate::bootparse::BootinfoData;
-use crate::mm::physmap::paddr_to_physmap;
 use crate::mm::types::{CacheMode, Protection};
 use crate::mm::vm::kernel_aspace::iomap;
 use crate::sync::irq::IrqDisabled;
@@ -49,14 +45,21 @@ extern "C" fn kernel_main(
     // Safety: main is called with interrupts disabled.
     let irq_disabled = unsafe { IrqDisabled::new() };
 
+    unsafe {
+        // This needs to happen first, before we start calling general Rust code.
+        kimage::init(kernel_paddr);
+    }
+
+    // Get a physmap set up so we can parse serial/logging options.
+    let mm_init_ctx = unsafe { mm::init_early(bootinfo_paddr, bootinfo_size, &irq_disabled) };
+
+    // Safety: we have just set up the physmap and trust the loader.
+    let bootinfo = unsafe { BootinfoData::parse(bootinfo_paddr, bootinfo_size) };
+
     console::init();
     logging::init();
 
     info!("corrosios starting");
-
-    unsafe {
-        kimage::init(kernel_paddr);
-    }
 
     debug!(
         "kernel loaded at {}-{}, mapped at {}-{}",
@@ -70,7 +73,7 @@ extern "C" fn kernel_main(
 
     info!("initializing memory manager");
     unsafe {
-        mm::init(bootinfo_paddr, bootinfo_size, &irq_disabled);
+        mm::init_late(mm_init_ctx, &bootinfo, &irq_disabled);
     }
     info!("memory manager initialized");
 
@@ -82,9 +85,6 @@ extern "C" fn kernel_main(
     unsafe {
         core::arch::asm!("int 55");
     }
-
-    // Safety: we trust the loader
-    let bootinfo = unsafe { BootinfoData::parse(bootinfo_paddr, bootinfo_size) };
 
     info!("kernel command line: {}", bootinfo.command_line());
 

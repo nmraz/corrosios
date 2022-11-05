@@ -33,6 +33,10 @@ impl BootHeap {
         }
     }
 
+    pub fn range(&self) -> Range<PhysAddr> {
+        self.base..self.end
+    }
+
     pub fn used_range(&self) -> Range<PhysAddr> {
         self.base..self.cur
     }

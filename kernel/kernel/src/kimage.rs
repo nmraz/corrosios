@@ -13,6 +13,11 @@ extern "C" {
     static __data_end: u8;
 }
 
+/// Initializes the kernel image metadata.
+///
+/// This function must be the first thing called, before calls to any other kernel/initialization
+/// functions.
+///
 /// # Safety
 ///
 /// Must be called only once at startup, and should not be called concurrently with other kimage

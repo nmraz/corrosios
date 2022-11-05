@@ -10,6 +10,7 @@ use num_utils::div_ceil;
 
 use crate::arch::mm::BOOTHEAP_EARLYMAP_MAX_PAGES;
 use crate::arch::mmu::PAGE_SIZE;
+use crate::bootparse::BootinfoData;
 use crate::mm::early::{BootHeap, EarlyMapPfnTranslator};
 use crate::mm::utils::display_byte_size;
 use crate::mm::{physmap, pmm, vm};
@@ -20,6 +21,22 @@ use super::early;
 use super::types::{PhysAddr, PhysFrameNum};
 use super::utils::{is_early_usable, is_usable, iter_usable_ranges};
 
+/// A context structure used across both early and late MM initialization.
+pub struct InitContext {
+    bootheap: BootHeap,
+    reserved_ranges: ReservedRanges,
+}
+
+/// Performs early initialization of the memory manager.
+///
+/// When this function returns, the physmap will be initialized and usable for accessing normal
+/// physical memory, but other facilities (frame allocator, heap, VM subsystem) will still be
+/// unusable and panic if used.
+///
+/// The intention is that this function be used to perform the bare minimum needed for access to the
+/// bootinfo (necessary for early debugging initialization), and that initialization be resumed with
+/// [`init_late`] once that is set up.
+///
 /// # Safety
 ///
 /// * The physical address range passed in `bootinfo_paddr` and `bootinfo_size` must contain a valid
@@ -28,12 +45,11 @@ use super::utils::{is_early_usable, is_usable, iter_usable_ranges};
 /// # Panics
 ///
 /// Panics if this function is called more than once.
-pub unsafe fn init(bootinfo_paddr: PhysAddr, bootinfo_size: usize, irq_disabled: &IrqDisabled) {
-    init_phys(irq_disabled, bootinfo_size, bootinfo_paddr);
-    vm::init();
-}
-
-fn init_phys(irq_disabled: &IrqDisabled, bootinfo_size: usize, bootinfo_paddr: PhysAddr) {
+pub unsafe fn init_early(
+    bootinfo_paddr: PhysAddr,
+    bootinfo_size: usize,
+    irq_disabled: &IrqDisabled,
+) -> InitContext {
     let mut mapper = early::take_early_mapper();
 
     unsafe {
@@ -52,30 +68,15 @@ fn init_phys(irq_disabled: &IrqDisabled, bootinfo_size: usize, bootinfo_paddr: P
     let bootinfo_view = View::new(bootinfo_slice).expect("bad bootinfo");
     let mem_map = get_mem_map(bootinfo_view);
 
-    print_mem_info(mem_map);
-
     let bootinfo_frame_range =
         bootinfo_paddr.containing_frame()..(bootinfo_paddr + bootinfo_size).containing_tail_frame();
-    let mut reserved_ranges = gather_reserved_ranges(bootinfo_frame_range);
+    let reserved_ranges = gather_reserved_ranges(bootinfo_frame_range);
 
     let bootheap_range = largest_early_usable_range(mem_map, &reserved_ranges);
     let bootheap_pages = bootheap_range.end - bootheap_range.start;
 
-    debug!(
-        "selected bootheap range: {}-{} ({} pages, {})",
-        bootheap_range.start,
-        bootheap_range.end,
-        bootheap_pages,
-        display_byte_size(bootheap_pages * PAGE_SIZE)
-    );
-
     let mut bootheap = BootHeap::new(bootheap_range.start.addr()..bootheap_range.end.addr());
     let bootheap_earlymap_pages = cmp::min(bootheap_pages, BOOTHEAP_EARLYMAP_MAX_PAGES);
-
-    debug!(
-        "mapping {} bootheap pages for physmap initialization",
-        bootheap_earlymap_pages
-    );
 
     mapper.map(bootheap_range.start, bootheap_earlymap_pages);
 
@@ -90,6 +91,45 @@ fn init_phys(irq_disabled: &IrqDisabled, bootinfo_size: usize, bootinfo_paddr: P
         );
     }
 
+    InitContext {
+        bootheap,
+        reserved_ranges,
+    }
+}
+
+/// Completes initialization of the memory manager previously started by [`init_early`].
+///
+/// When this function returns, all memory manager facilities (physmap, frame allocator, heap, VM)
+/// will be fully initialized and functional.
+///
+/// # Safety
+///
+/// The bootinfo provided to this function must match the bootinfo provided to [`init_early`] and
+/// correctly describes system the memory map.
+///
+/// # Panics
+///
+/// Panics if this function is called more than once.
+pub unsafe fn init_late(context: InitContext, bootinfo: &BootinfoData, irq_disabled: &IrqDisabled) {
+    let InitContext {
+        mut bootheap,
+        mut reserved_ranges,
+    } = context;
+
+    let mem_map = bootinfo.memory_map();
+
+    print_mem_info(mem_map);
+
+    let bootheap_range = bootheap.range();
+    let bootheap_size = bootheap_range.end - bootheap_range.start;
+
+    debug!(
+        "bootheap range: {}-{} ({})",
+        bootheap_range.start,
+        bootheap_range.end,
+        display_byte_size(bootheap_size)
+    );
+
     let max_pfn = highest_usable_pfn(mem_map);
 
     unsafe {
@@ -100,6 +140,8 @@ fn init_phys(irq_disabled: &IrqDisabled, bootinfo_size: usize, bootinfo_paddr: P
             pmm::add_free_range(start, end, irq_disabled);
         })
     }
+
+    vm::init();
 }
 
 fn print_mem_info(mem_map: &[MemoryRange]) {

@@ -9,4 +9,4 @@ mod init;
 mod pt;
 mod utils;
 
-pub use init::init;
+pub use init::{init_early, init_late};
