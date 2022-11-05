@@ -50,7 +50,7 @@ pub fn prepare_bootinfo(boot_table: &BootTable) -> Result<BootinfoCtx> {
     append_bootinfo_slice(
         &mut bootinfo_builder,
         ItemKind::COMMAND_LINE,
-        b"x86.serial=3f8",
+        b"x86.serial=3f8 loglevel=debug",
     )?;
 
     Ok(BootinfoCtx {
