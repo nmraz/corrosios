@@ -54,13 +54,22 @@ impl<'a> CommandLine<'a> {
     }
 
     /// Returns an iterator over all arguments in this command line.
-    pub fn args(&self) -> impl Iterator<Item = CommandLineArg<'a>> {
+    pub fn args(&self) -> impl DoubleEndedIterator<Item = CommandLineArg<'a>> {
         let items = self
             .0
             .split(u8::is_ascii_whitespace)
             .filter(|s| !s.is_empty());
 
         items.map(CommandLineArg::parse)
+    }
+
+    /// Retrives the value of the argument `name`, if present, or returns `None` if not.
+    ///
+    /// Note that this function will return `Some("")` if the argument is present but has no value.
+    pub fn get_arg_value(&self, name: &[u8]) -> Option<&'a [u8]> {
+        self.args()
+            .rfind(|arg| arg.name == name)
+            .map(|arg| arg.value)
     }
 }
 
