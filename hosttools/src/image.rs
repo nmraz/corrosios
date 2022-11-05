@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
@@ -119,8 +119,13 @@ fn format_efi_partition(
     let fs = FileSystem::new(partition, FsOptions::new())?;
     let root = fs.root_dir();
 
-    let mut kernel_file = root.create_dir("corrosios")?.create_file("kernel")?;
+    let corrosios_dir = root.create_dir("corrosios")?;
+
+    let mut kernel_file = corrosios_dir.create_file("kernel")?;
     io::copy(&mut File::open(kernel_path)?, &mut kernel_file)?;
+
+    let mut command_line_file = corrosios_dir.create_file("cmdline")?;
+    command_line_file.write_all(b"x86.serial=3f8 loglevel=debug")?;
 
     let mut boot_file = root
         .create_dir("efi")?
