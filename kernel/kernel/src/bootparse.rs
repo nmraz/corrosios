@@ -1,17 +1,78 @@
-use core::slice;
+use core::str::Utf8Chunks;
+use core::{fmt, slice, str};
 
 use bootinfo::item::{FramebufferInfo, MemoryRange};
 use bootinfo::view::View;
 use bootinfo::ItemKind;
+use itertools::Itertools;
 
 use crate::mm::physmap::paddr_to_physmap;
 use crate::mm::types::PhysAddr;
+
+/// A parsed command-line argument, with its name and value.
+#[derive(Clone, Copy)]
+pub struct CommandLineArg<'a> {
+    /// The name of the argument.
+    pub name: &'a [u8],
+    /// The value of the argument, provided after the name.
+    pub value: &'a [u8],
+}
+
+impl<'a> CommandLineArg<'a> {
+    /// Parses a `name=value` type of argument out of `buf`.
+    ///
+    /// If the value is missing, it is returned as an empty slice.
+    pub fn parse(buf: &'a [u8]) -> Self {
+        let val_delim_pos = buf.iter().position(|&b| b == b'=');
+
+        let (name, value) = if let Some(val_delim_pos) = val_delim_pos {
+            (&buf[..val_delim_pos], &buf[val_delim_pos + 1..])
+        } else {
+            (buf, &b""[..])
+        };
+
+        Self { name, value }
+    }
+}
+
+impl fmt::Display for CommandLineArg<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        display_utf8_lossy(f, self.name)?;
+        write!(f, "=")?;
+        display_utf8_lossy(f, self.value)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct CommandLine<'a>(&'a [u8]);
+
+impl<'a> CommandLine<'a> {
+    pub fn new(buf: &'a [u8]) -> Self {
+        Self(buf)
+    }
+
+    pub fn args(&self) -> impl Iterator<Item = CommandLineArg<'a>> {
+        let items = self
+            .0
+            .split(u8::is_ascii_whitespace)
+            .filter(|s| !s.is_empty());
+
+        items.map(CommandLineArg::parse)
+    }
+}
+
+impl fmt::Display for CommandLine<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.args().format(" "))
+    }
+}
 
 /// Encapsulates data from a parsed bootinfo view created by the loader.
 pub struct BootinfoData {
     memory_map: &'static [MemoryRange],
     efi_system_table: Option<PhysAddr>,
     framebuffer_info: Option<&'static FramebufferInfo>,
+    command_line: &'static [u8],
 }
 
 impl BootinfoData {
@@ -28,6 +89,7 @@ impl BootinfoData {
         let mut memory_map = None;
         let mut efi_system_table = None;
         let mut framebuffer_info: Option<&FramebufferInfo> = None;
+        let mut command_line = None;
 
         // Safety: function contract
         let buffer = unsafe { slice::from_raw_parts(paddr_to_physmap(paddr).as_ptr(), size) };
@@ -47,6 +109,10 @@ impl BootinfoData {
                     framebuffer_info =
                         Some(unsafe { item.get() }.expect("invalid bootinfo framebuffer"));
                 }
+                ItemKind::COMMAND_LINE => {
+                    command_line =
+                        Some(unsafe { item.get_slice() }.expect("invalid bootinfo command line"));
+                }
                 _ => {}
             }
         }
@@ -55,6 +121,7 @@ impl BootinfoData {
             memory_map: memory_map.expect("no memory map in bootinfo"),
             efi_system_table,
             framebuffer_info,
+            command_line: command_line.unwrap_or(b""),
         }
     }
 
@@ -72,4 +139,20 @@ impl BootinfoData {
     pub fn framebuffer_info(&self) -> Option<&FramebufferInfo> {
         self.framebuffer_info
     }
+
+    /// Returns the kernel command line provided in the bootinfo.
+    pub fn command_line(&self) -> CommandLine<'_> {
+        CommandLine::new(self.command_line)
+    }
+}
+
+fn display_utf8_lossy(f: &mut fmt::Formatter<'_>, buf: &[u8]) -> fmt::Result {
+    for chunk in Utf8Chunks::new(buf) {
+        write!(f, "{}", chunk.valid())?;
+        if !chunk.invalid().is_empty() {
+            write!(f, "{}", char::REPLACEMENT_CHARACTER)?;
+        }
+    }
+
+    Ok(())
 }

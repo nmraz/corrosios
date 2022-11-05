@@ -23,6 +23,7 @@ struct_enum! {
         EFI_SYSTEM_TABLE = 1;
         MEMORY_MAP = 2;
         FRAMEBUFFER = 3;
+        COMMAND_LINE = 4;
     }
 }
 

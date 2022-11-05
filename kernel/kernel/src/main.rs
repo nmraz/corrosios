@@ -2,6 +2,7 @@
 #![feature(new_uninit)]
 #![feature(asm_const)]
 #![feature(panic_info_message)]
+#![feature(utf8_chunks)]
 #![warn(rust_2018_idioms)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
@@ -84,6 +85,9 @@ extern "C" fn kernel_main(
 
     // Safety: we trust the loader
     let bootinfo = unsafe { BootinfoData::parse(bootinfo_paddr, bootinfo_size) };
+
+    info!("kernel command line: {}", bootinfo.command_line());
+
     if let Some(framebuffer_info) = bootinfo.framebuffer_info() {
         let framebuffer_paddr = PhysAddr::new(framebuffer_info.paddr);
 
