@@ -57,7 +57,7 @@ extern "C" fn kernel_main(
     let bootinfo = unsafe { BootinfoData::parse(bootinfo_paddr, bootinfo_size) };
 
     console::init(bootinfo.command_line());
-    logging::init();
+    logging::init(bootinfo.command_line());
 
     info!("corrosios starting");
 
