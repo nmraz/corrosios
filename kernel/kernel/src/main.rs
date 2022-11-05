@@ -71,6 +71,8 @@ extern "C" fn kernel_main(
 
     debug!("bootinfo at {}, size {:#x}", bootinfo_paddr, bootinfo_size);
 
+    info!("kernel command line: {}", bootinfo.command_line());
+
     info!("initializing memory manager");
     unsafe {
         mm::init_late(mm_init_ctx, &bootinfo, &irq_disabled);
@@ -85,8 +87,6 @@ extern "C" fn kernel_main(
     unsafe {
         core::arch::asm!("int 55");
     }
-
-    info!("kernel command line: {}", bootinfo.command_line());
 
     if let Some(framebuffer_info) = bootinfo.framebuffer_info() {
         let framebuffer_paddr = PhysAddr::new(framebuffer_info.paddr);
