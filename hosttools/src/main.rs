@@ -103,6 +103,8 @@ struct GdbAttachCommand {
     image: ImageArgs,
 }
 
+const KERNEL_COMMAND_LINE: &[u8] = b"x86.serial=3f8 loglevel=debug";
+
 fn main() -> Result<()> {
     let args = Cli::parse();
 
@@ -147,6 +149,7 @@ fn main() -> Result<()> {
             let image_opts = ImageOptions {
                 release: false,
                 additional_build_args: &[],
+                kernel_command_line: KERNEL_COMMAND_LINE,
             };
             let image_path = create_disk_image(&sh, &image_opts)?;
 
@@ -174,5 +177,6 @@ fn image_opts_from_image_args(args: &ImageArgs) -> ImageOptions<'_> {
     ImageOptions {
         release: args.release,
         additional_build_args: &args.additional_build_args,
+        kernel_command_line: KERNEL_COMMAND_LINE,
     }
 }

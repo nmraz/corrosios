@@ -25,6 +25,7 @@ const DISK_SIZE: u64 = EFI_PARTITION_SIZE + 64 * KB;
 pub struct ImageOptions<'a> {
     pub release: bool,
     pub additional_build_args: &'a [String],
+    pub kernel_command_line: &'a [u8],
 }
 
 impl<'a> ImageOptions<'a> {
@@ -62,8 +63,13 @@ pub fn create_disk_image(sh: &Shell, opts: &ImageOptions<'_>) -> Result<PathBuf>
     gdisk.write().context("failed to flush partition table")?;
 
     let efi_part_data = StreamSlice::new(disk, start, end)?;
-    format_efi_partition(efi_part_data, &kernel_path, &bootloader_path)
-        .context("failed to write EFI system partition")?;
+    format_efi_partition(
+        efi_part_data,
+        &kernel_path,
+        &bootloader_path,
+        opts.kernel_command_line,
+    )
+    .context("failed to write EFI system partition")?;
 
     println!("Created UEFI image: {}", image_path.display());
 
@@ -114,6 +120,7 @@ fn format_efi_partition(
     mut partition: impl ReadWriteSeek,
     kernel_path: &Path,
     bootloader_path: &Path,
+    kernel_command_line: &[u8],
 ) -> Result<()> {
     fatfs::format_volume(&mut partition, FormatVolumeOptions::new())?;
     let fs = FileSystem::new(partition, FsOptions::new())?;
@@ -125,7 +132,7 @@ fn format_efi_partition(
     io::copy(&mut File::open(kernel_path)?, &mut kernel_file)?;
 
     let mut command_line_file = corrosios_dir.create_file("cmdline")?;
-    command_line_file.write_all(b"x86.serial=3f8 loglevel=debug")?;
+    command_line_file.write_all(kernel_command_line)?;
 
     let mut boot_file = root
         .create_dir("efi")?
