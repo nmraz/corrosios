@@ -3,7 +3,7 @@ use core::{array, cmp, ptr, slice};
 
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink, UnsafeRef};
 use itertools::Itertools;
-use log::debug;
+use log::{debug, trace};
 
 use bitmap::BorrowedBitmapMut;
 use num_utils::{div_ceil, log2};
@@ -69,7 +69,7 @@ pub unsafe fn deallocate(pfn: PhysFrameNum, order: usize) {
 /// overlap any ranges added to the PMM by previous calls to `add_free_range`. The range should also
 /// be present in the physmap.
 pub unsafe fn add_free_range(start: PhysFrameNum, end: PhysFrameNum, irq_disabled: &IrqDisabled) {
-    debug!("adding free range {}-{}", start, end);
+    trace!("adding free range {}-{}", start, end);
     with_noirq(irq_disabled, |pmm| unsafe {
         pmm.add_free_range(start, end)
     })

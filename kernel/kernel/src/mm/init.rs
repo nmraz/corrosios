@@ -5,7 +5,7 @@ use arrayvec::ArrayVec;
 use bootinfo::item::{MemoryKind, MemoryRange};
 use bootinfo::view::View;
 use bootinfo::ItemKind;
-use log::{debug, info};
+use log::{debug, info, trace};
 use num_utils::div_ceil;
 
 use crate::arch::mm::BOOTHEAP_EARLYMAP_MAX_PAGES;
@@ -143,24 +143,6 @@ pub unsafe fn init_late(context: InitContext, bootinfo: &BootinfoData, irq_disab
 
     vm::init();
 }
-
-fn print_mem_info(mem_map: &[MemoryRange]) {
-    let mut usable_pages = 0;
-
-    debug!("physical memory map ({} entries):", mem_map.len());
-    for range in mem_map {
-        display_range(range);
-        if range.kind == MemoryKind::USABLE {
-            usable_pages += range.page_count;
-        }
-    }
-    info!(
-        "{} pages ({}) usable",
-        usable_pages,
-        display_byte_size(usable_pages * PAGE_SIZE)
-    );
-}
-
 fn get_mem_map(bootinfo: View<'_>) -> &[MemoryRange] {
     let mem_map_item = bootinfo
         .items()
@@ -250,6 +232,23 @@ fn highest_usable_pfn(mem_map: &[MemoryRange]) -> PhysFrameNum {
         .expect("no usable memory")
 }
 
+fn print_mem_info(mem_map: &[MemoryRange]) {
+    let mut usable_pages = 0;
+
+    trace!("physical memory map ({} entries):", mem_map.len());
+    for range in mem_map {
+        display_range(range);
+        if range.kind == MemoryKind::USABLE {
+            usable_pages += range.page_count;
+        }
+    }
+    info!(
+        "{} pages ({}) usable",
+        usable_pages,
+        display_byte_size(usable_pages * PAGE_SIZE)
+    );
+}
+
 fn display_range(range: &MemoryRange) {
     let kind = match range.kind {
         MemoryKind::RESERVED => "reserved",
@@ -261,7 +260,7 @@ fn display_range(range: &MemoryRange) {
         _ => "other",
     };
 
-    debug!(
+    trace!(
         "{:#012x}-{:#012x}: {}",
         range.start_page * PAGE_SIZE,
         (range.start_page + range.page_count) * PAGE_SIZE,
