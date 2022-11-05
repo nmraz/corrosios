@@ -1,4 +1,4 @@
-use core::str::Utf8Chunks;
+use core::str::{self, Utf8Chunks};
 use core::{fmt, slice};
 
 use bootinfo::item::{FramebufferInfo, MemoryRange};
@@ -66,10 +66,21 @@ impl<'a> CommandLine<'a> {
     /// Retrives the value of the argument `name`, if present, or returns `None` if not.
     ///
     /// Note that this function will return `Some("")` if the argument is present but has no value.
-    pub fn get_arg_value(&self, name: &[u8]) -> Option<&'a [u8]> {
+    pub fn get_arg_value(&self, name: &str) -> Option<&'a [u8]> {
+        let name = name.as_bytes();
         self.args()
             .rfind(|arg| arg.name == name)
             .map(|arg| arg.value)
+    }
+
+    /// Attempts to retrieve the value of the argument `name` as a UTF-8 string.
+    ///
+    /// If the argument is not present or contains invalid UTF-8, `None` will be returned.
+    ///
+    /// Note that this function will return `Some("")` if the argument is present but has no value.
+    pub fn get_arg_str_value(&self, name: &str) -> Option<&'a str> {
+        self.get_arg_value(name)
+            .and_then(|val| str::from_utf8(val).ok())
     }
 }
 

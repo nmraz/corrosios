@@ -20,8 +20,8 @@ impl Console {
     /// * Callers should ensure that at most a single instance of `Console` is in use at a given
     ///   time, as it provides (unsynchronized) direct access to the hardware.
     pub unsafe fn new(cmdline: CommandLine<'_>) -> Option<Self> {
-        let base_port_str = cmdline.get_arg_value(b"x86.serial")?;
-        let base_port = u16::from_str_radix(str::from_utf8(base_port_str).ok()?, 16).ok()?;
+        let base_port_str = cmdline.get_arg_str_value("x86.serial")?;
+        let base_port = u16::from_str_radix(base_port_str, 16).ok()?;
 
         let serial = unsafe { Serial::new(base_port, 115200) };
 
