@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::boxed::Box;
 use core::mem::{self, MaybeUninit};
 use core::{cmp, iter, slice};
 
@@ -86,7 +86,7 @@ fn read_pheaders<'b>(
     boot_services: &'b BootServices,
     header: &Header,
     file: &mut File<'_>,
-) -> Result<Vec<ProgramHeader, BootAlloc<'b>>> {
+) -> Result<Box<[ProgramHeader], BootAlloc<'b>>> {
     if header.ph_entry_size as usize != mem::size_of::<ProgramHeader>() {
         return Err(Status::LOAD_ERROR);
     }
@@ -94,16 +94,16 @@ fn read_pheaders<'b>(
     file.set_position(header.ph_off)?;
 
     let count = header.ph_entry_num as usize;
-    let mut headers = Vec::with_capacity_in(count, BootAlloc::new(boot_services));
 
-    unsafe {
+    let headers = unsafe {
+        let mut headers = Box::new_uninit_slice_in(count, BootAlloc::new(boot_services));
         let buf = slice::from_raw_parts_mut(
             headers.as_mut_ptr() as *mut MaybeUninit<u8>,
             count * mem::size_of::<ProgramHeader>(),
         );
         file.read_exact(buf.as_out())?;
-        headers.set_len(count);
-    }
+        headers.assume_init()
+    };
 
     Ok(headers)
 }
