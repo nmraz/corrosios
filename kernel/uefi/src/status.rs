@@ -22,6 +22,7 @@ struct_enum! {
         UNSUPPORTED = err(3);
         BUFFER_TOO_SMALL = err(5);
         OUT_OF_RESOURCES = err(9);
+        NOT_FOUND = err(14);
         END_OF_FILE = err(31);
     }
 }
