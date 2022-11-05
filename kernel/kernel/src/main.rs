@@ -56,7 +56,7 @@ extern "C" fn kernel_main(
     // Safety: we have just set up the physmap and trust the loader.
     let bootinfo = unsafe { BootinfoData::parse(bootinfo_paddr, bootinfo_size) };
 
-    console::init();
+    console::init(bootinfo.command_line());
     logging::init();
 
     info!("corrosios starting");

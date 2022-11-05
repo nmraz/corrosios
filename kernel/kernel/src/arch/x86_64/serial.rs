@@ -1,6 +1,8 @@
-use core::{fmt, hint};
+use core::{fmt, hint, str};
 
 use bitflags::bitflags;
+
+use crate::bootparse::CommandLine;
 
 use super::x64_cpu::{inb, outb};
 
@@ -9,16 +11,21 @@ pub struct Console {
 }
 
 impl Console {
+    /// Creates a new serial console based on parameters set in the provided command line.
+    ///
+    /// If the command line does not specify a serial console at all, `None` is returned.
+    ///
     /// # Safety
     ///
     /// * Callers should ensure that at most a single instance of `Console` is in use at a given
     ///   time, as it provides (unsynchronized) direct access to the hardware.
-    pub unsafe fn new() -> Self {
-        unsafe {
-            Self {
-                serial: Serial::new(0x3f8, 115200),
-            }
-        }
+    pub unsafe fn new(cmdline: CommandLine<'_>) -> Option<Self> {
+        let base_port_str = cmdline.get_arg_value(b"x86.serial")?;
+        let base_port = u16::from_str_radix(str::from_utf8(base_port_str).ok()?, 16).ok()?;
+
+        let serial = unsafe { Serial::new(base_port, 115200) };
+
+        Some(Self { serial })
     }
 
     pub fn write(&mut self, s: &str) {

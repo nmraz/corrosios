@@ -1,6 +1,7 @@
 use core::fmt::{Arguments, Write};
 
 use crate::arch::serial::Console;
+use crate::bootparse::CommandLine;
 use crate::sync::SpinLock;
 
 macro_rules! println {
@@ -15,11 +16,11 @@ macro_rules! println {
 
 static CONSOLE: SpinLock<Option<Console>> = SpinLock::new(None);
 
-pub fn init() {
+pub fn init(cmdline: CommandLine<'_>) {
     CONSOLE.with(|console, _| {
         assert!(console.is_none());
         unsafe {
-            *console = Some(Console::new());
+            *console = Console::new(cmdline);
         }
     });
 }

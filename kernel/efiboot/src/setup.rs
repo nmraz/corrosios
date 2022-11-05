@@ -47,7 +47,11 @@ pub fn prepare_bootinfo(boot_table: &BootTable) -> Result<BootinfoCtx> {
         append_bootinfo(&mut bootinfo_builder, ItemKind::FRAMEBUFFER, framebuffer)?;
     }
 
-    append_bootinfo_slice(&mut bootinfo_builder, ItemKind::COMMAND_LINE, b"serial=3f8")?;
+    append_bootinfo_slice(
+        &mut bootinfo_builder,
+        ItemKind::COMMAND_LINE,
+        b"x86.serial=3f8",
+    )?;
 
     Ok(BootinfoCtx {
         efi_mmap_buf: alloc_uninit_data(boot_services, max_mmap_entries * desc_size)?,
