@@ -88,6 +88,10 @@ extern "C" fn kernel_main(
         core::arch::asm!("int 55");
     }
 
+    if let Some(efi_system_table) = bootinfo.efi_system_table() {
+        debug!("EFI system table: {}", efi_system_table);
+    }
+
     if let Some(framebuffer_info) = bootinfo.framebuffer_info() {
         let framebuffer_paddr = PhysAddr::new(framebuffer_info.paddr);
 
