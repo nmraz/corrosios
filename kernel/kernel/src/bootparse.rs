@@ -1,5 +1,5 @@
 use core::str::Utf8Chunks;
-use core::{fmt, slice, str};
+use core::{fmt, slice};
 
 use bootinfo::item::{FramebufferInfo, MemoryRange};
 use bootinfo::view::View;
@@ -43,14 +43,17 @@ impl fmt::Display for CommandLineArg<'_> {
     }
 }
 
+/// A parsed kernel command line, containing all arguments with their values.
 #[derive(Clone, Copy)]
 pub struct CommandLine<'a>(&'a [u8]);
 
 impl<'a> CommandLine<'a> {
+    /// Creates a new command line with the contents of `buf`.
     pub fn new(buf: &'a [u8]) -> Self {
         Self(buf)
     }
 
+    /// Returns an iterator over all arguments in this command line.
     pub fn args(&self) -> impl Iterator<Item = CommandLineArg<'a>> {
         let items = self
             .0
@@ -72,7 +75,7 @@ pub struct BootinfoData {
     memory_map: &'static [MemoryRange],
     efi_system_table: Option<PhysAddr>,
     framebuffer_info: Option<&'static FramebufferInfo>,
-    command_line: &'static [u8],
+    command_line: CommandLine<'static>,
 }
 
 impl BootinfoData {
@@ -121,7 +124,7 @@ impl BootinfoData {
             memory_map: memory_map.expect("no memory map in bootinfo"),
             efi_system_table,
             framebuffer_info,
-            command_line: command_line.unwrap_or(b""),
+            command_line: CommandLine::new(command_line.unwrap_or(b"")),
         }
     }
 
@@ -142,7 +145,7 @@ impl BootinfoData {
 
     /// Returns the kernel command line provided in the bootinfo.
     pub fn command_line(&self) -> CommandLine<'_> {
-        CommandLine::new(self.command_line)
+        self.command_line
     }
 }
 
