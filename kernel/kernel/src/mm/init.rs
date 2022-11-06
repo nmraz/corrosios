@@ -131,6 +131,7 @@ pub unsafe fn init_late(context: InitContext, bootinfo: &BootinfoData, irq_disab
     );
 
     let max_pfn = highest_usable_pfn(mem_map);
+    let mut added_free_pages = 0;
 
     unsafe {
         pmm::init(max_pfn, &mut bootheap, irq_disabled);
@@ -138,8 +139,15 @@ pub unsafe fn init_late(context: InitContext, bootinfo: &BootinfoData, irq_disab
         reserve_bootheap(&mut reserved_ranges, bootheap);
         iter_early_usable_ranges(mem_map, &reserved_ranges, |start, end| {
             pmm::add_free_range(start, end, irq_disabled);
+            added_free_pages += end - start;
         })
     }
+
+    debug!(
+        "initialized PMM with {} free pages ({})",
+        added_free_pages,
+        display_byte_size(added_free_pages * PAGE_SIZE)
+    );
 
     vm::init();
 }
