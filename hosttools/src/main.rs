@@ -1,10 +1,12 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 
 use hosttools::config;
 use hosttools::cross::{cross_run_all, kernel_binary_path};
 use hosttools::gdb::{run_gdb, GdbOptions};
-use hosttools::image::{create_disk_image, ImageOptions};
+use hosttools::image::{create_disk_image, ImageBuildOptions};
 use hosttools::qemu::{run_qemu, QemuOptions};
 use xshell::{cmd, Shell};
 
@@ -39,7 +41,7 @@ struct ImageCommand {
 }
 
 #[derive(Args)]
-struct ImageArgs {
+struct BuildArgs {
     /// Build image in release mode
     #[clap(long)]
     release: bool,
@@ -47,6 +49,16 @@ struct ImageArgs {
     /// Additional arguments to use when building
     #[clap(short = 'B', allow_hyphen_values = true)]
     additional_build_args: Vec<String>,
+}
+
+#[derive(Args)]
+struct ImageArgs {
+    /// Arguments to add to the kernel command line
+    #[clap(short = 'k', long = "kernel-arg")]
+    kernel_command_line: Vec<String>,
+
+    #[clap(flatten)]
+    build: BuildArgs,
 }
 
 /// Run UEFI image in QEMU.
@@ -69,6 +81,10 @@ struct QemuCommand {
 /// Run QEMU and GDB together in Tilix.
 #[derive(Args)]
 struct GdbSplitSubcommand {
+    /// Arguments to add to the kernel command line
+    #[clap(short = 'k', long = "kernel-arg")]
+    kernel_command_line: Vec<String>,
+
     #[clap(flatten)]
     qemu: QemuArgs,
 }
@@ -100,10 +116,8 @@ struct GdbAttachCommand {
     server: String,
 
     #[clap(flatten)]
-    image: ImageArgs,
+    build: BuildArgs,
 }
-
-const KERNEL_COMMAND_LINE: &[u8] = b"x86.serial=3f8 loglevel=debug";
 
 fn main() -> Result<()> {
     let args = Cli::parse();
@@ -114,12 +128,12 @@ fn main() -> Result<()> {
     match &args.command {
         Command::Cross(cross) => cross_run_all(&sh, &cross.subcommand, &cross.additional_args),
         Command::Image(image) => {
-            create_disk_image(&sh, &image_opts_from_image_args(&image.args))?;
+            create_disk_image_from_args(&sh, &image.args)?;
             Ok(())
         }
 
         Command::Qemu(qemu) => {
-            let image_path = create_disk_image(&sh, &image_opts_from_image_args(&qemu.image))?;
+            let image_path = create_disk_image_from_args(&sh, &qemu.image)?;
 
             let opts = QemuOptions {
                 image_path: &image_path,
@@ -135,8 +149,8 @@ fn main() -> Result<()> {
         }
 
         Command::GdbAttach(gdb) => {
-            let image_opts = image_opts_from_image_args(&gdb.image);
-            let kernel_path = kernel_binary_path(&sh, &image_opts.build_args())?;
+            let build_opts = build_opts_from_build_args(&gdb.build);
+            let kernel_path = kernel_binary_path(&sh, &build_opts.build_args())?;
             let gdb_opts = GdbOptions {
                 kernel_binary: &kernel_path,
                 server: &gdb.server,
@@ -145,21 +159,25 @@ fn main() -> Result<()> {
             run_gdb(&sh, &gdb_opts)
         }
 
-        Command::GdbSplit(gdbmux) => {
-            let image_opts = ImageOptions {
+        Command::GdbSplit(gdb_split) => {
+            let image_opts = ImageBuildOptions {
                 release: false,
                 additional_build_args: &[],
-                kernel_command_line: KERNEL_COMMAND_LINE,
             };
-            let image_path = create_disk_image(&sh, &image_opts)?;
+
+            let image_path = create_disk_image(
+                &sh,
+                &image_opts,
+                &kernel_command_line_from_args(&gdb_split.kernel_command_line),
+            )?;
 
             let qemu_opts = QemuOptions {
                 image_path: &image_path,
-                mem: &gdbmux.qemu.mem,
+                mem: &gdb_split.qemu.mem,
                 enable_gdbserver: true,
-                use_kvm: gdbmux.qemu.kvm,
-                headless: gdbmux.qemu.headless,
-                serial: &gdbmux.qemu.serial,
+                use_kvm: gdb_split.qemu.kvm,
+                headless: gdb_split.qemu.headless,
+                serial: &gdb_split.qemu.serial,
                 additional_args: &[],
             };
 
@@ -174,10 +192,28 @@ fn main() -> Result<()> {
     }
 }
 
-fn image_opts_from_image_args(args: &ImageArgs) -> ImageOptions<'_> {
-    ImageOptions {
+fn create_disk_image_from_args(sh: &Shell, args: &ImageArgs) -> Result<PathBuf> {
+    let build_opts = build_opts_from_build_args(&args.build);
+    let kernel_command_line = kernel_command_line_from_args(&args.kernel_command_line);
+    create_disk_image(sh, &build_opts, &kernel_command_line)
+}
+
+const DEFAULT_KERNEL_COMMAND_LINE: &[u8] = b"x86.serial=3f8";
+
+fn kernel_command_line_from_args(args: &[String]) -> Vec<u8> {
+    let mut kernel_command_line = DEFAULT_KERNEL_COMMAND_LINE.to_owned();
+
+    for arg in args {
+        kernel_command_line.extend(b" ");
+        kernel_command_line.extend(arg.as_bytes());
+    }
+
+    kernel_command_line
+}
+
+fn build_opts_from_build_args(args: &BuildArgs) -> ImageBuildOptions<'_> {
+    ImageBuildOptions {
         release: args.release,
         additional_build_args: &args.additional_build_args,
-        kernel_command_line: KERNEL_COMMAND_LINE,
     }
 }

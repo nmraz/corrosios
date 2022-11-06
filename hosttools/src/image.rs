@@ -22,13 +22,12 @@ const LB_SIZE: u64 = 512;
 const EFI_PARTITION_SIZE: u64 = 10 * MB;
 const DISK_SIZE: u64 = EFI_PARTITION_SIZE + 64 * KB;
 
-pub struct ImageOptions<'a> {
+pub struct ImageBuildOptions<'a> {
     pub release: bool,
     pub additional_build_args: &'a [String],
-    pub kernel_command_line: &'a [u8],
 }
 
-impl<'a> ImageOptions<'a> {
+impl<'a> ImageBuildOptions<'a> {
     pub fn build_args(&self) -> Vec<String> {
         let mut args = Vec::new();
 
@@ -41,8 +40,12 @@ impl<'a> ImageOptions<'a> {
     }
 }
 
-pub fn create_disk_image(sh: &Shell, opts: &ImageOptions<'_>) -> Result<PathBuf> {
-    let build_args = opts.build_args();
+pub fn create_disk_image(
+    sh: &Shell,
+    build_opts: &ImageBuildOptions<'_>,
+    kernel_command_line: &[u8],
+) -> Result<PathBuf> {
+    let build_args = build_opts.build_args();
     cross_run_all(sh, "build", &build_args)?;
 
     let kernel_path = kernel_binary_path(sh, &build_args)?;
@@ -67,7 +70,7 @@ pub fn create_disk_image(sh: &Shell, opts: &ImageOptions<'_>) -> Result<PathBuf>
         efi_part_data,
         &kernel_path,
         &bootloader_path,
-        opts.kernel_command_line,
+        kernel_command_line,
     )
     .context("failed to write EFI system partition")?;
 
