@@ -30,7 +30,7 @@ These will open a QEMU window with screen output and direct serial output to you
 
 **Notes:**
 
-- Plaim emulation (instead of KVM) should also work; run `cargo qemu` without `--kvm`.
+- Plain emulation (instead of KVM) should also work; run `cargo qemu` without `--kvm`.
 
 - The first time this command is run, it will download the necessary toolchain and dependencies over the internet. Subsequent builds should run offline.
 
