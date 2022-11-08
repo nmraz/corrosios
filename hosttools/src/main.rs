@@ -108,7 +108,7 @@ struct QemuArgs {
     serial: String,
 }
 
-/// Run UEFI image in QEMU, attach gdb.
+/// Attach GDB to a running QEMU instance.
 #[derive(Args)]
 struct GdbAttachCommand {
     /// The address of the remote GDB server
