@@ -16,10 +16,6 @@ sudo dnf install qemu-kvm
 sudo apt install qemu-system-x86
 ```
 
-If you'd rather not use rustup, make sure you are using the exact nightly Rust version specified in `rust-toolchain.toml`.
-
-Debugging support requires `gdb` to be installed as well.
-
 Boot up a basic image in QEMU/KVM with:
 
 ```bash
@@ -32,7 +28,19 @@ cargo qemu --kvm --release
 
 These will open a QEMU window with screen output and direct serial output to your terminal. You can also run a headless build or redirect serial output with the `--headless` and `--serial` flags; see the help message for more details.
 
-**Note:** The first time this command is run, it will download the necessary toolchain and dependencies over the internet. Subsequent builds should run offline.
+**Notes:**
+
+- Plaim emulation (instead of KVM) should also work; run `cargo qemu` without `--kvm`.
+
+- The first time this command is run, it will download the necessary toolchain and dependencies over the internet. Subsequent builds should run offline.
+
+- If you'd rather not use rustup, make sure you are using the exact nightly Rust version specified in `rust-toolchain.toml`.
+
+- Debugging support requires `gdb` to be installed as well.
+
+## Current status
+
+The kernel currently contains a physical and virtual memory manager and is capable of displaying a blue screen when it boots.
 
 ## Cargo Subcommands and `hosttools`
 
@@ -40,7 +48,7 @@ This project uses a (currently pretty bloated, oops) Rust binary known as `hostt
 
 Currently supported `cargo` subcommands:
 
-- `hosttools` - Runs the hosttools binary itself, enabling access to all of its subcommands.
+- `hosttools` - Runs the hosttools binary itself, enabling direct access to all of its subcommands.
 - `image` - Creates a UEFI-bootable GPT image.
 - `qemu` - Creates an image and boots it in QEMU.
 - `gdb-attach` - Attaches to a running QEMU machine with GDB.
@@ -65,3 +73,7 @@ Currently supported `cargo` subcommands:
 ## IDE Setup
 
 See `.vscode/settings.defaults.json` for the settings I use for VSCode with rust-analyzer.
+
+### Debugging
+
+Source-level debugging support depends on the C/C++ extension. Once it is installed, you should be able to use the "Launch QEMU gdbserver" debug task.
