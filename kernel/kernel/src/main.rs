@@ -134,7 +134,7 @@ extern "C" fn kernel_main(
 
     mm::pmm::dump_usage();
 
-    debug!("attempting to write to kernel code");
+    info!("attempting to write to kernel code");
     unsafe {
         extern "C" {
             static mut __code_start: u8;
