@@ -238,7 +238,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
 
             parent.inner_mut(owner)?.remove_child(slice.start());
 
-            slice.slice.detach_children(owner)?;
+            slice.slice.detach_children(owner);
 
             unsafe {
                 self.do_unmap(slice.start(), slice.page_count());
@@ -464,9 +464,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
 impl<O> Drop for AddrSpace<O> {
     fn drop(&mut self) {
         let owner = &mut self.inner.get_mut().cell_owner;
-        self.root_slice
-            .detach_children(owner)
-            .expect("final detach failed");
+        self.root_slice.detach_children(owner);
     }
 }
 
@@ -638,7 +636,7 @@ impl SliceData {
     /// # Panics
     ///
     /// Panics if `self` is already detached.
-    fn detach_children(self: &Arc<Self>, owner: &mut QCellOwner) -> Result<()> {
+    fn detach_children(self: &Arc<Self>, owner: &mut QCellOwner) {
         let mut cur = Arc::clone(self);
 
         loop {
@@ -654,7 +652,7 @@ impl SliceData {
                     AddrSpaceChild::Subslice(subslice) => {
                         cur = subslice;
                     }
-                    AddrSpaceChild::Mapping(mapping) => {}
+                    AddrSpaceChild::Mapping(_) => {}
                 }
             } else {
                 // Now that we've finished detaching children, mark the current slice as detached
@@ -673,8 +671,6 @@ impl SliceData {
                 }
             }
         }
-
-        Ok(())
     }
 
     /// Retrieves the mapping containing `vpn`, recursing into subslices as necessary.
