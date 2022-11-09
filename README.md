@@ -4,7 +4,7 @@ A WIP microkernel-based OS targeting modern x64 systems, written in Rust.
 
 ## Quick start in QEMU
 
-**Disclaimer:** I develop on an x64 Linux system. I haven't tried building this on any other platform, though I'd be happy to accept changes expanding platform support.
+**Disclaimer:** I develop on an x64 Linux system, so I'm not really sure whether this project builds or runs on other platforms.
 
 Install [rustup](https://rustup.rs) and QEMU:
 
