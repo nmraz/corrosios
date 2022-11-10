@@ -1,11 +1,11 @@
-use core::cmp;
 use core::ops::{ControlFlow, Range};
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
-use arrayvec::{ArrayString, ArrayVec};
+use arrayvec::ArrayVec;
 use intrusive_collections::rbtree::CursorMut;
 use intrusive_collections::{intrusive_adapter, Bound, KeyAdapter, RBTree, RBTreeAtomicLink};
+use object_name::Name;
 use qcell::{QCell, QCellOwner};
 
 use crate::err::{Error, Result};
@@ -17,8 +17,6 @@ use crate::sync::SpinLock;
 
 use super::object::VmObject;
 use super::AccessType;
-
-const MAX_NAME_LEN: usize = 32;
 
 /// A request to flush pages from the TLB.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,7 +99,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         };
 
         let root_slice = Arc::try_new(Slice {
-            name: ArrayString::from("root").unwrap(),
+            name: Name::new("root"),
             start: range.start,
             page_count: range.end - range.start,
             inner: inner.cell_owner.cell(Some(SliceInner::new(None))),
@@ -187,14 +185,12 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         start: Option<VirtPageNum>,
         page_count: usize,
     ) -> Result<SliceHandle> {
-        let name = ArrayString::from(&name[..cmp::min(name.len(), MAX_NAME_LEN)]).unwrap();
-
         let slice = self.with_owner(|owner| {
             let id = owner.id();
 
             slice.slice.alloc_spot(owner, start, page_count, |start| {
                 let slice = Arc::try_new(Slice {
-                    name,
+                    name: Name::new(name),
                     start,
                     page_count,
                     inner: QCell::new(id, Some(SliceInner::new(Some(Arc::clone(&slice.slice))))),
@@ -556,7 +552,7 @@ impl SliceHandle {
     ///
     /// The root slice of an address space is always named `root`.
     pub fn name(&self) -> &str {
-        &self.slice.name
+        self.slice.name.as_ref()
     }
 
     /// Returns the first page number covered by this slice.
@@ -617,7 +613,7 @@ impl MappingHandle {
 }
 
 struct Slice {
-    name: ArrayString<32>,
+    name: Name,
     start: VirtPageNum,
     page_count: usize,
     inner: QCell<Option<SliceInner>>,
