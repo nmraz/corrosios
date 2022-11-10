@@ -373,6 +373,7 @@ dependencies = [
  "itertools",
  "log",
  "num-utils",
+ "object-name",
  "paste",
  "qcell",
  "spin-once",
@@ -435,6 +436,13 @@ dependencies = [
 [[package]]
 name = "num-utils"
 version = "0.1.0"
+
+[[package]]
+name = "object-name"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+]
 
 [[package]]
 name = "once_cell"

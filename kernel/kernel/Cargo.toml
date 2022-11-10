@@ -17,6 +17,7 @@ qcell = { version = "0.5.2", default-features = false, features = ["alloc"] }
 bitmap = { path = "../../lib/bitmap" }
 bootinfo = { path = "../bootinfo" }
 num-utils = { path = "../../lib/num-utils" }
+object-name = { path = "../../lib/object-name" }
 spin-once = { path = "../../lib/spin-once" }
 struct-enum = { path = "../../lib/struct-enum" }
 log = { version = "0.4.17", default-features = false }

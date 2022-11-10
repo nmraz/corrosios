@@ -78,7 +78,7 @@ pub unsafe trait AddrSpaceOps {
 pub struct AddrSpace<O> {
     // TODO: probably don't want a spinlock here
     inner: SpinLock<AddrSpaceInner>,
-    root_slice: Arc<SliceData>,
+    root_slice: Arc<Slice>,
     ops: O,
 }
 
@@ -100,7 +100,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             cell_owner: QCellOwner::new(),
         };
 
-        let root_slice = Arc::try_new(SliceData {
+        let root_slice = Arc::try_new(Slice {
             name: ArrayString::from("root").unwrap(),
             start: range.start,
             page_count: range.end - range.start,
@@ -193,7 +193,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             let id = owner.id();
 
             slice.slice.alloc_spot(owner, start, page_count, |start| {
-                let slice = Arc::try_new(SliceData {
+                let slice = Arc::try_new(Slice {
                     name,
                     start,
                     page_count,
@@ -288,7 +288,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             slice
                 .slice
                 .alloc_spot(owner, start, total_page_count, |start| {
-                    let mapping = Arc::try_new(MappingData {
+                    let mapping = Arc::try_new(Mapping {
                         start,
                         page_count,
                         object_offset,
@@ -470,7 +470,7 @@ impl<O> Drop for AddrSpace<O> {
 
 #[derive(Clone, Copy)]
 struct CommitRange<'a> {
-    mapping: &'a MappingData,
+    mapping: &'a Mapping,
     offset: usize,
     page_count: usize,
 }
@@ -548,7 +548,7 @@ fn access_allowed(access_type: AccessType, prot: Protection) -> bool {
 /// operations on a detached slice will fail with [`INVALID_STATE`](crate::err::Error::INVALID_STATE).
 #[derive(Clone)]
 pub struct SliceHandle {
-    slice: Arc<SliceData>,
+    slice: Arc<Slice>,
 }
 
 impl SliceHandle {
@@ -586,7 +586,7 @@ impl SliceHandle {
 /// [`INVALID_STATE`](crate::err::Error::INVALID_STATE).
 #[derive(Clone)]
 pub struct MappingHandle {
-    mapping: Arc<MappingData>,
+    mapping: Arc<Mapping>,
 }
 
 impl MappingHandle {
@@ -616,14 +616,14 @@ impl MappingHandle {
     }
 }
 
-struct SliceData {
+struct Slice {
     name: ArrayString<32>,
     start: VirtPageNum,
     page_count: usize,
     inner: QCell<Option<SliceInner>>,
 }
 
-impl SliceData {
+impl Slice {
     /// Recursively detaches all subslices and of `self`, calling `unmap` on every mapping
     /// encountered in the region.
     ///
@@ -674,11 +674,7 @@ impl SliceData {
     }
 
     /// Retrieves the mapping containing `vpn`, recursing into subslices as necessary.
-    fn get_mapping<'a>(
-        &'a self,
-        owner: &'a QCellOwner,
-        vpn: VirtPageNum,
-    ) -> Result<&'a MappingData> {
+    fn get_mapping<'a>(&'a self, owner: &'a QCellOwner, vpn: VirtPageNum) -> Result<&'a Mapping> {
         self.check_vpn(vpn)?;
 
         let inner = self.inner(owner)?;
@@ -871,12 +867,12 @@ fn finish_insert_after<R>(
 struct SliceInner {
     // This apparent cycle is broken by calls to `detach_children`, which guarantee that this whole
     // inner structure is destroyed when appropriate.
-    parent: Option<Arc<SliceData>>,
+    parent: Option<Arc<Slice>>,
     children: RBTree<AddrSpaceChildAdapter>,
 }
 
 impl SliceInner {
-    fn new(parent: Option<Arc<SliceData>>) -> Self {
+    fn new(parent: Option<Arc<Slice>>) -> Self {
         Self {
             parent,
             children: RBTree::default(),
@@ -904,11 +900,11 @@ impl SliceInner {
 }
 
 enum AddrSpaceChild {
-    Subslice(Arc<SliceData>),
-    Mapping(Arc<MappingData>),
+    Subslice(Arc<Slice>),
+    Mapping(Arc<Mapping>),
 }
 
-struct MappingData {
+struct Mapping {
     start: VirtPageNum,
     page_count: usize,
     object_offset: usize,
@@ -916,7 +912,7 @@ struct MappingData {
     inner: QCell<Option<MappingInner>>,
 }
 
-impl MappingData {
+impl Mapping {
     fn inner_mut<'a>(&'a self, owner: &'a mut QCellOwner) -> Result<&mut MappingInner> {
         self.inner.rw(owner).as_mut().ok_or(Error::INVALID_STATE)
     }
@@ -925,12 +921,12 @@ impl MappingData {
 struct MappingInner {
     // This apparent cycle is broken by calls to `detach_children`, which guarantee that this whole
     // inner structure is destroyed when appropriate.
-    parent: Arc<SliceData>,
+    parent: Arc<Slice>,
     prot: Protection,
 }
 
 impl MappingInner {
-    fn new(parent: Arc<SliceData>, prot: Protection) -> Self {
+    fn new(parent: Arc<Slice>, prot: Protection) -> Self {
         Self { parent, prot }
     }
 }
