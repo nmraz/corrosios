@@ -2,16 +2,42 @@ use core::fmt;
 use core::ops::Range;
 
 use bootinfo::item::MemoryKind;
+use num_utils::div_ceil;
+
+use crate::arch::mmu::PAGE_SIZE;
 
 use super::types::PhysFrameNum;
 
-pub fn is_usable(kind: MemoryKind) -> bool {
+pub fn display_byte_size(bytes: usize) -> impl fmt::Display {
+    struct DisplayByteSize(usize);
+    impl fmt::Display for DisplayByteSize {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            if self.0 < 1024 {
+                write!(f, "{}B", self.0)
+            } else if self.0 < 1024 * 1024 {
+                write!(f, "{}K", self.0 / 1024)
+            } else if self.0 < 1024 * 1024 * 1024 {
+                write!(f, "{}M", self.0 / (1024 * 1024))
+            } else {
+                write!(f, "{}G", self.0 / (1024 * 1024 * 1024))
+            }
+        }
+    }
+
+    DisplayByteSize(bytes)
+}
+
+pub fn to_page_count(bytes: usize) -> usize {
+    div_ceil(bytes, PAGE_SIZE)
+}
+
+pub(super) fn is_usable(kind: MemoryKind) -> bool {
     // Note: we include boot services here as they can be reclaimed once we are done parsing
     // data provided by the firmware.
     matches!(kind, MemoryKind::USABLE | MemoryKind::FIRMWARE_BOOT)
 }
 
-pub fn is_early_usable(kind: MemoryKind) -> bool {
+pub(super) fn is_early_usable(kind: MemoryKind) -> bool {
     // Note: we intentionally exclude boot services here, as we may still need to access data stored
     // in that kind of memory and will explicitly reclaim it later.
     kind == MemoryKind::USABLE
@@ -22,7 +48,7 @@ pub fn is_early_usable(kind: MemoryKind) -> bool {
 ///
 /// **Note**: This function assumes that both `usable_ranges` and `reserved_ranges` are sorted in
 /// ascending order, and that the ranges contained in each are disjoint.
-pub fn iter_usable_ranges(
+pub(super) fn iter_usable_ranges(
     usable_ranges: impl Iterator<Item = Range<PhysFrameNum>>,
     reserved_ranges: &[Range<PhysFrameNum>],
     mut func: impl FnMut(PhysFrameNum, PhysFrameNum),
@@ -65,23 +91,4 @@ pub fn iter_usable_ranges(
             func(start, end);
         }
     }
-}
-
-pub fn display_byte_size(bytes: usize) -> impl fmt::Display {
-    struct DisplayByteSize(usize);
-    impl fmt::Display for DisplayByteSize {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            if self.0 < 1024 {
-                write!(f, "{}B", self.0)
-            } else if self.0 < 1024 * 1024 {
-                write!(f, "{}K", self.0 / 1024)
-            } else if self.0 < 1024 * 1024 * 1024 {
-                write!(f, "{}M", self.0 / (1024 * 1024))
-            } else {
-                write!(f, "{}G", self.0 / (1024 * 1024 * 1024))
-            }
-        }
-    }
-
-    DisplayByteSize(bytes)
 }

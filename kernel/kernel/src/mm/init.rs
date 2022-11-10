@@ -2,11 +2,11 @@ use core::ops::Range;
 use core::{cmp, slice};
 
 use arrayvec::ArrayVec;
+use log::{debug, info, trace};
+
 use bootinfo::item::{MemoryKind, MemoryRange};
 use bootinfo::view::View;
 use bootinfo::ItemKind;
-use log::{debug, info, trace};
-use num_utils::div_ceil;
 
 use crate::arch::mm::BOOTHEAP_EARLYMAP_MAX_PAGES;
 use crate::arch::mmu::PAGE_SIZE;
@@ -19,7 +19,7 @@ use crate::{arch, kimage};
 
 use super::early;
 use super::types::{PhysAddr, PhysFrameNum};
-use super::utils::{is_early_usable, is_usable, iter_usable_ranges};
+use super::utils::{is_early_usable, is_usable, iter_usable_ranges, to_page_count};
 
 /// A context structure used across both early and late MM initialization.
 pub struct InitContext {
@@ -56,7 +56,7 @@ pub unsafe fn init_early(
         arch::mmu::early_init(irq_disabled);
     }
 
-    let bootinfo_pages = div_ceil(bootinfo_size, PAGE_SIZE);
+    let bootinfo_pages = to_page_count(bootinfo_size);
     let bootinfo_ptr = mapper
         .map(bootinfo_paddr.containing_frame(), bootinfo_pages)
         .addr()

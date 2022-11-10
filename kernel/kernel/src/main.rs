@@ -12,14 +12,12 @@ extern crate alloc;
 
 use core::{mem, slice};
 
-use arch::cpu;
 use log::{debug, info};
-use mm::types::PhysAddr;
-use num_utils::div_ceil;
 
-use crate::arch::mmu::PAGE_SIZE;
+use crate::arch::cpu;
 use crate::bootparse::BootinfoData;
-use crate::mm::types::{CacheMode, Protection};
+use crate::mm::types::{CacheMode, PhysAddr, Protection};
+use crate::mm::utils::to_page_count;
 use crate::mm::vm::kernel_aspace::iomap;
 use crate::sync::irq::IrqDisabled;
 
@@ -107,7 +105,7 @@ extern "C" fn kernel_main(
         let framebuffer_mapping = unsafe {
             iomap(
                 framebuffer_paddr.containing_frame(),
-                div_ceil(framebuffer_info.byte_size, PAGE_SIZE),
+                to_page_count(framebuffer_info.byte_size),
                 Protection::READ | Protection::WRITE,
                 CacheMode::WriteCombining,
             )

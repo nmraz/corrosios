@@ -5,11 +5,12 @@ use core::{cmp, mem};
 
 use bitmap::BorrowedBitmapMut;
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink, UnsafeRef};
-use num_utils::{align_down, align_up, div_ceil, log2_ceil};
+use num_utils::{align_down, align_up, log2_ceil};
 
 use super::physmap::{pfn_to_physmap, physmap_to_pfn};
 use super::pmm;
 use super::types::VirtAddr;
+use super::utils::to_page_count;
 use crate::arch::mmu::PAGE_SIZE;
 use crate::sync::SpinLock;
 
@@ -157,7 +158,7 @@ fn nonnull_slice_from_raw_parts<T>(data: NonNull<T>, len: usize) -> NonNull<[T]>
 }
 
 fn raw_page_order(bytes: usize) -> usize {
-    let pages = div_ceil(bytes, PAGE_SIZE);
+    let pages = to_page_count(bytes);
     log2_ceil(pages)
 }
 
