@@ -1,12 +1,8 @@
-use core::ops::{ControlFlow, Range};
-
-use alloc::boxed::Box;
 use alloc::sync::Arc;
+use core::ops::Range;
+
 use arrayvec::ArrayVec;
-use intrusive_collections::rbtree::CursorMut;
-use intrusive_collections::{intrusive_adapter, Bound, KeyAdapter, RBTree, RBTreeAtomicLink};
-use object_name::Name;
-use qcell::{QCell, QCellOwner};
+use qcell::QCellOwner;
 
 use crate::err::{Error, Result};
 use crate::mm::physmap::PhysmapPfnTranslator;
@@ -15,8 +11,12 @@ use crate::mm::pt::{GatherInvalidations, MappingPointer, PageTable, PageTableAll
 use crate::mm::types::{PageTablePerms, PhysFrameNum, Protection, VirtPageNum};
 use crate::sync::SpinLock;
 
+use self::tree::{Mapping, Slice, SliceChild};
+
 use super::object::VmObject;
 use super::AccessType;
+
+mod tree;
 
 /// A request to flush pages from the TLB.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,7 +81,7 @@ pub struct AddrSpace<O> {
 }
 
 struct AddrSpaceInner {
-    cell_owner: QCellOwner,
+    owner: QCellOwner,
 }
 
 impl<O: AddrSpaceOps> AddrSpace<O> {
@@ -94,19 +94,17 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     pub unsafe fn new(range: Range<VirtPageNum>, ops: O) -> Result<Self> {
         assert!(range.end >= range.start);
 
-        let inner = AddrSpaceInner {
-            cell_owner: QCellOwner::new(),
-        };
-
-        let root_slice = Arc::try_new(Slice {
-            name: Name::new("root"),
-            start: range.start,
-            page_count: range.end - range.start,
-            inner: inner.cell_owner.cell(Some(SliceInner::new(None))),
-        })?;
+        let owner = QCellOwner::new();
+        let root_slice = Slice::new(
+            owner.id(),
+            None,
+            "root",
+            range.start,
+            range.end - range.start,
+        )?;
 
         Ok(AddrSpace {
-            inner: SpinLock::new(inner),
+            inner: SpinLock::new(AddrSpaceInner { owner }),
             root_slice,
             ops,
         })
@@ -146,7 +144,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                 'a: 'b,
             {
                 let mapping = addr_space.root_slice.get_mapping(owner, self.0)?;
-                let offset = self.0 - mapping.start;
+                let offset = self.0 - mapping.start();
                 Ok(CommitRange {
                     mapping,
                     offset,
@@ -189,15 +187,11 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             let id = owner.id();
 
             slice.slice.alloc_spot(owner, start, page_count, |start| {
-                let slice = Arc::try_new(Slice {
-                    name: Name::new(name),
-                    start,
-                    page_count,
-                    inner: QCell::new(id, Some(SliceInner::new(Some(Arc::clone(&slice.slice))))),
-                })?;
+                let subslice =
+                    Slice::new(id, Some(Arc::clone(&slice.slice)), name, start, page_count)?;
 
-                let child = AddrSpaceChild::Subslice(Arc::clone(&slice));
-                Ok((child, slice))
+                let child = SliceChild::Subslice(Arc::clone(&subslice));
+                Ok((child, subslice))
             })
         })?;
 
@@ -224,16 +218,9 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     /// * The range unmapped must not be accessed after this function returns
     pub unsafe fn unmap_slice(&self, slice: &SliceHandle) -> Result<()> {
         self.with_owner(|owner| {
-            let parent = slice
-                .slice
-                .inner_mut(owner)?
-                .parent
-                .as_ref()
-                .cloned()
-                .ok_or(Error::INVALID_ARGUMENT)?;
+            let parent = slice.slice.parent(owner)?.ok_or(Error::INVALID_ARGUMENT)?;
 
-            parent.inner_mut(owner)?.remove_child(slice.start());
-
+            parent.remove_child(owner, slice.start())?;
             slice.slice.detach_children(owner);
 
             unsafe {
@@ -284,18 +271,17 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             slice
                 .slice
                 .alloc_spot(owner, start, total_page_count, |start| {
-                    let mapping = Arc::try_new(Mapping {
+                    let mapping = Mapping::new(
+                        id,
+                        Arc::clone(&slice.slice),
                         start,
                         page_count,
-                        object_offset,
                         object,
-                        inner: QCell::new(
-                            id,
-                            Some(MappingInner::new(Arc::clone(&slice.slice), prot)),
-                        ),
-                    })?;
+                        object_offset,
+                        prot,
+                    )?;
 
-                    let child = AddrSpaceChild::Mapping(Arc::clone(&mapping));
+                    let child = SliceChild::Mapping(Arc::clone(&mapping));
                     Ok((child, mapping))
                 })
         })?;
@@ -321,9 +307,8 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     /// * The range unmapped must not be accessed after this function returns
     pub unsafe fn unmap(&self, mapping: &MappingHandle) -> Result<()> {
         self.with_owner(|owner| {
-            let parent = Arc::clone(&mapping.mapping.inner_mut(owner)?.parent);
-
-            parent.inner_mut(owner)?.remove_child(mapping.start());
+            let parent = mapping.mapping.parent(owner)?;
+            parent.remove_child(owner, mapping.start())?;
 
             unsafe {
                 self.do_unmap(mapping.start(), mapping.page_count());
@@ -382,32 +367,27 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         self.with_owner(|owner| {
             let range = g.get_range(self, owner)?;
             let mapping = range.mapping;
-            let prot = mapping
-                .inner
-                .ro(owner)
-                .as_ref()
-                .ok_or(Error::INVALID_STATE)?
-                .prot;
+            let prot = mapping.prot(owner)?;
 
             if !access_allowed(access_type, prot) {
                 return Err(Error::NO_PERMS);
             }
 
-            let cache_mode = mapping.object.cache_mode();
+            let cache_mode = mapping.object().cache_mode();
 
             // TODO: refactor this and find some way for `provide_page` to block outside the
             // critical section
             for offset in range.offset..range.offset + range.page_count {
-                let object_offset = offset + mapping.object_offset;
+                let object_offset = offset + mapping.object_offset();
 
-                let pfn = mapping.object.provide_page(object_offset, access_type)?;
+                let pfn = mapping.object().provide_page(object_offset, access_type)?;
 
                 // Safety: we're holding the page table lock, and our translator and allocator perform
                 // correctly.
                 unsafe {
                     self.pt().map(
                         &mut PmmPageTableAlloc,
-                        &mut MappingPointer::new(mapping.start + offset, 1),
+                        &mut MappingPointer::new(mapping.start() + offset, 1),
                         pfn,
                         self.perms_for_prot(prot),
                         cache_mode,
@@ -437,7 +417,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     }
 
     fn with_owner<R>(&self, f: impl FnOnce(&mut QCellOwner) -> R) -> R {
-        self.inner.with(|inner, _| f(&mut inner.cell_owner))
+        self.inner.with(|inner, _| f(&mut inner.owner))
     }
 
     fn pt(&self) -> PageTable<PhysmapPfnTranslator> {
@@ -459,8 +439,87 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
 
 impl<O> Drop for AddrSpace<O> {
     fn drop(&mut self) {
-        let owner = &mut self.inner.get_mut().cell_owner;
+        let owner = &mut self.inner.get_mut().owner;
         self.root_slice.detach_children(owner);
+    }
+}
+
+/// A handle to a [slice](AddrSpace#slices) of an address space.
+///
+/// # States
+///
+/// In general, every slice may be either *attached* or *detached*.
+///
+/// Every slice is created attached (and the root of an address space is always attached),
+/// but unmapping a slice from its parent detaches it. Any attempts to perform mapping-related
+/// operations on a detached slice will fail with [`INVALID_STATE`](crate::err::Error::INVALID_STATE).
+#[derive(Clone)]
+pub struct SliceHandle {
+    slice: Arc<Slice>,
+}
+
+impl SliceHandle {
+    /// Returns the human-friendly name of this slice, useful for debugging purposes.
+    ///
+    /// The root slice of an address space is always named `root`.
+    pub fn name(&self) -> &str {
+        self.slice.name()
+    }
+
+    /// Returns the first page number covered by this slice.
+    pub fn start(&self) -> VirtPageNum {
+        self.slice.start()
+    }
+
+    /// Returns the page number just after the last page covered by this slice.
+    pub fn end(&self) -> VirtPageNum {
+        self.slice.end()
+    }
+
+    /// Returns the number of pages covered by this slice.
+    pub fn page_count(&self) -> usize {
+        self.slice.page_count()
+    }
+}
+
+/// A handle to a mapping of a VM object into an address space.
+///
+/// # States
+///
+/// Like slices, every mapping may be either *attached* or *detached*.
+///
+/// Every mapping is created attached, but unmapping a mapping from its parent detaches it. Any
+/// attempts to perform mapping-related operations on a detached mapping will fail with
+/// [`INVALID_STATE`](crate::err::Error::INVALID_STATE).
+#[derive(Clone)]
+pub struct MappingHandle {
+    mapping: Arc<Mapping>,
+}
+
+impl MappingHandle {
+    /// Returns the first page number covered by this mapping.
+    pub fn start(&self) -> VirtPageNum {
+        self.mapping.start()
+    }
+
+    /// Returns the page number just after the last page covered by this mapping.
+    pub fn end(&self) -> VirtPageNum {
+        self.mapping.end()
+    }
+
+    /// Returns the number of pages covered by this mapping.
+    pub fn page_count(&self) -> usize {
+        self.mapping.page_count()
+    }
+
+    /// Returns the offset in the VM object at which this mapping starts.
+    pub fn object_offset(&self) -> usize {
+        self.mapping.object_offset()
+    }
+
+    /// Returns a handle to the underlying VM object.
+    pub fn object(&self) -> &Arc<dyn VmObject> {
+        self.mapping.object()
     }
 }
 
@@ -530,433 +589,5 @@ fn access_allowed(access_type: AccessType, prot: Protection) -> bool {
         AccessType::Read => prot.contains(Protection::READ),
         AccessType::Write => prot.contains(Protection::WRITE),
         AccessType::Execute => prot.contains(Protection::EXECUTE),
-    }
-}
-
-/// A handle to a [slice](AddrSpace#slices) of an address space.
-///
-/// # States
-///
-/// In general, every slice may be either *attached* or *detached*.
-///
-/// Every slice is created attached (and the root of an address space is always attached),
-/// but unmapping a slice from its parent detaches it. Any attempts to perform mapping-related
-/// operations on a detached slice will fail with [`INVALID_STATE`](crate::err::Error::INVALID_STATE).
-#[derive(Clone)]
-pub struct SliceHandle {
-    slice: Arc<Slice>,
-}
-
-impl SliceHandle {
-    /// Returns the human-friendly name of this slice, useful for debugging purposes.
-    ///
-    /// The root slice of an address space is always named `root`.
-    pub fn name(&self) -> &str {
-        self.slice.name.as_ref()
-    }
-
-    /// Returns the first page number covered by this slice.
-    pub fn start(&self) -> VirtPageNum {
-        self.slice.start
-    }
-
-    /// Returns the page number just after the last page covered by this slice.
-    pub fn end(&self) -> VirtPageNum {
-        self.start() + self.page_count()
-    }
-
-    /// Returns the number of pages covered by this slice.
-    pub fn page_count(&self) -> usize {
-        self.slice.page_count
-    }
-}
-
-/// A handle to a mapping of a VM object into an address space.
-///
-/// # States
-///
-/// Like slices, every mapping may be either *attached* or *detached*.
-///
-/// Every mapping is created attached, but unmapping a mapping from its parent detaches it. Any
-/// attempts to perform mapping-related operations on a detached mapping will fail with
-/// [`INVALID_STATE`](crate::err::Error::INVALID_STATE).
-#[derive(Clone)]
-pub struct MappingHandle {
-    mapping: Arc<Mapping>,
-}
-
-impl MappingHandle {
-    /// Returns the first page number covered by this mapping.
-    pub fn start(&self) -> VirtPageNum {
-        self.mapping.start
-    }
-
-    /// Returns the page number just after the last page covered by this mapping.
-    pub fn end(&self) -> VirtPageNum {
-        self.start() + self.page_count()
-    }
-
-    /// Returns the number of pages covered by this mapping.
-    pub fn page_count(&self) -> usize {
-        self.mapping.page_count
-    }
-
-    /// Returns the offset in the VM object at which this mapping starts.
-    pub fn object_offset(&self) -> usize {
-        self.mapping.object_offset
-    }
-
-    /// Returns a handle to the underlying VM object.
-    pub fn object(&self) -> &Arc<dyn VmObject> {
-        &self.mapping.object
-    }
-}
-
-struct Slice {
-    name: Name,
-    start: VirtPageNum,
-    page_count: usize,
-    inner: QCell<Option<SliceInner>>,
-}
-
-impl Slice {
-    /// Recursively detaches all subslices and of `self`, calling `unmap` on every mapping
-    /// encountered in the region.
-    ///
-    /// When this operation completes, `self` will be in the detached state.
-    ///
-    /// # Errors
-    ///
-    /// Only propagates errors returned by `unmap`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `self` is already detached.
-    fn detach_children(self: &Arc<Self>, owner: &mut QCellOwner) {
-        let mut cur = Arc::clone(self);
-
-        loop {
-            let first_child = cur
-                .inner_mut(owner)
-                .expect("current slice should still be attached")
-                .children
-                .front_mut()
-                .remove();
-
-            if let Some(child) = first_child {
-                match child.data {
-                    AddrSpaceChild::Subslice(subslice) => {
-                        cur = subslice;
-                    }
-                    AddrSpaceChild::Mapping(_) => {}
-                }
-            } else {
-                // Now that we've finished detaching children, mark the current slice as detached
-                // and move back up to the parent if necessary.
-                let inner = cur
-                    .inner
-                    .rw(owner)
-                    .take()
-                    .expect("current slice should still be attached");
-
-                if !Arc::ptr_eq(&cur, self) {
-                    // We're in a (nested) child, move back up to the parent.
-                    cur = inner.parent.expect("child slice should have a parent");
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    /// Retrieves the mapping containing `vpn`, recursing into subslices as necessary.
-    fn get_mapping<'a>(&'a self, owner: &'a QCellOwner, vpn: VirtPageNum) -> Result<&'a Mapping> {
-        self.check_vpn(vpn)?;
-
-        let inner = self.inner(owner)?;
-        let child = inner.get_child(vpn).ok_or(Error::BAD_ADDRESS)?;
-
-        match child {
-            AddrSpaceChild::Subslice(slice) => slice.get_mapping(owner, vpn),
-            AddrSpaceChild::Mapping(mapping) => Ok(mapping),
-        }
-    }
-
-    /// Allocates a child of size `page_count` from within this slice, invoking `f` to construct it
-    /// once a suitable area has been found.
-    ///
-    /// If `start` is provided, the child will be created at the requested virtual page number.
-    /// Otherwise, a sufficiently large available region will be found and used.
-    fn alloc_spot<R>(
-        &self,
-        owner: &mut QCellOwner,
-        start: Option<VirtPageNum>,
-        page_count: usize,
-        f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild, R)>,
-    ) -> Result<R> {
-        match start {
-            Some(start) => self.alloc_spot_fixed(owner, start, page_count, || f(start)),
-            None => self.alloc_spot_dynamic(owner, page_count, f),
-        }
-    }
-
-    /// Allocates a child of size `page_count` from within this slice, invoking `f` to construct it
-    /// once a suitable area has been found.
-    fn alloc_spot_dynamic<R>(
-        &self,
-        owner: &mut QCellOwner,
-        page_count: usize,
-        f: impl FnOnce(VirtPageNum) -> Result<(AddrSpaceChild, R)>,
-    ) -> Result<R> {
-        let mut f = Some(f);
-
-        self.iter_gaps_mut(owner, |gap_start, gap_page_count, prev_cursor| {
-            if gap_page_count > page_count {
-                let f = f.take().expect("did not break after finding spot");
-                ControlFlow::Break(finish_insert_after(prev_cursor, || f(gap_start)))
-            } else {
-                ControlFlow::Continue(())
-            }
-        })
-        .and_then(|res| res.unwrap_or(Err(Error::OUT_OF_RESOURCES)))
-    }
-
-    /// Allocates a child spanning `start..start + page_count` from within this slice, invoking `f`
-    /// to construct it once a suitable area has been found.
-    fn alloc_spot_fixed<R>(
-        &self,
-        owner: &mut QCellOwner,
-        start: VirtPageNum,
-        page_count: usize,
-        f: impl FnOnce() -> Result<(AddrSpaceChild, R)>,
-    ) -> Result<R> {
-        let end = start
-            .checked_add(page_count)
-            .ok_or(Error::INVALID_ARGUMENT)?;
-
-        if start < self.start || end > self.end() {
-            return Err(Error::INVALID_ARGUMENT);
-        }
-
-        let inner = self.inner_mut(owner)?;
-
-        let mut prev = inner.children.upper_bound_mut(Bound::Included(&start));
-        if let Some(prev) = prev.get() {
-            if prev.end() > start {
-                return Err(Error::RESOURCE_OVERLAP);
-            }
-        }
-
-        if let Some(next) = prev.peek_next().get() {
-            if end > next.start() {
-                return Err(Error::RESOURCE_OVERLAP);
-            }
-        }
-
-        finish_insert_after(&mut prev, f)
-    }
-
-    /// Calls `f` on all gaps (unallocated regions) in this slice, passing each invocation the start
-    /// of the gap, its page count, and a cursor pointing to the item in the tree before the gap.
-    ///
-    /// Iteration will stop early if `f` returns [`ControlFlow::Break`], and the break value will
-    /// be returned.
-    fn iter_gaps_mut<'a, B>(
-        &'a self,
-        owner: &'a mut QCellOwner,
-        mut f: impl FnMut(
-            VirtPageNum,
-            usize,
-            &mut CursorMut<'a, AddrSpaceChildAdapter>,
-        ) -> ControlFlow<B>,
-    ) -> Result<Option<B>> {
-        let inner = self.inner_mut(owner)?;
-
-        let mut cursor = inner.children.front_mut();
-        let Some(first) = cursor.get() else {
-            let retval = match f(self.start, self.page_count, &mut cursor) {
-                ControlFlow::Break(val) => Some(val),
-                ControlFlow::Continue(_) => None,
-            };
-
-            return Ok(retval);
-        };
-
-        let first_start = first.start();
-
-        if self.start < first_start {
-            if let ControlFlow::Break(val) = f(self.start, first_start - self.start, &mut cursor) {
-                return Ok(Some(val));
-            }
-        }
-
-        while let Some(next) = cursor.peek_next().get() {
-            let cur = cursor
-                .get()
-                .expect("cursor null despite next being non-null");
-
-            let cur_end = cur.end();
-            let next_start = next.start();
-
-            if cur_end < next_start {
-                if let ControlFlow::Break(val) = f(cur_end, next_start - cur_end, &mut cursor) {
-                    return Ok(Some(val));
-                }
-            }
-
-            cursor.move_next();
-        }
-
-        let last_end = cursor
-            .get()
-            .expect("cursor should point to last node")
-            .end();
-        let slice_end = self.end();
-        if last_end < slice_end {
-            if let ControlFlow::Break(val) = f(last_end, slice_end - last_end, &mut cursor) {
-                return Ok(Some(val));
-            }
-        }
-
-        Ok(None)
-    }
-
-    /// Checks that `vpn` lies within this slice's range, returning `BAD_ADDRESS` if it does not.
-    fn check_vpn(&self, vpn: VirtPageNum) -> Result<()> {
-        if (self.start..self.end()).contains(&vpn) {
-            Ok(())
-        } else {
-            Err(Error::BAD_ADDRESS)
-        }
-    }
-
-    fn end(&self) -> VirtPageNum {
-        self.start + self.page_count
-    }
-
-    fn inner<'a>(&'a self, owner: &'a QCellOwner) -> Result<&'a SliceInner> {
-        self.inner.ro(owner).as_ref().ok_or(Error::INVALID_STATE)
-    }
-
-    fn inner_mut<'a>(&'a self, owner: &'a mut QCellOwner) -> Result<&'a mut SliceInner> {
-        self.inner.rw(owner).as_mut().ok_or(Error::INVALID_STATE)
-    }
-}
-
-fn finish_insert_after<R>(
-    prev: &mut CursorMut<'_, AddrSpaceChildAdapter>,
-    f: impl FnOnce() -> Result<(AddrSpaceChild, R)>,
-) -> Result<R> {
-    let new_child = Box::try_new_uninit()?;
-    let (data, ret) = f()?;
-    let new_child = Box::write(
-        new_child,
-        AddrSpaceChildNode {
-            link: RBTreeAtomicLink::new(),
-            data,
-        },
-    );
-    prev.insert_after(new_child);
-    Ok(ret)
-}
-
-struct SliceInner {
-    // This apparent cycle is broken by calls to `detach_children`, which guarantee that this whole
-    // inner structure is destroyed when appropriate.
-    parent: Option<Arc<Slice>>,
-    children: RBTree<AddrSpaceChildAdapter>,
-}
-
-impl SliceInner {
-    fn new(parent: Option<Arc<Slice>>) -> Self {
-        Self {
-            parent,
-            children: RBTree::default(),
-        }
-    }
-
-    /// Retrives the direct child of `self` containing `vpn`, if one exists.
-    fn get_child(&self, vpn: VirtPageNum) -> Option<&AddrSpaceChild> {
-        self.children
-            .upper_bound(Bound::Included(&vpn))
-            .get()
-            .filter(|node| vpn < node.end())
-            .map(|node| &node.data)
-    }
-
-    /// Removes the direct child of `self` based at `start`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `self` does not have a child starting at `start`.
-    fn remove_child(&mut self, start: VirtPageNum) {
-        let mut child = self.children.find_mut(&start);
-        child.remove().expect("no child for provided start address");
-    }
-}
-
-enum AddrSpaceChild {
-    Subslice(Arc<Slice>),
-    Mapping(Arc<Mapping>),
-}
-
-struct Mapping {
-    start: VirtPageNum,
-    page_count: usize,
-    object_offset: usize,
-    object: Arc<dyn VmObject>,
-    inner: QCell<Option<MappingInner>>,
-}
-
-impl Mapping {
-    fn inner_mut<'a>(&'a self, owner: &'a mut QCellOwner) -> Result<&mut MappingInner> {
-        self.inner.rw(owner).as_mut().ok_or(Error::INVALID_STATE)
-    }
-}
-
-struct MappingInner {
-    // This apparent cycle is broken by calls to `detach_children`, which guarantee that this whole
-    // inner structure is destroyed when appropriate.
-    parent: Arc<Slice>,
-    prot: Protection,
-}
-
-impl MappingInner {
-    fn new(parent: Arc<Slice>, prot: Protection) -> Self {
-        Self { parent, prot }
-    }
-}
-
-struct AddrSpaceChildNode {
-    link: RBTreeAtomicLink,
-    data: AddrSpaceChild,
-}
-
-impl AddrSpaceChildNode {
-    fn start(&self) -> VirtPageNum {
-        match &self.data {
-            AddrSpaceChild::Subslice(slice) => slice.start,
-            AddrSpaceChild::Mapping(mapping) => mapping.start,
-        }
-    }
-
-    fn end(&self) -> VirtPageNum {
-        self.start() + self.page_count()
-    }
-
-    fn page_count(&self) -> usize {
-        match &self.data {
-            AddrSpaceChild::Subslice(slice) => slice.page_count,
-            AddrSpaceChild::Mapping(mapping) => mapping.page_count,
-        }
-    }
-}
-
-intrusive_adapter!(AddrSpaceChildAdapter = Box<AddrSpaceChildNode>: AddrSpaceChildNode { link: RBTreeAtomicLink });
-impl<'a> KeyAdapter<'a> for AddrSpaceChildAdapter {
-    type Key = VirtPageNum;
-
-    fn get_key(&self, value: &'a AddrSpaceChildNode) -> Self::Key {
-        value.start()
     }
 }
