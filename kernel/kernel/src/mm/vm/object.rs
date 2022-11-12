@@ -6,7 +6,14 @@ use crate::mm::pmm;
 use crate::mm::types::{CacheMode, PhysFrameNum};
 use crate::sync::SpinLock;
 
-use super::AccessType;
+/// Access type hint used when requesting pages from a [`VmObject`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitType {
+    /// The requested pages will not be written to, only read or executed.
+    Read,
+    /// The requested pages may be written to and should be prepared to handle those cases.
+    Write,
+}
 
 /// A virtual memory object that can be mapped into an address space.
 ///
@@ -21,10 +28,10 @@ pub unsafe trait VmObject: Send + Sync {
     fn page_count(&self) -> usize;
 
     /// Requests the page at offset `offset` within the object, assuming it will be accessed in
-    /// accordance with `access_type`.
+    /// accordance with `commit_type`.
     ///
     /// For now, this function should not block as it will be called with a spinlock held.
-    fn provide_page(&self, offset: usize, access_type: AccessType) -> Result<PhysFrameNum>;
+    fn provide_page(&self, offset: usize, commit_type: CommitType) -> Result<PhysFrameNum>;
 
     /// Returns the cache mode that should be used when mapping this object.
     ///
@@ -63,7 +70,7 @@ unsafe impl VmObject for EagerVmObject {
         self.frames.len()
     }
 
-    fn provide_page(&self, offset: usize, _access_type: AccessType) -> Result<PhysFrameNum> {
+    fn provide_page(&self, offset: usize, _commit_type: CommitType) -> Result<PhysFrameNum> {
         Ok(self.frames[offset].0)
     }
 }
@@ -101,7 +108,7 @@ unsafe impl VmObject for LazyVmObject {
         self.page_count
     }
 
-    fn provide_page(&self, offset: usize, _access_type: AccessType) -> Result<PhysFrameNum> {
+    fn provide_page(&self, offset: usize, _commit_type: CommitType) -> Result<PhysFrameNum> {
         self.frames.with(|frames, _| {
             let frame = match &frames[offset] {
                 Some(frame) => frame.0,
@@ -148,7 +155,7 @@ unsafe impl VmObject for PhysVmObject {
         self.page_count
     }
 
-    fn provide_page(&self, offset: usize, _access_type: AccessType) -> Result<PhysFrameNum> {
+    fn provide_page(&self, offset: usize, _commit_type: CommitType) -> Result<PhysFrameNum> {
         assert!(offset < self.page_count);
         Ok(self.base + offset)
     }

@@ -13,7 +13,7 @@ use crate::sync::SpinLock;
 
 use self::tree::{Mapping, Slice, SliceChild};
 
-use super::object::VmObject;
+use super::object::{CommitType, VmObject};
 use super::AccessType;
 
 mod tree;
@@ -375,13 +375,14 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
 
             let object = mapping.object().as_ref();
             let cache_mode = object.cache_mode();
+            let commit_type = get_commit_type(access_type);
 
             // TODO: refactor this and find some way for `provide_page` to block outside the
             // critical section
             for offset in range.offset..range.offset + range.page_count {
                 let object_offset = offset + mapping.object_offset();
 
-                let pfn = object.provide_page(object_offset, access_type)?;
+                let pfn = object.provide_page(object_offset, commit_type)?;
 
                 // Safety: we're holding the page table lock, and our translator and allocator perform
                 // correctly.
@@ -582,6 +583,13 @@ struct PmmPageTableAlloc;
 impl PageTableAlloc for PmmPageTableAlloc {
     fn allocate(&mut self) -> Result<PhysFrameNum> {
         pmm::allocate(0).ok_or(Error::OUT_OF_MEMORY)
+    }
+}
+
+fn get_commit_type(access_type: AccessType) -> CommitType {
+    match access_type {
+        AccessType::Read | AccessType::Execute => CommitType::Read,
+        AccessType::Write => CommitType::Write,
     }
 }
 
