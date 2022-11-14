@@ -52,7 +52,7 @@ impl fmt::Display for InterruptFrame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "\nvector: {:#018x}  code: {:#018x}",
+            "vector: {:#018x}  code: {:#018x}",
             self.vector, self.error_code
         )?;
 
@@ -94,7 +94,7 @@ unsafe fn handle_exception(frame: &mut InterruptFrame) {
     match frame.vector {
         VECTOR_PAGE_FAULT => handle_page_fault(frame),
         _ => panic!(
-            "fatal exception: {}\n{}",
+            "fatal exception: {}\n\n{}",
             exception_vector_to_str(frame.vector),
             frame
         ),
@@ -134,7 +134,7 @@ fn handle_page_fault(frame: &InterruptFrame) {
         };
 
         panic!(
-            "fatal page fault: {}-mode {} {}: {:?}\n{}",
+            "fatal page fault: {}-mode {} {}: {:?}\n\n{}",
             mode_str, access_str, addr, err, frame
         );
     }
