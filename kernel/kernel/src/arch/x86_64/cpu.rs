@@ -4,6 +4,7 @@ use core::mem;
 use log::debug;
 
 use crate::arch::x86_64::x64_cpu::{write_cr4, write_ia32_efer, Cr4, Ia32Efer};
+use crate::mp::PerCpu;
 use crate::sync::irq::IrqDisabled;
 
 use super::descriptor::{get_idt, get_idt_size, init_idt, Gdt, KERNEL_CODE_SELECTOR, TSS_SELECTOR};
@@ -41,26 +42,27 @@ pub unsafe fn enable_irq() {
     }
 }
 
-pub unsafe fn init_bsp(irq_disabled: IrqDisabled) {
+pub fn current_percpu(irq_disabled: &IrqDisabled) -> &PerCpu {
+    percpu::current_common(irq_disabled)
+}
+
+pub unsafe fn init_bsp(common_percpu: &'static PerCpu, irq_disabled: IrqDisabled) {
     init_idt();
     unsafe {
-        init_current(irq_disabled);
+        init_current(common_percpu, irq_disabled);
     }
 }
 
-pub unsafe fn init_current(irq_disabled: IrqDisabled) {
+pub unsafe fn init_current(common_percpu: &'static PerCpu, irq_disabled: IrqDisabled) {
     unsafe {
-        let cur_percpu = percpu::init_current(&irq_disabled);
-        debug!("initialized percpu at {:p}", cur_percpu);
+        let cur_percpu = percpu::init_current(common_percpu, &irq_disabled);
+        debug!("initialized arch percpu at {:p}", cur_percpu);
         load_gdt(&cur_percpu.gdt);
         load_idt();
-
-        // Everything is ready, enable interrupts and discard `irq_disabled`
-        #[allow(clippy::drop_non_drop)]
-        drop(irq_disabled);
-        sti();
-
         init_cpu_features();
+
+        // Everything is ready, enable interrupts now
+        sti();
     }
 }
 

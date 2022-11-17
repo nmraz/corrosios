@@ -31,6 +31,7 @@ mod global_alloc;
 mod kimage;
 mod logging;
 mod mm;
+mod mp;
 mod panic;
 mod sync;
 
@@ -78,7 +79,7 @@ extern "C" fn kernel_main(
     info!("memory manager initialized");
 
     unsafe {
-        arch::cpu::init_bsp(irq_disabled);
+        mp::init_bsp(irq_disabled);
     }
 
     debug!("triggering IRQ 55");
