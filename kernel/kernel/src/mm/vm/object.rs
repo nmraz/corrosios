@@ -1,8 +1,8 @@
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-use crate::err::{Error, Result};
-use crate::mm::pmm;
+use crate::err::Result;
+use crate::mm::pmm::FrameBox;
 use crate::mm::types::{CacheMode, PhysFrameNum};
 use crate::sync::SpinLock;
 
@@ -71,7 +71,7 @@ unsafe impl VmObject for EagerVmObject {
     }
 
     fn provide_page(&self, offset: usize, _commit_type: CommitType) -> Result<PhysFrameNum> {
-        Ok(self.frames[offset].0)
+        Ok(self.frames[offset].pfn())
     }
 }
 
@@ -111,10 +111,10 @@ unsafe impl VmObject for LazyVmObject {
     fn provide_page(&self, offset: usize, _commit_type: CommitType) -> Result<PhysFrameNum> {
         self.frames.with(|frames, _| {
             let frame = match &frames[offset] {
-                Some(frame) => frame.0,
+                Some(frame) => frame.pfn(),
                 None => {
                     let frame = FrameBox::new()?;
-                    let pfn = frame.0;
+                    let pfn = frame.pfn();
                     frames[offset] = Some(frame);
                     pfn
                 }
@@ -162,22 +162,5 @@ unsafe impl VmObject for PhysVmObject {
 
     fn cache_mode(&self) -> CacheMode {
         self.cache_mode
-    }
-}
-
-struct FrameBox(PhysFrameNum);
-
-impl FrameBox {
-    pub fn new() -> Result<Self> {
-        pmm::allocate(0).map(Self).ok_or(Error::OUT_OF_MEMORY)
-    }
-}
-
-impl Drop for FrameBox {
-    fn drop(&mut self) {
-        // Safety: this frame was obtained by a call to `pmm::allocate` with order 0.
-        unsafe {
-            pmm::deallocate(self.0, 0);
-        }
     }
 }

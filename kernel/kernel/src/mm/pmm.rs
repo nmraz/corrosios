@@ -9,6 +9,7 @@ use bitmap::BorrowedBitmapMut;
 use num_utils::{div_ceil, log2};
 
 use crate::arch::mmu::PAGE_SIZE;
+use crate::err::{Error, Result};
 use crate::mm::physmap::{paddr_to_physmap, physmap_to_pfn};
 use crate::mm::types::PhysFrameNum;
 use crate::mm::utils::display_byte_size;
@@ -22,6 +23,25 @@ use super::types::VirtAddr;
 const ORDER_COUNT: usize = 16;
 
 static PHYS_MANAGER: SpinLock<Option<PhysManager>> = SpinLock::new(None);
+
+pub struct FrameBox<const ORDER: usize = 0>(PhysFrameNum);
+
+impl<const ORDER: usize> FrameBox<ORDER> {
+    pub fn new() -> Result<Self> {
+        let frame = allocate(ORDER).ok_or(Error::OUT_OF_MEMORY)?;
+        Ok(Self(frame))
+    }
+
+    pub fn pfn(&self) -> PhysFrameNum {
+        self.0
+    }
+}
+
+impl<const ORDER: usize> Drop for FrameBox<ORDER> {
+    fn drop(&mut self) {
+        unsafe { deallocate(self.0, ORDER) }
+    }
+}
 
 /// Initializes the physical memory manager (PMM) with space for tracking physical frames up to
 /// `max_pfn`.
