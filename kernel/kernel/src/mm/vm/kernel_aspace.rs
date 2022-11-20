@@ -165,6 +165,7 @@ unsafe impl AddrSpaceOps for KernelAddrSpaceOps {
     }
 
     fn flush(&self, request: TlbFlush<'_>) {
+        // TODO: full shootdown here
         match request {
             TlbFlush::Specific(pages) => {
                 for &vpn in pages {

@@ -1,4 +1,5 @@
 use core::arch::asm;
+use core::slice;
 use core::sync::atomic::AtomicU64;
 
 use bitflags::bitflags;
@@ -148,7 +149,7 @@ pub unsafe fn early_init(_irq_disabled: &IrqDisabled) {
         );
 
         // Override the default memory type to UC for consistency, all of our page tables should be
-        // mapping WB (PAT index 0) anyway.
+        // mapping WB (PAT index 0) by default anyway.
         mtrr_def_type = (mtrr_def_type & !MTRR_DEF_TYPE_TYPE_MASK) | MEM_TYPE_UC;
 
         // 10. Re-enable MTRRs
@@ -168,6 +169,26 @@ pub fn kernel_pt_root() -> PhysFrameNum {
     kimage::pfn_from_kernel_vpn(VirtAddr::from_ptr(&KERNEL_PML4).containing_page())
 }
 
+/// Prepares a new low root page table for use.
+///
+/// On x64, this shadows the kernel mappings into the upper half of `pt`.
+///
+/// # Safety
+///
+/// The caller must guarantee that the top-level kernel page table is not being modified
+/// concurrently and will not be modified in the future.
+pub unsafe fn prepare_low_pt_root(pt: &mut [PageTableEntry]) {
+    // Safety: as per the function contract, nobody should be mutating this any longer.
+    let kernel_pml4 = unsafe {
+        slice::from_raw_parts(
+            &KERNEL_PML4 as *const _ as *const PageTableEntry,
+            PT_ENTRY_COUNT,
+        )
+    };
+
+    pt[PT_ENTRY_COUNT / 2..].copy_from_slice(&kernel_pml4[PT_ENTRY_COUNT / 2..]);
+}
+
 /// Flushes the specified page from the kernel TLB.
 pub fn flush_kernel_tlb_page(vpn: VirtPageNum) {
     unsafe {
@@ -180,6 +201,17 @@ pub fn flush_kernel_tlb() {
     unsafe {
         write_cr3(read_cr3());
     }
+}
+
+/// Flushes the specified page from the lower-half TLB.
+pub fn flush_low_tlb_page(vpn: VirtPageNum) {
+    flush_kernel_tlb_page(vpn);
+}
+
+/// Flushes the entire lower-half TLB.
+pub fn flush_low_tlb() {
+    // We currently don't use PCIDs or global pages at all.
+    flush_kernel_tlb();
 }
 
 /// Queries whether the processor supports large pages at level `level` of the page table hierarchy.

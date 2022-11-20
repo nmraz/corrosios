@@ -44,6 +44,19 @@ impl GatherInvalidations for NoopGather {
     fn add_tlb_flush(&mut self, _vpn: VirtPageNum) {}
 }
 
+/// Initializes the page table pointed to by `pt` to contain only empty entries.
+///
+/// # Safety
+///
+/// * `pt` must point to a buffer of `PT_ENTRY_COUNT` entries that are all valid for writes
+pub unsafe fn clear_page_table(pt: *mut PageTableEntry) {
+    unsafe {
+        for i in 0..PT_ENTRY_COUNT {
+            pt.add(i).write(make_empty_pte());
+        }
+    }
+}
+
 /// A virtual page range along with a progress pointer within it.
 ///
 /// This is the structure used to track virtual page ranges in all map/unmap operations. It enables
@@ -464,9 +477,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
     fn clear_table(&mut self, table: PhysFrameNum) {
         let table_virt: *mut PageTableEntry = self.translator.translate(table).addr().as_mut_ptr();
         unsafe {
-            for i in 0..PT_ENTRY_COUNT {
-                table_virt.add(i).write(make_empty_pte());
-            }
+            clear_page_table(table_virt);
         }
     }
 

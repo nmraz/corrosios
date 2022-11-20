@@ -7,6 +7,7 @@ use super::types::{AccessMode, AccessType, VirtAddr};
 
 pub mod aspace;
 pub mod kernel_aspace;
+pub mod low_aspace;
 pub mod object;
 
 /// Initializes the VM subsystem, including the global kernel address space.
