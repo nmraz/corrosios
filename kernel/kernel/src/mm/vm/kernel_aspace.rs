@@ -3,7 +3,9 @@ use log::debug;
 use spin_once::Once;
 
 use crate::arch::mm::{KERNEL_ASPACE_BASE, KERNEL_ASPACE_END, PHYS_MAP_BASE, PHYS_MAP_MAX_PAGES};
-use crate::arch::mmu::{flush_kernel_tlb, flush_kernel_tlb_page, kernel_pt_root};
+use crate::arch::mmu::{
+    finish_init_kernel_pt, flush_kernel_tlb, flush_kernel_tlb_page, kernel_pt_root,
+};
 use crate::err::Result;
 use crate::kimage;
 use crate::mm::physmap::PhysmapPfnTranslator;
@@ -111,6 +113,7 @@ pub(super) fn init() {
     KERNEL_ASPACE.init(aspace);
 
     unsafe {
+        finish_init_kernel_pt();
         protect_kimage();
     }
 }

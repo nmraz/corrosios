@@ -1,11 +1,13 @@
 use core::arch::asm;
+use core::cell::UnsafeCell;
 use core::slice;
-use core::sync::atomic::AtomicU64;
 
 use bitflags::bitflags;
 
 use crate::arch::x86_64::x64_cpu::write_pat;
 use crate::kimage;
+use crate::mm::physmap::pfn_to_physmap;
+use crate::mm::pmm;
 use crate::mm::types::{CacheMode, PageTablePerms, PhysFrameNum, VirtAddr, VirtPageNum};
 use crate::sync::irq::IrqDisabled;
 
@@ -76,7 +78,7 @@ pub struct PageTableEntry(u64);
 
 #[repr(C, align(0x1000))]
 pub struct PageTableSpace {
-    entries: [AtomicU64; PT_ENTRY_COUNT],
+    entries: UnsafeCell<[PageTableEntry; PT_ENTRY_COUNT]>,
 }
 
 impl PageTableSpace {
@@ -84,13 +86,15 @@ impl PageTableSpace {
     pub const NEW: Self = Self::new();
 
     pub const fn new() -> Self {
-        #[allow(clippy::declare_interior_mutable_const)]
-        const INIT_ENTRY: AtomicU64 = AtomicU64::new(0);
         Self {
-            entries: [INIT_ENTRY; PT_ENTRY_COUNT],
+            entries: UnsafeCell::new([make_empty_pte(); PT_ENTRY_COUNT]),
         }
     }
 }
+
+// Safety: this structure exists only to reserve BSS space for page tables, all accesses require
+// unsafe code anyway.
+unsafe impl Sync for PageTableSpace {}
 
 bitflags! {
     struct X86PageTableFlags: u64 {
@@ -110,7 +114,7 @@ bitflags! {
 
 /// Performs early architecture-specific MMU initialization.
 ///
-/// Currently, this initializes the PAT so that caching modes can be safely used with the page table
+/// On x64, this initializes the PAT so that caching modes can be safely used with the page table
 /// API later.
 ///
 /// # Safety
@@ -169,6 +173,36 @@ pub fn kernel_pt_root() -> PhysFrameNum {
     kimage::pfn_from_kernel_vpn(VirtAddr::from_ptr(&KERNEL_PML4).containing_page())
 }
 
+/// Performs final architecture-specific initialization of the kernel address space.
+///
+/// On x64,
+///
+/// # Safety
+///
+/// * This function should only be called once on the BSP, when the kernel page table is not being
+///   used anywhere else.
+/// * This function assumes that the frame allocator and physmap are initialized.
+pub unsafe fn finish_init_kernel_pt() {
+    // Safety: function contract
+    let kernel_pml4 = unsafe { &mut *KERNEL_PML4.entries.get() };
+
+    // Make sure that at least all the kernel PDPT pointers are initialized. This ensures that low
+    // address spaces will always have a consistent view of the kernel address space later.
+    for pte in &mut kernel_pml4[PT_ENTRY_COUNT / 2..] {
+        if !pte_is_present(*pte, 3) {
+            let next_table = pmm::allocate(0).expect("failed to allocate kernel-space PDPT");
+            unsafe {
+                pfn_to_physmap(next_table)
+                    .addr()
+                    .as_mut_ptr::<PageTableSpace>()
+                    .write_bytes(0, 1)
+            }
+
+            *pte = make_intermediate_pte(3, next_table);
+        }
+    }
+}
+
 /// Prepares a new low root page table for use.
 ///
 /// On x64, this shadows the kernel mappings into the upper half of `pt`.
@@ -220,7 +254,7 @@ pub fn supports_page_size(level: usize) -> bool {
 }
 
 /// Creates an empty (non-present) PTE.
-pub fn make_empty_pte() -> PageTableEntry {
+pub const fn make_empty_pte() -> PageTableEntry {
     PageTableEntry(0)
 }
 
