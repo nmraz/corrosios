@@ -7,7 +7,9 @@ use qcell::QCellOwner;
 use crate::err::{Error, Result};
 use crate::mm::physmap::PhysmapPfnTranslator;
 use crate::mm::pmm;
-use crate::mm::pt::{GatherInvalidations, MappingPointer, PageTable, PageTableAlloc};
+use crate::mm::pt::{
+    CullPageTables, GatherInvalidations, MappingPointer, PageTable, PageTableAlloc,
+};
 use crate::mm::types::{PageTablePerms, PhysFrameNum, Protection, VirtPageNum};
 use crate::sync::SpinLock;
 
@@ -414,7 +416,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             pt.unmap(&mut gather, &mut MappingPointer::new(start, page_count))
                 .expect("failed to unmap page range");
             self.ops.flush(gather.as_tlb_flush());
-            pt.cull_tables(|table| pmm::deallocate(table, 0), start, page_count);
+            pt.cull_tables(&mut PmmCullTables, start, page_count);
         }
     }
 
@@ -583,6 +585,14 @@ struct PmmPageTableAlloc;
 impl PageTableAlloc for PmmPageTableAlloc {
     fn allocate(&mut self) -> Result<PhysFrameNum> {
         pmm::allocate(0).ok_or(Error::OUT_OF_MEMORY)
+    }
+}
+
+struct PmmCullTables;
+
+impl CullPageTables for PmmCullTables {
+    fn cull(&mut self, pt: PhysFrameNum, _level: usize) {
+        unsafe { pmm::deallocate(pt, 0) }
     }
 }
 

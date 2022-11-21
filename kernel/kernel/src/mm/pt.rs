@@ -34,6 +34,28 @@ pub trait GatherInvalidations {
     fn add_tlb_flush(&mut self, vpn: VirtPageNum);
 }
 
+/// Trait used to indicate which page tables should be deallocated when culling unnecessary tables.
+pub trait CullPageTables {
+    /// Queries whether the page table identified by `pt` at level `level` in the hierarchy should
+    /// even be considered for culling.
+    ///
+    /// This function may be called before the final decision on whether to cull the table is made,
+    /// so implementors should not alter any state or deallocate memory until `cull` is called.
+    ///
+    /// The default implementation of this function returns `true` for all tables.
+    fn can_cull(&self, _pt: PhysFrameNum, _level: usize) -> bool {
+        true
+    }
+
+    /// Indicates that the page table `pt` at level `level` in the hierarchy is no longer in use
+    /// and can safely be repurposed.
+    ///
+    /// This function is called **after** the page table has already been completely unlinked from
+    /// the hierarchy, so it can safely be freed without concern for whether other cores may be
+    /// translating addresses concurrently.
+    fn cull(&mut self, pt: PhysFrameNum, level: usize);
+}
+
 /// [`GatherInvalidations`] implementation that does nothing.
 ///
 /// This is useful when fine-grained invalidation tracking is not necessary, as the entire TLB will
@@ -253,18 +275,26 @@ impl<T: TranslatePhys> PageTable<T> {
     /// Invokes `cull` on any nested page tables in the range `base..base + size` and unlinks them
     /// from their parents.
     ///
+    /// Every candidate page table is processed in several steps:
+    /// 1. [`CullPageTables::can_cull`] is invoked on the page table to determine whether it should
+    ///    even be considered for removal. If so, and the table can be culled (it is empty or
+    ///    completely covered by the cull range), the next step is performed.
+    /// 2. The table is unlinked from its parent, **and then** [`CullPageTables::cull`] is invoked.
+    ///    This order of execution guarantees that the deallocated table is never present, even
+    ///    transiently, in the page table hierarchy.
+    ///
     /// # Safety
     ///
     /// * The page table must not be accessed concurrently by other cores/interrupts during the
     ///   operation
     pub unsafe fn cull_tables(
         &mut self,
-        mut cull: impl FnMut(PhysFrameNum),
+        cull: &mut impl CullPageTables,
         base: VirtPageNum,
         size: usize,
     ) {
         self.inner.cull_tables(
-            &mut cull,
+            cull,
             &mut MappingPointer::new(base, size),
             self.root,
             PT_LEVEL_COUNT - 1,
@@ -358,7 +388,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
 
     fn cull_tables(
         &mut self,
-        cull: &mut impl FnMut(PhysFrameNum),
+        cull: &mut impl CullPageTables,
         pointer: &mut MappingPointer,
         table: PhysFrameNum,
         level: usize,
@@ -372,13 +402,17 @@ impl<T: TranslatePhys> PageTableInner<T> {
                 return Ok(());
             };
 
+            let next_level = level - 1;
+
             if level > 1 {
-                self.cull_tables(cull, pointer, next, level - 1);
+                self.cull_tables(cull, pointer, next, next_level);
             }
 
-            if next_table_covered || self.table_is_empty(next, level - 1) {
+            if cull.can_cull(next, next_level)
+                && (next_table_covered || self.table_is_empty(next, next_level))
+            {
                 self.set(table, index, make_empty_pte());
-                cull(next);
+                cull.cull(next, next_level);
             }
 
             Ok(())
