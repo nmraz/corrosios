@@ -77,12 +77,15 @@ impl Slice {
     ) -> Result<&'a Mapping> {
         self.check_vpn(vpn)?;
 
-        let inner = self.inner(owner)?;
-        let child = inner.get_child(vpn).ok_or(Error::BAD_ADDRESS)?;
+        let mut slice = self;
 
-        match child {
-            SliceChild::Subslice(slice) => slice.get_mapping(owner, vpn),
-            SliceChild::Mapping(mapping) => Ok(mapping),
+        loop {
+            let inner = slice.inner(owner)?;
+            let child = inner.get_child(vpn).ok_or(Error::BAD_ADDRESS)?;
+            match child {
+                SliceChild::Subslice(subslice) => slice = subslice,
+                SliceChild::Mapping(mapping) => return Ok(mapping),
+            }
         }
     }
 
