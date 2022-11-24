@@ -4,7 +4,8 @@ use spin_once::Once;
 
 use crate::arch::mm::{KERNEL_ASPACE_BASE, KERNEL_ASPACE_END, PHYS_MAP_BASE, PHYS_MAP_MAX_PAGES};
 use crate::arch::mmu::{
-    finish_init_kernel_pt, flush_kernel_tlb, flush_kernel_tlb_page, kernel_pt_root,
+    can_cull_kernel_pt, finish_init_kernel_pt, flush_kernel_tlb, flush_kernel_tlb_page,
+    kernel_pt_root,
 };
 use crate::err::Result;
 use crate::kimage;
@@ -177,6 +178,12 @@ unsafe impl AddrSpaceOps for KernelAddrSpaceOps {
             }
             TlbFlush::All => flush_kernel_tlb(),
         }
+    }
+
+    fn can_cull_pt(&self, pt: PhysFrameNum, level: usize) -> bool {
+        // Safety: we don't even have a mapping covering the kernel image or physmap, and we are
+        // careful not to allow outside accesses to the entire kernel address space.
+        unsafe { can_cull_kernel_pt(pt, level) }
     }
 
     fn base_perms(&self) -> PageTablePerms {

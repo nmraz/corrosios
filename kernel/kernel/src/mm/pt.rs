@@ -41,11 +41,7 @@ pub trait CullPageTables {
     ///
     /// This function may be called before the final decision on whether to cull the table is made,
     /// so implementors should not alter any state or deallocate memory until `cull` is called.
-    ///
-    /// The default implementation of this function returns `true` for all tables.
-    fn can_cull(&self, _pt: PhysFrameNum, _level: usize) -> bool {
-        true
-    }
+    fn can_cull(&self, pt: PhysFrameNum, level: usize) -> bool;
 
     /// Indicates that the page table `pt` at level `level` in the hierarchy is no longer in use
     /// and can safely be repurposed.

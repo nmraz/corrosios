@@ -35,7 +35,8 @@ pub enum TlbFlush<'a> {
 /// # Safety
 ///
 /// Implementors must ensure that [`root_pt`](AddrSpaceOps::root_pt) returns a valid frame
-/// usable as a page table.
+/// usable as a page table, and that [`can_cull_table`](AddrSpaceOps::can_cull_table) returns true
+/// only for tables that can safely be freed.
 pub unsafe trait AddrSpaceOps {
     /// Requests the root page table. All accesses to this table will be synchronized by the
     /// address space lock.
@@ -45,6 +46,10 @@ pub unsafe trait AddrSpaceOps {
     ///
     /// This function should block until the request completes.
     fn flush(&self, request: TlbFlush<'_>);
+
+    /// Queries whether the page table referenced by `pt` at level `level` in the hierarchy can
+    /// safely be freed when culling page tables.
+    fn can_cull_pt(&self, pt: PhysFrameNum, level: usize) -> bool;
 
     /// Returns the base page table permissions for pages mapped into this address space.
     fn base_perms(&self) -> PageTablePerms;
@@ -390,7 +395,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                 // correctly.
                 unsafe {
                     self.pt().map(
-                        &mut PmmPageTableAlloc,
+                        &mut AspacePageTableAlloc,
                         &mut MappingPointer::new(mapping.start() + offset, 1),
                         pfn,
                         self.perms_for_prot(prot),
@@ -416,7 +421,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             pt.unmap(&mut gather, &mut MappingPointer::new(start, page_count))
                 .expect("failed to unmap page range");
             self.ops.flush(gather.as_tlb_flush());
-            pt.cull_tables(&mut PmmCullTables, start, page_count);
+            pt.cull_tables(&mut AspaceCullTables(&self.ops), start, page_count);
         }
     }
 
@@ -580,19 +585,23 @@ impl GatherInvalidations for PendingInvalidationGather {
     }
 }
 
-struct PmmPageTableAlloc;
+struct AspacePageTableAlloc;
 
-impl PageTableAlloc for PmmPageTableAlloc {
+impl PageTableAlloc for AspacePageTableAlloc {
     fn allocate(&mut self) -> Result<PhysFrameNum> {
         pmm::allocate(0).ok_or(Error::OUT_OF_MEMORY)
     }
 }
 
-struct PmmCullTables;
+struct AspaceCullTables<'a, O>(&'a O);
 
-impl CullPageTables for PmmCullTables {
+impl<O: AddrSpaceOps> CullPageTables for AspaceCullTables<'_, O> {
     fn cull(&mut self, pt: PhysFrameNum, _level: usize) {
         unsafe { pmm::deallocate(pt, 0) }
+    }
+
+    fn can_cull(&self, pt: PhysFrameNum, level: usize) -> bool {
+        self.0.can_cull_pt(pt, level)
     }
 }
 

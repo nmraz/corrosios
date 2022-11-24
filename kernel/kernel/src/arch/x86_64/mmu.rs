@@ -203,6 +203,21 @@ pub unsafe fn finish_init_kernel_pt() {
     }
 }
 
+/// Queries whether the specified page table in kernel space can safely be freed back to the PMM
+/// if necessary.
+///
+/// # Safety
+///
+/// The caller must guarantee that they will never call this function on tables mapping the kernel
+/// image or the physmap, which should never be unmapped anyway.
+pub unsafe fn can_cull_kernel_pt(_pt: PhysFrameNum, level: usize) -> bool {
+    // We always keep all of the kernel PDPTs mapped, to make sure our shadowing into low address
+    // spaces is consistent. Note that we also depend on the fact that the kernel image and physmap
+    // will never be unmapped, so we don't have to bother checking whether we got a table that maps
+    // them.
+    level < 2
+}
+
 /// Prepares a new low root page table for use.
 ///
 /// On x64, this shadows the kernel mappings into the upper half of `pt`.

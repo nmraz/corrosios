@@ -69,6 +69,12 @@ unsafe impl AddrSpaceOps for LowAddrSpaceOps {
         }
     }
 
+    fn can_cull_pt(&self, pt: PhysFrameNum, level: usize) -> bool {
+        // We don't own any tables of our own, they are all allocated dynamically by the address
+        // space as necessary.
+        true
+    }
+
     fn base_perms(&self) -> PageTablePerms {
         match self.allowed_access_mode {
             AccessMode::User => PageTablePerms::USER,
