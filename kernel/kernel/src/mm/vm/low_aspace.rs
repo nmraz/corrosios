@@ -69,7 +69,7 @@ unsafe impl AddrSpaceOps for LowAddrSpaceOps {
         }
     }
 
-    fn can_cull_pt(&self, pt: PhysFrameNum, level: usize) -> bool {
+    fn can_cull_pt(&self, _pt: PhysFrameNum, _level: usize) -> bool {
         // We don't own any tables of our own, they are all allocated dynamically by the address
         // space as necessary.
         true
