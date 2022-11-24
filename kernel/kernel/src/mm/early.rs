@@ -131,7 +131,7 @@ impl EarlyMapper {
                     &mut MappingPointer::new(virt, pages),
                     base,
                     PageTablePerms::READ | PageTablePerms::WRITE,
-                    CacheMode::WriteBack,
+                    CacheMode::Cached,
                 )
                 .expect("early map failed");
         }

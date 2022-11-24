@@ -21,7 +21,7 @@ pub enum CacheMode {
     /// later.
     ///
     /// This is the mode that should be used for all system (non-IO) memory.
-    WriteBack,
+    Cached,
 
     /// Reads are cached, but writes always write back to system memory in addition to possibly
     /// updating the cache.

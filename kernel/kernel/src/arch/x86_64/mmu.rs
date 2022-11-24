@@ -379,7 +379,7 @@ fn flags_from_perms(perms: PageTablePerms) -> X86PageTableFlags {
 
 fn pat_selector_for_cache_mode(cache_mode: CacheMode) -> u64 {
     match cache_mode {
-        CacheMode::WriteBack => PAT_SELECTOR_WB,
+        CacheMode::Cached => PAT_SELECTOR_WB,
         CacheMode::WriteThrough => PAT_SELECTOR_WT,
         CacheMode::WriteCombining => PAT_SELECTOR_WC,
         CacheMode::Uncached => PAT_SELECTOR_UC,

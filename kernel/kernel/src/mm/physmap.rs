@@ -61,7 +61,7 @@ pub unsafe fn init(
                 &mut pointer,
                 start,
                 PageTablePerms::READ | PageTablePerms::WRITE | PageTablePerms::GLOBAL,
-                CacheMode::WriteBack,
+                CacheMode::Cached,
             )
             .expect("failed to map physmap region");
         }

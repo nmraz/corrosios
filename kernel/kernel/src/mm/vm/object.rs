@@ -38,7 +38,7 @@ pub unsafe trait VmObject: Send + Sync {
     /// By default, returns [`CacheMode::WriteBack`], which is suitable for "ordinary" (non-IO)
     /// memory.
     fn cache_mode(&self) -> CacheMode {
-        CacheMode::WriteBack
+        CacheMode::Cached
     }
 }
 
