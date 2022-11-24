@@ -3,6 +3,7 @@ use core::cell::UnsafeCell;
 use core::slice;
 
 use bitflags::bitflags;
+use log::warn;
 
 use crate::arch::x86_64::x64_cpu::write_pat;
 use crate::kimage;
@@ -12,7 +13,8 @@ use crate::mm::types::{CacheMode, PageTablePerms, PhysFrameNum, VirtAddr, VirtPa
 use crate::sync::irq::IrqDisabled;
 
 use super::x64_cpu::{
-    read_cr0, read_cr3, read_mtrr_def_type, wbinvd, write_cr0, write_cr3, write_mtrr_def_type, Cr0,
+    read_cr0, read_cr3, read_cr4, read_mtrr_def_type, wbinvd, write_cr0, write_cr3, write_cr4,
+    write_mtrr_def_type, Cr0, Cr4,
 };
 
 pub const PAGE_SHIFT: usize = 12;
@@ -101,6 +103,7 @@ bitflags! {
         const PRESENT = 1 << 0;
         const WRITABLE = 1 << 1;
         const USER_MODE = 1 << 2;
+        const GLOBAL = 1 << 8;
 
         const PERMS_MASK = Self::WRITABLE.bits | Self::USER_MODE.bits | Self::NO_EXEC.bits;
 
@@ -114,13 +117,23 @@ bitflags! {
 
 /// Performs early architecture-specific MMU initialization.
 ///
-/// On x64, this initializes the PAT so that caching modes can be safely used with the page table
-/// API later.
+/// On x64, this currently:
+/// * Enables global pages.
+/// * Initializes the PAT so that caching modes can be safely used with the page table API later.
 ///
 /// # Safety
 ///
 /// This function should only be called once on the BSP.
 pub unsafe fn early_init(_irq_disabled: &IrqDisabled) {
+    let cr4 = read_cr4();
+    if cr4.contains(Cr4::PGE) {
+        // We need this for the TLB flushes below to be correct.
+        warn!("global pages should not be enabled yet, disabling");
+        unsafe {
+            write_cr4(cr4 & !Cr4::PGE);
+        }
+    }
+
     // See ISDM 3A, section 11.12.4 and 11.11.8 on recommended procedure here. We probably don't
     // need a lot of the MTRR-related stuff, but keep it in just in case.
     unsafe {
@@ -132,8 +145,10 @@ pub unsafe fn early_init(_irq_disabled: &IrqDisabled) {
         // 5. Flush all caches with `wbinvd`
         wbinvd();
 
-        // 6-7. Flush TLB and global pages
-        flush_kernel_tlb();
+        // 6-7. Flush TLB
+        // We intentionally use this sequence since global pages are not enabled yet (we do that
+        // later, precisely so we can avoid repeated toggling of `PGE`).
+        write_cr3(read_cr3());
 
         // 8. Disable all MTRRs by clearing the `E` flag in `MTRR_DEF_TYPE`
         let mut mtrr_def_type = read_mtrr_def_type();
@@ -161,10 +176,15 @@ pub unsafe fn early_init(_irq_disabled: &IrqDisabled) {
 
         // 11. Flush caches and TLB once more
         wbinvd();
-        flush_kernel_tlb();
+        write_cr3(read_cr3());
 
         // 12. Restore normal cache operation
         write_cr0(cr0);
+    }
+
+    unsafe {
+        // Now that the PAT is set up, enable global pages so we can start using them.
+        write_cr4(read_cr4() | Cr4::PGE);
     }
 }
 
@@ -248,7 +268,15 @@ pub fn flush_kernel_tlb_page(vpn: VirtPageNum) {
 /// Flushes the entire kernel TLB.
 pub fn flush_kernel_tlb() {
     unsafe {
-        write_cr3(read_cr3());
+        let cr4 = read_cr4();
+        assert!(
+            cr4.contains(Cr4::PGE),
+            "global pages should be enabled for kernel TLB flushes to work"
+        );
+
+        // See ISDM 3A, section 4.10.4.1
+        write_cr4(cr4 & !Cr4::PGE);
+        write_cr4(cr4);
     }
 }
 
@@ -259,8 +287,10 @@ pub fn flush_low_tlb_page(vpn: VirtPageNum) {
 
 /// Flushes the entire lower-half TLB.
 pub fn flush_low_tlb() {
-    // We currently don't use PCIDs or global pages at all.
-    flush_kernel_tlb();
+    // We currently don't use PCIDs at all.
+    unsafe {
+        write_cr3(read_cr3());
+    }
 }
 
 /// Queries whether the processor supports large pages at level `level` of the page table hierarchy.
@@ -338,6 +368,10 @@ fn flags_from_perms(perms: PageTablePerms) -> X86PageTableFlags {
     x86_flags.set(
         X86PageTableFlags::NO_EXEC,
         !perms.contains(PageTablePerms::EXECUTE),
+    );
+    x86_flags.set(
+        X86PageTableFlags::GLOBAL,
+        perms.contains(PageTablePerms::GLOBAL),
     );
 
     x86_flags

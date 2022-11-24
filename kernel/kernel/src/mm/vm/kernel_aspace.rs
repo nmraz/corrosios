@@ -139,21 +139,21 @@ unsafe fn protect_kimage() {
         pt.protect(
             &mut NoopGather,
             &mut MappingPointer::new(kimage::code_base(), kimage::code_pages()),
-            PageTablePerms::EXECUTE,
+            PageTablePerms::EXECUTE | PageTablePerms::GLOBAL,
         )
         .expect("failed to protect kernel code");
 
         pt.protect(
             &mut NoopGather,
             &mut MappingPointer::new(kimage::rodata_base(), kimage::rodata_pages()),
-            PageTablePerms::READ,
+            PageTablePerms::READ | PageTablePerms::GLOBAL,
         )
         .expect("failed to protect kernel rodata");
 
         pt.protect(
             &mut NoopGather,
             &mut MappingPointer::new(kimage::data_base(), kimage::data_pages()),
-            PageTablePerms::READ | PageTablePerms::WRITE,
+            PageTablePerms::READ | PageTablePerms::WRITE | PageTablePerms::GLOBAL,
         )
         .expect("failed to protect kernel data");
 
@@ -187,7 +187,7 @@ unsafe impl AddrSpaceOps for KernelAddrSpaceOps {
     }
 
     fn base_perms(&self) -> PageTablePerms {
-        PageTablePerms::empty()
+        PageTablePerms::GLOBAL
     }
 }
 

@@ -57,6 +57,7 @@ bitflags! {
         const WRITE = 1 << 1;
         const EXECUTE = 1 << 2;
         const USER = 1 << 3;
+        const GLOBAL = 1 << 4;
     }
 }
 
