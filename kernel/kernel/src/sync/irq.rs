@@ -22,15 +22,41 @@ impl IrqDisabled {
     }
 }
 
+/// Queries whether interrupts are enabled on the current processor.
+pub fn enabled() -> bool {
+    arch::cpu::irq_enabled()
+}
+
+/// Disables interrupts on the current processor.
+pub fn disable() {
+    unsafe {
+        arch::cpu::disable_irq();
+    }
+}
+
+/// Enables interrupts on the current processor.
+///
+/// # Safety
+///
+/// The current processor must be in a state that is ready to accept interrupts without
+/// races/faults. In particular, this function should not be called when there is an [`IrqDisabled`]
+/// live in scope.
+pub unsafe fn enable() {
+    unsafe {
+        arch::cpu::enable_irq();
+    }
+}
+
+/// Invokes `f` with interrupts disabled, and then restores the previous state.
 pub fn disable_with<R>(f: impl FnOnce(&IrqDisabled) -> R) -> R {
     unsafe {
-        let prev_state = arch::cpu::irq_enabled();
-        arch::cpu::disable_irq();
+        let prev_state = enabled();
+        disable();
 
         let ret = f(&IrqDisabled::new());
 
         if prev_state {
-            arch::cpu::enable_irq();
+            enable();
         }
 
         ret
