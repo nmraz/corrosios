@@ -258,6 +258,23 @@ pub unsafe fn prepare_low_pt_root(pt: &mut [PageTableEntry]) {
     pt[PT_ENTRY_COUNT / 2..].copy_from_slice(&kernel_pml4[PT_ENTRY_COUNT / 2..]);
 }
 
+/// Sets the root page table for the low half of the address space to `pt`.
+///
+/// If `pt` is `None`, the lower half of memory will be unmapped entirely, leaving only the high
+/// kernel memory.
+///
+/// # Safety
+///
+/// This function is wildly unsafe, as it replaces the entire lower-half address space with a
+/// different one. The caller must ensure that all accesses to low memory are made in accordance
+/// with the new address space after the switch.
+pub unsafe fn set_low_root_pt(pt: Option<PhysFrameNum>) {
+    let pt = pt.unwrap_or_else(kernel_pt_root);
+    unsafe {
+        write_cr3(pt.addr().as_u64());
+    }
+}
+
 /// Flushes the specified page from the kernel TLB.
 pub fn flush_kernel_tlb_page(vpn: VirtPageNum) {
     unsafe {

@@ -10,6 +10,18 @@ pub mod kernel_aspace;
 pub mod low_aspace;
 pub mod object;
 
+pub struct PerCpu {
+    aspace_context: low_aspace::Context,
+}
+
+impl PerCpu {
+    pub fn new() -> Self {
+        Self {
+            aspace_context: low_aspace::Context::new(),
+        }
+    }
+}
+
 /// Initializes the VM subsystem, including the global kernel address space.
 pub fn init() {
     debug!("initializing VM system");
