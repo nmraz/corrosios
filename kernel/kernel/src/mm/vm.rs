@@ -1,7 +1,8 @@
 use log::debug;
 
-use crate::arch::mm::{KERNEL_ASPACE_BASE, KERNEL_ASPACE_END};
+use crate::arch::mm::{KERNEL_ASPACE_BASE, KERNEL_ASPACE_END, LOW_ASPACE_END};
 use crate::err::{Error, Result};
+use crate::sync::irq;
 
 use super::types::{AccessMode, AccessType, VirtAddr};
 
@@ -33,9 +34,19 @@ pub fn init() {
 pub fn page_fault(addr: VirtAddr, access_type: AccessType, access_mode: AccessMode) -> Result<()> {
     if access_mode == AccessMode::Kernel && is_kernel_addr(addr) {
         kernel_aspace::get().fault(addr.containing_page(), access_type)
+    } else if is_low_addr(addr) {
+        // Note: we snapshot the current low address space in preparation for the fact that the
+        // handler will later run with preemption enabled.
+        let current_low_aspace =
+            irq::disable_with(low_aspace::current).ok_or(Error::BAD_ADDRESS)?;
+        current_low_aspace.fault(addr.containing_page(), access_type)
     } else {
         Err(Error::BAD_ADDRESS)
     }
+}
+
+fn is_low_addr(addr: VirtAddr) -> bool {
+    addr.containing_page() < LOW_ASPACE_END
 }
 
 fn is_kernel_addr(addr: VirtAddr) -> bool {
