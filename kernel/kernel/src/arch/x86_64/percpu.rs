@@ -5,7 +5,6 @@ use core::ptr::{addr_of, addr_of_mut};
 
 use crate::mm::heap;
 use crate::mm::types::VirtAddr;
-use crate::mp::PerCpu;
 use crate::sync::irq::IrqDisabled;
 
 use super::descriptor::{Gdt, Tss};
@@ -29,7 +28,7 @@ struct X64PerCpuWrapper {
     /// This field must reside at offset 0 of the structure.
     ptr: *const X64PerCpuWrapper,
     /// Pointer to the common (architecture-independent) per-cpu structure.
-    common_ptr: *const PerCpu,
+    common_ptr: *const (),
     inner: X64PerCpu,
 }
 
@@ -44,14 +43,11 @@ pub fn current_x64(_irq_disabled: &IrqDisabled) -> &X64PerCpu {
     }
 }
 
-pub fn current_common(_irq_disabled: &IrqDisabled) -> &PerCpu {
-    unsafe { &*(read_gs_qword::<PERCPU_COMMON_PTR_OFFSET>() as *const _) }
+pub fn current_common(_irq_disabled: &IrqDisabled) -> *const () {
+    unsafe { read_gs_qword::<PERCPU_COMMON_PTR_OFFSET>() as *const _ }
 }
 
-pub unsafe fn init_current<'a>(
-    common_percpu: &'static PerCpu,
-    _irq_disabled: &'a IrqDisabled,
-) -> &'a X64PerCpu {
+pub unsafe fn init_current(common_percpu: *const (), _irq_disabled: &IrqDisabled) -> &X64PerCpu {
     let wrapper: *mut X64PerCpuWrapper = heap::allocate(Layout::new::<X64PerCpuWrapper>())
         .expect("failed to allocate architecture per-CPU structure")
         .as_ptr()

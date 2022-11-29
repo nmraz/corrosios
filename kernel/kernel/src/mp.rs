@@ -15,7 +15,7 @@ pub struct PerCpu {
 
 /// Retrieves the per-CPU structure for the current processor.
 pub fn current_percpu(irq_disabled: &IrqDisabled) -> &PerCpu {
-    arch::cpu::current_percpu(irq_disabled)
+    unsafe { &*arch::cpu::current_percpu(irq_disabled).cast() }
 }
 
 /// Initializes the bootstrap processor (BSP), including early interrupt handlers and per-CPU data.
@@ -36,7 +36,8 @@ pub unsafe fn init_bsp(irq_disabled: IrqDisabled) {
 
     debug!("allocated common percpu at {:p}", percpu);
 
+    let percpu = Box::leak(percpu);
     unsafe {
-        arch::cpu::init_bsp(Box::leak(percpu), irq_disabled);
+        arch::cpu::init_bsp(percpu as *const _ as *const (), irq_disabled);
     }
 }
