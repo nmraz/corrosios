@@ -105,7 +105,7 @@ pub unsafe fn init_early(
 /// # Safety
 ///
 /// The bootinfo provided to this function must match the bootinfo provided to [`init_early`] and
-/// correctly describes system the memory map.
+/// correctly describe the system memory map.
 ///
 /// # Panics
 ///
@@ -151,6 +151,7 @@ pub unsafe fn init_late(context: InitContext, bootinfo: &BootinfoData, irq_disab
 
     vm::init();
 }
+
 fn get_mem_map(bootinfo: View<'_>) -> &[MemoryRange] {
     let mem_map_item = bootinfo
         .items()
