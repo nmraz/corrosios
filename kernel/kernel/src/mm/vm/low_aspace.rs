@@ -29,6 +29,10 @@ pub(super) struct Context {
 }
 
 impl Context {
+    /// Creates a new per-cpu address space context.
+    ///
+    /// Note: this function may be called very early during initialization (before anything is set
+    /// up), so it must not allocate or take any locks.
     pub fn new() -> Self {
         Self {
             current_aspace: RefCell::new(None),

@@ -1,16 +1,12 @@
 use core::arch::asm;
 use core::mem;
 
-use log::debug;
-
-use crate::arch::x86_64::x64_cpu::{write_cr4, write_ia32_efer, Cr4, Ia32Efer};
 use crate::sync::irq::IrqDisabled;
 
 use super::descriptor::{get_idt, get_idt_size, init_idt, Gdt, KERNEL_CODE_SELECTOR, TSS_SELECTOR};
 use super::percpu;
 use super::x64_cpu::{
-    cli, get_rflags, hlt, lgdt, lidt, lldt, ltr, read_cr0, read_cr4, read_ia32_efer, sti,
-    write_cr0, Cr0, DescriptorRegister, Rflags,
+    cli, get_rflags, hlt, lgdt, lidt, lldt, ltr, sti, DescriptorRegister, Rflags,
 };
 
 #[inline]
@@ -45,23 +41,19 @@ pub fn current_percpu(irq_disabled: &IrqDisabled) -> *const () {
     percpu::current_common(irq_disabled)
 }
 
-pub unsafe fn init_bsp(common_percpu: *const (), irq_disabled: IrqDisabled) {
+pub unsafe fn init_bsp_early(common_percpu: *const (), irq_disabled: &IrqDisabled) {
     init_idt();
     unsafe {
-        init_current(common_percpu, irq_disabled);
+        percpu::init_bsp(common_percpu, irq_disabled);
+        finish_init_current_early(irq_disabled);
     }
 }
 
-pub unsafe fn init_current(common_percpu: *const (), irq_disabled: IrqDisabled) {
+unsafe fn finish_init_current_early(irq_disabled: &IrqDisabled) {
     unsafe {
-        let cur_percpu = percpu::init_current(common_percpu, &irq_disabled);
-        debug!("initialized arch percpu at {:p}", cur_percpu);
+        let cur_percpu = percpu::current_x64(irq_disabled);
         load_gdt(&cur_percpu.gdt);
         load_idt();
-        init_cpu_features();
-
-        // Everything is ready, enable interrupts now
-        sti();
     }
 }
 
@@ -101,25 +93,5 @@ unsafe fn load_idt() {
             ptr: get_idt().as_u64(),
         };
         lidt(&desc);
-    }
-}
-
-unsafe fn init_cpu_features() {
-    let mut cr0 = read_cr0();
-    cr0 |= Cr0::WP;
-    unsafe {
-        write_cr0(cr0);
-    }
-
-    let mut cr4 = read_cr4();
-    cr4 |= Cr4::OSFXCR | Cr4::OSXMMEXCPT;
-    unsafe {
-        write_cr4(cr4);
-    }
-
-    let mut ia32_efer = read_ia32_efer();
-    ia32_efer |= Ia32Efer::NXE | Ia32Efer::SCE;
-    unsafe {
-        write_ia32_efer(ia32_efer);
     }
 }

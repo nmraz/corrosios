@@ -1,7 +1,6 @@
 use core::marker::PhantomData;
 
-use alloc::boxed::Box;
-use log::debug;
+use spin_once::TakeOnce;
 
 use crate::arch;
 use crate::mm::vm;
@@ -18,26 +17,26 @@ pub fn current_percpu(irq_disabled: &IrqDisabled) -> &PerCpu {
     unsafe { &*arch::cpu::current_percpu(irq_disabled).cast() }
 }
 
-/// Initializes the bootstrap processor (BSP), including early interrupt handlers and per-CPU data.
+/// Performs early initialization of the bootstrap processor (BSP), including early interrupt
+/// handlers and per-CPU data.
+///
+/// This function should be called very early (before general-purpose Rust code runs), as such code
+/// may indirectly require per-CPU data.
 ///
 /// # Safety
 ///
 /// * This function must be called only once on the BSP.
-/// * This function must be called in a consistent state where it is valid to enable interrupts.
-///   In particular, there should be no spinlocks held and `irq_disabled` should be the only live
-///   instance of [`IrqDisabled`].
-pub unsafe fn init_bsp(irq_disabled: IrqDisabled) {
-    let percpu = Box::try_new(PerCpu {
-        cpu_num: 0,
-        vm: vm::PerCpu::new(),
-        _not_send_sync: PhantomData,
-    })
-    .expect("failed to allocate initial per-CPU structure");
+pub unsafe fn init_bsp_early(irq_disabled: &IrqDisabled) {
+    static BSP_PERCPU: TakeOnce<PerCpu> = TakeOnce::new();
+    let percpu = BSP_PERCPU
+        .take_init(PerCpu {
+            cpu_num: 0,
+            vm: vm::PerCpu::new(),
+            _not_send_sync: PhantomData,
+        })
+        .expect("BSP percpu already initialized");
 
-    debug!("allocated common percpu at {:p}", percpu);
-
-    let percpu = Box::leak(percpu);
     unsafe {
-        arch::cpu::init_bsp(percpu as *const _ as *const (), irq_disabled);
+        arch::cpu::init_bsp_early(percpu as *const _ as *const (), irq_disabled);
     }
 }

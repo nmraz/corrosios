@@ -3,7 +3,6 @@ use core::cell::UnsafeCell;
 use core::slice;
 
 use bitflags::bitflags;
-use log::warn;
 
 use crate::arch::x86_64::x64_cpu::write_pat;
 use crate::kimage;
@@ -13,8 +12,8 @@ use crate::mm::types::{CacheMode, PageTablePerms, PhysFrameNum, VirtAddr, VirtPa
 use crate::sync::irq::IrqDisabled;
 
 use super::x64_cpu::{
-    read_cr0, read_cr3, read_cr4, read_mtrr_def_type, wbinvd, write_cr0, write_cr3, write_cr4,
-    write_mtrr_def_type, Cr0, Cr4,
+    read_cr0, read_cr3, read_cr4, read_ia32_efer, read_mtrr_def_type, wbinvd, write_cr0, write_cr3,
+    write_cr4, write_ia32_efer, write_mtrr_def_type, Cr0, Cr4, Ia32Efer,
 };
 
 pub const PAGE_SHIFT: usize = 12;
@@ -124,68 +123,9 @@ bitflags! {
 /// # Safety
 ///
 /// This function should only be called once on the BSP.
-pub unsafe fn early_init(_irq_disabled: &IrqDisabled) {
-    let cr4 = read_cr4();
-    if cr4.contains(Cr4::PGE) {
-        // We need this for the TLB flushes below to be correct.
-        warn!("global pages should not be enabled yet, disabling");
-        unsafe {
-            write_cr4(cr4 & !Cr4::PGE);
-        }
-    }
-
-    // See ISDM 3A, section 11.12.4 and 11.11.8 on recommended procedure here. We probably don't
-    // need a lot of the MTRR-related stuff, but keep it in just in case.
-    unsafe {
-        // 4. Enter the no-fill cache mode
-        let cr0 = read_cr0();
-        assert!(!cr0.contains(Cr0::CD) && !cr0.contains(Cr0::NW));
-        write_cr0(cr0 | Cr0::CD);
-
-        // 5. Flush all caches with `wbinvd`
-        wbinvd();
-
-        // 6-7. Flush TLB
-        // We intentionally use this sequence since global pages are not enabled yet (we do that
-        // later, precisely so we can avoid repeated toggling of `PGE`).
-        write_cr3(read_cr3());
-
-        // 8. Disable all MTRRs by clearing the `E` flag in `MTRR_DEF_TYPE`
-        let mut mtrr_def_type = read_mtrr_def_type();
-        write_mtrr_def_type(mtrr_def_type & !MTRR_DEF_TYPE_E);
-
-        // 9. Update the MTRRs and PAT
-
-        write_pat(
-            PA0_VAL
-                | (PA1_VAL << 8)
-                | (PA2_VAL << 16)
-                | (PA3_VAL << 24)
-                | (PA4_VAL << 32)
-                | (PA5_VAL << 40)
-                | (PA6_VAL << 48)
-                | (PA7_VAL << 56),
-        );
-
-        // Override the default memory type to UC for consistency, all of our page tables should be
-        // mapping WB (PAT index 0) by default anyway.
-        mtrr_def_type = (mtrr_def_type & !MTRR_DEF_TYPE_TYPE_MASK) | MEM_TYPE_UC;
-
-        // 10. Re-enable MTRRs
-        write_mtrr_def_type(mtrr_def_type);
-
-        // 11. Flush caches and TLB once more
-        wbinvd();
-        write_cr3(read_cr3());
-
-        // 12. Restore normal cache operation
-        write_cr0(cr0);
-    }
-
-    unsafe {
-        // Now that the PAT is set up, enable global pages so we can start using them.
-        write_cr4(read_cr4() | Cr4::PGE);
-    }
+pub unsafe fn init_early(_irq_disabled: &IrqDisabled) {
+    init_mmu_regs();
+    init_pat();
 }
 
 /// Returns the physical frame of the kernel root page table.
@@ -368,6 +308,73 @@ pub fn pte_is_terminal(pte: PageTableEntry, level: usize) -> bool {
         true
     } else {
         X86PageTableFlags::from_bits_truncate(pte.0).contains(X86PageTableFlags::LARGE)
+    }
+}
+
+fn init_mmu_regs() {
+    unsafe {
+        let mut cr0 = read_cr0();
+        cr0 &= !(Cr0::CD | Cr0::NW);
+        cr0 |= Cr0::WP;
+        write_cr0(cr0);
+
+        // Global pages will be enabled once the PAT is set up.
+        let cr4 = read_cr4();
+        write_cr4(cr4 & !Cr4::PGE);
+
+        write_ia32_efer(read_ia32_efer() | Ia32Efer::NXE);
+    }
+}
+
+fn init_pat() {
+    // See ISDM 3A, section 11.12.4 and 11.11.8 on recommended procedure here. We probably don't
+    // need a lot of the MTRR-related stuff, but keep it in just in case.
+    unsafe {
+        // 4. Enter the no-fill cache mode
+        let cr0 = read_cr0();
+        write_cr0(cr0 | Cr0::CD);
+
+        // 5. Flush all caches with `wbinvd`
+        wbinvd();
+
+        // 6-7. Flush TLB
+        // We intentionally use this sequence since global pages are not enabled yet (we do that
+        // later, precisely so we can avoid repeated toggling of `PGE`).
+        write_cr3(read_cr3());
+
+        // 8. Disable all MTRRs by clearing the `E` flag in `MTRR_DEF_TYPE`
+        let mut mtrr_def_type = read_mtrr_def_type();
+        write_mtrr_def_type(mtrr_def_type & !MTRR_DEF_TYPE_E);
+
+        // 9. Update the MTRRs and PAT
+
+        write_pat(
+            PA0_VAL
+                | (PA1_VAL << 8)
+                | (PA2_VAL << 16)
+                | (PA3_VAL << 24)
+                | (PA4_VAL << 32)
+                | (PA5_VAL << 40)
+                | (PA6_VAL << 48)
+                | (PA7_VAL << 56),
+        );
+
+        // Override the default memory type to UC for consistency, all of our page tables should be
+        // mapping WB (PAT index 0) by default anyway.
+        mtrr_def_type = (mtrr_def_type & !MTRR_DEF_TYPE_TYPE_MASK) | MEM_TYPE_UC;
+
+        // 10. Re-enable MTRRs
+        write_mtrr_def_type(mtrr_def_type);
+
+        // 11. Flush caches and TLB once more
+        wbinvd();
+        write_cr3(read_cr3());
+
+        // 12. Restore normal cache operation
+        write_cr0(cr0);
+
+        // Now that the PAT is set up, enable global pages so we can start using them.
+        write_cr4(read_cr4() | Cr4::PGE);
     }
 }
 

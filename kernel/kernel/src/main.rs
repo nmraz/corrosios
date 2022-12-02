@@ -45,8 +45,9 @@ extern "C" fn kernel_main(
     let irq_disabled = unsafe { IrqDisabled::new() };
 
     unsafe {
-        // This needs to happen first, before we start calling general Rust code.
+        // These need to happen first, before we start calling general Rust code.
         kimage::init(kernel_paddr);
+        mp::init_bsp_early(&irq_disabled);
     }
 
     // Get a physmap set up so we can parse serial/logging options.
@@ -77,10 +78,6 @@ extern "C" fn kernel_main(
         mm::init_late(mm_init_ctx, &bootinfo, &irq_disabled);
     }
     info!("memory manager initialized");
-
-    unsafe {
-        mp::init_bsp(irq_disabled);
-    }
 
     debug!("triggering IRQ 55");
     unsafe {

@@ -53,7 +53,7 @@ pub unsafe fn init_early(
     let mut mapper = early::take_early_mapper();
 
     unsafe {
-        arch::mmu::early_init(irq_disabled);
+        arch::mmu::init_early(irq_disabled);
     }
 
     let bootinfo_pages = to_page_count(bootinfo_size);

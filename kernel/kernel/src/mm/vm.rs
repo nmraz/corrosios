@@ -16,6 +16,10 @@ pub struct PerCpu {
 }
 
 impl PerCpu {
+    /// Creates a new per-cpu VM context.
+    ///
+    /// Note: this function may be called very early during initialization (before anything is set
+    /// up), so it must not allocate or take any locks.
     pub fn new() -> Self {
         Self {
             aspace_context: low_aspace::Context::new(),

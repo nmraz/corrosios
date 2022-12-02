@@ -1,9 +1,9 @@
-use core::alloc::Layout;
 use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
 use core::ptr::{addr_of, addr_of_mut};
 
-use crate::mm::heap;
+use spin_once::TakeOnce;
+
 use crate::mm::types::VirtAddr;
 use crate::sync::irq::IrqDisabled;
 
@@ -22,7 +22,7 @@ pub struct X64PerCpu {
     pub double_fault_stack: InterruptStack,
 }
 
-#[repr(C)]
+#[repr(C, align(64))]
 struct X64PerCpuWrapper {
     /// Direct pointer back to this structure, to allow cheap gs-relative access.
     /// This field must reside at offset 0 of the structure.
@@ -47,12 +47,23 @@ pub fn current_common(_irq_disabled: &IrqDisabled) -> *const () {
     unsafe { read_gs_qword::<PERCPU_COMMON_PTR_OFFSET>() as *const _ }
 }
 
-pub unsafe fn init_current(common_percpu: *const (), _irq_disabled: &IrqDisabled) -> &X64PerCpu {
-    let wrapper: *mut X64PerCpuWrapper = heap::allocate(Layout::new::<X64PerCpuWrapper>())
-        .expect("failed to allocate architecture per-CPU structure")
-        .as_ptr()
-        .cast();
+pub unsafe fn init_bsp(common_percpu: *const (), irq_disabled: &IrqDisabled) -> &X64PerCpu {
+    static BSP_PERCPU: TakeOnce<X64PerCpuWrapper> = TakeOnce::new();
+    unsafe {
+        &BSP_PERCPU
+            .take_init_with(|wrapper| {
+                init_current_with(wrapper.as_mut_ptr(), common_percpu, irq_disabled);
+            })
+            .expect("BSP x64 percpu already initialized")
+            .inner
+    }
+}
 
+unsafe fn init_current_with(
+    wrapper: *mut X64PerCpuWrapper,
+    common_percpu: *const (),
+    _irq_disabled: &IrqDisabled,
+) {
     unsafe {
         addr_of_mut!((*wrapper).ptr).write(wrapper as *const _);
         addr_of_mut!((*wrapper).common_ptr).write(common_percpu);
@@ -68,6 +79,5 @@ pub unsafe fn init_current(common_percpu: *const (), _irq_disabled: &IrqDisabled
         gdt.write(Gdt::new(VirtAddr::from_ptr(tss)));
 
         wrgsbase(VirtAddr::from_ptr(wrapper));
-        &*inner
     }
 }
