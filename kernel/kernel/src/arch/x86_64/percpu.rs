@@ -35,6 +35,7 @@ struct X64PerCpuWrapper {
 const PERCPU_PTR_OFFSET: usize = 0;
 const PERCPU_COMMON_PTR_OFFSET: usize = 8;
 
+#[inline]
 pub fn current_x64(_irq_disabled: &IrqDisabled) -> &X64PerCpu {
     unsafe {
         // Note: offset 0 is guaranteed to be the `ptr` field of `X64PerCpuWrapper`
@@ -43,6 +44,7 @@ pub fn current_x64(_irq_disabled: &IrqDisabled) -> &X64PerCpu {
     }
 }
 
+#[inline]
 pub fn current_common(_irq_disabled: &IrqDisabled) -> *const () {
     unsafe { read_gs_qword::<PERCPU_COMMON_PTR_OFFSET>() as *const _ }
 }
