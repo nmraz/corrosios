@@ -102,8 +102,8 @@ extern "C" fn kernel_main(
 
         let framebuffer_mapping = unsafe {
             iomap(
-                framebuffer_paddr.containing_frame(),
-                to_page_count(framebuffer_info.byte_size),
+                framebuffer_paddr,
+                framebuffer_info.byte_size,
                 Protection::READ | Protection::WRITE,
                 CacheMode::WriteCombining,
             )
