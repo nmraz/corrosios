@@ -5,7 +5,7 @@
 use core::cell::{Cell, UnsafeCell};
 use core::hint;
 use core::mem::MaybeUninit;
-use core::sync::atomic::{fence, AtomicU8, Ordering};
+use core::sync::atomic::{fence, AtomicBool, AtomicU8, Ordering};
 
 const UNINITIALIZED: u8 = 0;
 const INITIALIZING: u8 = 1;
@@ -199,3 +199,49 @@ unsafe impl<T: Sync, I: Send> Sync for Lazy<I, T> {}
 
 // Safety: we can be sent as long as both the contained value and the initializer can be.
 unsafe impl<T: Send, I: Send> Send for Lazy<T, I> {}
+
+/// A cell-like type for storing a value that can be retrieved at most once.
+pub struct TakeOnce<T> {
+    value: UnsafeCell<MaybeUninit<T>>,
+    taken: AtomicBool,
+}
+
+impl<T> TakeOnce<T> {
+    /// Creates an uninitialized `TakeOnce`.
+    pub const fn new() -> Self {
+        Self {
+            value: UnsafeCell::new(MaybeUninit::uninit()),
+            taken: AtomicBool::new(false),
+        }
+    }
+
+    /// Initializes the stored value and returns a reference to it, provided that the value has not
+    /// already been initialized by someone else.
+    pub fn take_init(&self, value: T) -> Option<&mut T> {
+        unsafe {
+            self.take_init_with(|container| {
+                container.write(value);
+            })
+        }
+    }
+
+    /// Invokes `f` to initialize the stored value and returns a reference to it, provided that the
+    /// value has not already been initialized by someone else.
+    ///
+    /// # Safety
+    ///
+    /// `f` must completely initialize the contained value.
+    pub unsafe fn take_init_with(&self, f: impl FnOnce(&mut MaybeUninit<T>)) -> Option<&mut T> {
+        if self.taken.swap(true, Ordering::Relaxed) {
+            return None;
+        }
+
+        let ptr = unsafe { &mut *self.value.get() };
+        f(ptr);
+
+        unsafe { Some(ptr.assume_init_mut()) }
+    }
+}
+
+// Safety: only one caller is ever allowed access to the inner `T` value.
+unsafe impl<T> Sync for TakeOnce<T> {}

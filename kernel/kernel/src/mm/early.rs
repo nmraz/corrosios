@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 use core::ops::Range;
 
 use arrayvec::ArrayVec;
-use spin_once::Once;
+use spin_once::TakeOnce;
 
 use crate::arch::mm::EARLY_MAP_PT_PAGES;
 use crate::arch::mmu::{flush_kernel_tlb, kernel_pt_root, PageTableSpace};
@@ -89,10 +89,10 @@ impl TranslatePhys for EarlyMapPfnTranslator {
 ///
 /// Panics if this function is called more than once.
 pub fn take_early_mapper() -> EarlyMapper {
-    static GUARD: Once<()> = Once::new();
+    static GUARD: TakeOnce<()> = TakeOnce::new();
 
     // Panic if we are called multiple times
-    GUARD.init(());
+    GUARD.take_init(());
 
     let addr = VirtAddr::from_ptr(EARLY_MAP_PTS.as_ptr());
     let start = kimage::pfn_from_kernel_vpn(addr.containing_page());
