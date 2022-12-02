@@ -35,7 +35,7 @@ pub enum TlbFlush<'a> {
 /// # Safety
 ///
 /// Implementors must ensure that [`root_pt`](AddrSpaceOps::root_pt) returns a valid frame
-/// usable as a page table, and that [`can_cull_table`](AddrSpaceOps::can_cull_table) returns true
+/// usable as a page table, and that [`can_cull_pt`](AddrSpaceOps::can_cull_pt) returns true
 /// only for tables that can safely be freed.
 pub unsafe trait AddrSpaceOps {
     /// Requests the root page table. All accesses to this table will be synchronized by the
