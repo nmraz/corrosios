@@ -91,8 +91,7 @@ impl TranslatePhys for EarlyMapPfnTranslator {
 pub fn take_early_mapper() -> EarlyMapper {
     static GUARD: TakeOnce<()> = TakeOnce::new();
 
-    // Panic if we are called multiple times
-    GUARD.take_init(());
+    GUARD.take_init(()).expect("early mapper already taken");
 
     let addr = VirtAddr::from_ptr(EARLY_MAP_PTS.as_ptr());
     let start = kimage::pfn_from_kernel_vpn(addr.containing_page());
