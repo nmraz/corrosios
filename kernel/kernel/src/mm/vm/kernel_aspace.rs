@@ -1,4 +1,3 @@
-use alloc::sync::Arc;
 use log::debug;
 use spin_once::Once;
 
@@ -7,105 +6,22 @@ use crate::arch::mmu::{
     can_cull_kernel_pt, finish_init_kernel_pt, flush_kernel_tlb, flush_kernel_tlb_page,
     kernel_pt_root,
 };
-use crate::err::Result;
 use crate::kimage;
 use crate::mm::physmap::PhysmapPfnTranslator;
 use crate::mm::pt::{MappingPointer, NoopGather, PageTable};
-use crate::mm::types::{
-    AccessType, CacheMode, PageTablePerms, PhysAddr, PhysFrameNum, Protection, VirtAddr,
-};
-use crate::mm::utils::to_page_count;
+use crate::mm::types::{PageTablePerms, PhysFrameNum};
 
-use super::aspace::{AddrSpace, AddrSpaceOps, MappingHandle, TlbFlush};
-use super::object::{PhysVmObject, VmObject};
+use super::aspace::{AddrSpace, AddrSpaceOps, TlbFlush};
 
-/// An owned pointer to a mapping of a VM object into the kernel address space.
-pub struct KernelMapping(MappingHandle);
-
-impl KernelMapping {
-    /// Returns the base address of the mapping.
-    pub fn addr(&self) -> VirtAddr {
-        self.0.start().addr()
-    }
-}
-
-impl Drop for KernelMapping {
-    fn drop(&mut self) {
-        // Safety: we have unique ownership of
-        unsafe {
-            get()
-                .unmap(&self.0)
-                .expect("kernel mapping already detached");
-        }
-    }
-}
-
-pub struct IoMapping {
-    mapping: KernelMapping,
-    page_offset: usize,
-    len: usize,
-}
-
-impl IoMapping {
-    pub fn addr(&self) -> VirtAddr {
-        self.mapping.addr() + self.page_offset
-    }
-
-    pub fn len(&self) -> usize {
-        self.len
-    }
-}
-
-/// Maps the entirety of `object` into the kernel address space with protection `prot`.
-pub fn kmap(object: Arc<dyn VmObject>, prot: Protection) -> Result<KernelMapping> {
-    let page_count = object.page_count();
-
-    let kernel_aspace = get();
-    let mapping = kernel_aspace.map(
-        &kernel_aspace.root_slice(),
-        None,
-        page_count,
-        0,
-        object,
-        prot,
-    )?;
-
-    let commit_type = if prot.contains(Protection::WRITE) {
-        AccessType::Write
-    } else {
-        AccessType::Read
-    };
-
-    kernel_aspace.commit(&mapping, commit_type, 0, page_count)?;
-
-    Ok(KernelMapping(mapping))
-}
-
-/// Maps the physical byte range `base..base + len` into the kernel address space with protection
-/// `prot` and cache mode `cache_mode`.
+/// Retrieves the global kernel address space.
 ///
-/// # Safety
+/// # Panics
 ///
-/// The caller must guarantee that the specified range of physical memory is safe to access with
-/// the specified cache mode, respecting any platform limitations.
-pub unsafe fn iomap(
-    base: PhysAddr,
-    len: usize,
-    prot: Protection,
-    cache_mode: CacheMode,
-) -> Result<IoMapping> {
-    let base_pfn = base.containing_frame();
-    let page_offset = base.frame_offset();
-
-    // Safety: function contract
-    let object = unsafe { PhysVmObject::new(base_pfn, to_page_count(len), cache_mode)? };
-    let mapping = kmap(object, prot)?;
-
-    Ok(IoMapping {
-        mapping,
-        page_offset,
-        len,
-    })
+/// Panics if [`init`] has not yet been called.
+pub fn get() -> &'static AddrSpace<impl AddrSpaceOps> {
+    KERNEL_ASPACE
+        .get()
+        .expect("kernel address space not initialized")
 }
 
 /// Initializes the (higher-half) kernel address space.
@@ -145,17 +61,6 @@ pub(super) fn init() {
         finish_init_kernel_pt();
         protect_kimage();
     }
-}
-
-/// Retrieves the global kernel address space.
-///
-/// # Panics
-///
-/// Panics if [`init`] has not yet been called.
-pub(super) fn get() -> &'static AddrSpace<impl AddrSpaceOps> {
-    KERNEL_ASPACE
-        .get()
-        .expect("kernel address space not initialized")
 }
 
 unsafe fn protect_kimage() {

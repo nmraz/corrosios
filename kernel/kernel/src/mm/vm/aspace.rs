@@ -140,7 +140,11 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     /// * `NO_PERMS` - `vpn` is mapped with permissions incompatible with `access_type`.
     /// * Any errors returned by the underlying `provide_page` call.
     pub fn fault(&self, vpn: VirtPageNum, access_type: AccessType) -> Result<()> {
-        struct GetCommitRangeByVpn(VirtPageNum);
+        struct GetCommitRangeByVpn {
+            vpn: VirtPageNum,
+            access_type: AccessType,
+        }
+
         impl<'a> GetCommitRange<'a> for GetCommitRangeByVpn {
             fn get_range<'b, O>(
                 &self,
@@ -150,17 +154,22 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             where
                 'a: 'b,
             {
-                let mapping = addr_space.root_slice.get_mapping(owner, self.0)?;
-                let offset = self.0 - mapping.start();
+                let mapping = addr_space.root_slice.get_mapping(owner, self.vpn)?;
+                if !access_allowed(self.access_type, mapping.prot(owner)?) {
+                    return Err(Error::NO_PERMS);
+                }
+
+                let offset = self.vpn - mapping.start();
                 Ok(CommitRange {
                     mapping,
+                    commit_type: get_commit_type(self.access_type),
                     offset,
                     page_count: 1,
                 })
             }
         }
 
-        self.do_commit(access_type, GetCommitRangeByVpn(vpn))
+        self.do_commit(GetCommitRangeByVpn { vpn, access_type })
     }
 
     /// Allocates a sub-slice spanning `page_count` pages from within `slice`.
@@ -325,64 +334,73 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         })
     }
 
-    /// Commits `page_count` pages in `mapping`, starting at `offset`, for accesses of type
-    /// `access_type`.
+    /// Commits `page_count` pages in `mapping`, starting at `offset`.
     ///
-    /// Subsequent accesses of type `access_type` to the committed range are guaranteed not to cause
-    /// page faults.
+    /// This may ultimately call into [`provide_page`](VmObject::provide_page) for the relevant
+    /// offsets. Subsequent valid accesses to the pages committed by this call are guaranteed not to
+    /// cause a page fault.
+    ///
+    /// If the mapping is writable, this function will commit the pages as writable so that they
+    /// can be used.
     ///
     /// # Errors
     ///
     /// * `INVALID_STATE` - This function was called on a [detached](MappingHandle#states) mapping.
     /// * `NO_PERMS` - `mapping` does not have sufficient permissions for accesses of type
     ///                `access_type`.
+    /// * Any errors returned by the underlying `provide_page` call.
     ///
     /// # Panics
     ///
     /// Panics if `mapping` belongs to a different address space.
-    pub fn commit(
-        &self,
-        mapping: &MappingHandle,
-        access_type: AccessType,
-        offset: usize,
-        page_count: usize,
-    ) -> Result<()> {
-        struct GetReadyCommitRange<'a>(CommitRange<'a>);
-        impl<'a> GetCommitRange<'a> for GetReadyCommitRange<'a> {
+    pub fn commit(&self, mapping: &MappingHandle, offset: usize, page_count: usize) -> Result<()> {
+        struct GetRequestedCommitRange<'a> {
+            mapping: &'a Mapping,
+            offset: usize,
+            page_count: usize,
+        }
+        impl<'a> GetCommitRange<'a> for GetRequestedCommitRange<'a> {
             fn get_range<'b, O>(
                 &self,
                 _addr_space: &'a AddrSpace<O>,
-                _owner: &'b QCellOwner,
+                owner: &'b QCellOwner,
             ) -> Result<CommitRange<'b>>
             where
                 'a: 'b,
             {
-                Ok(self.0)
+                let prot = self.mapping.prot(owner)?;
+                let commit_type = if prot.contains(Protection::WRITE) {
+                    CommitType::Write
+                } else {
+                    CommitType::Read
+                };
+
+                Ok(CommitRange {
+                    mapping: self.mapping,
+                    commit_type,
+                    offset: self.offset,
+                    page_count: self.page_count,
+                })
             }
         }
 
-        let commit_range = CommitRange {
+        self.do_commit(GetRequestedCommitRange {
             mapping: &mapping.mapping,
             offset,
             page_count,
-        };
-        self.do_commit(access_type, GetReadyCommitRange(commit_range))
+        })
     }
 
-    fn do_commit<'a>(&'a self, access_type: AccessType, g: impl GetCommitRange<'a>) -> Result<()> {
+    fn do_commit<'a>(&'a self, g: impl GetCommitRange<'a>) -> Result<()> {
         // TODO: be more careful about this lock when `provide_page` can sleep.
         self.with_owner(|owner| {
             let range = g.get_range(self, owner)?;
             let mapping = range.mapping;
             let prot = mapping.prot(owner)?;
 
-            if !access_allowed(access_type, prot) {
-                return Err(Error::NO_PERMS);
-            }
-
             let object = mapping.object().as_ref();
             let cache_mode = object.cache_mode();
-            let commit_type = get_commit_type(access_type);
+            let commit_type = range.commit_type;
 
             // TODO: refactor this and find some way for `provide_page` to block outside the
             // critical section
@@ -535,6 +553,7 @@ impl MappingHandle {
 #[derive(Clone, Copy)]
 struct CommitRange<'a> {
     mapping: &'a Mapping,
+    commit_type: CommitType,
     offset: usize,
     page_count: usize,
 }

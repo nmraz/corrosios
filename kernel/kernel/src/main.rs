@@ -16,8 +16,8 @@ use log::{debug, info};
 
 use crate::arch::cpu;
 use crate::bootparse::BootinfoData;
+use crate::mm::kmap::iomap;
 use crate::mm::types::{CacheMode, PhysAddr, Protection};
-use crate::mm::vm::kernel_aspace::iomap;
 use crate::sync::irq::IrqDisabled;
 
 #[macro_use]
