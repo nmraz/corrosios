@@ -1,12 +1,13 @@
 use alloc::sync::Arc;
 
+use crate::arch::mmu::PAGE_SIZE;
 use crate::err::Result;
 
-use super::types::{CacheMode, PhysAddr, Protection, VirtAddr};
+use super::types::{CacheMode, PhysAddr, Protection, VirtAddr, VirtPageNum};
 use super::utils::to_page_count;
 use super::vm::aspace::{AddrSpace, AddrSpaceOps, MappingHandle, SliceHandle};
 use super::vm::kernel_aspace;
-use super::vm::object::{PhysVmObject, VmObject};
+use super::vm::object::{EagerVmObject, PhysVmObject, VmObject};
 
 /// An owned pointer to a mapping of a VM object into the kernel address space.
 pub struct KernelMapping(MappingHandle);
@@ -20,7 +21,7 @@ impl KernelMapping {
 
 impl Drop for KernelMapping {
     fn drop(&mut self) {
-        // Safety: we have unique ownership of
+        // Safety: we have unique ownership of the mapping.
         unsafe {
             kernel_aspace::get()
                 .unmap(&self.0)
@@ -45,6 +46,56 @@ impl IoMapping {
     }
 }
 
+const STACK_SIZE: usize = 0x8000;
+const STACK_PAGES: usize = STACK_SIZE / PAGE_SIZE;
+
+pub struct KernelStack {
+    slice: SliceHandle,
+}
+
+impl KernelStack {
+    pub fn new() -> Result<Self> {
+        let kernel_aspace = kernel_aspace::get();
+
+        let stack_obj = EagerVmObject::new(STACK_PAGES)?;
+        let slice = kernel_aspace.create_subslice(
+            kernel_aspace.root_slice(),
+            "kernel stack",
+            None,
+            STACK_PAGES + 1,
+        )?;
+
+        let stack = KernelStack { slice };
+
+        // Leave a guard page at the bottom of the stack.
+        map_committed(
+            kernel_aspace,
+            &stack.slice,
+            Some(stack.slice.start() + 1),
+            STACK_PAGES,
+            stack_obj,
+            Protection::READ | Protection::WRITE,
+        )?;
+
+        Ok(stack)
+    }
+
+    pub fn top(&self) -> VirtAddr {
+        self.slice.end().addr()
+    }
+}
+
+impl Drop for KernelStack {
+    fn drop(&mut self) {
+        // Safety: we have unique ownership of the stack slice.
+        unsafe {
+            kernel_aspace::get()
+                .unmap_slice(&self.slice)
+                .expect("failed to unmap kernel stack");
+        }
+    }
+}
+
 /// Maps the entirety of `object` into the kernel address space with protection `prot`.
 pub fn kmap(object: Arc<dyn VmObject>, prot: Protection) -> Result<KernelMapping> {
     let page_count = object.page_count();
@@ -53,6 +104,7 @@ pub fn kmap(object: Arc<dyn VmObject>, prot: Protection) -> Result<KernelMapping
     let mapping = map_committed(
         kernel_aspace,
         kernel_aspace.root_slice(),
+        None,
         page_count,
         object,
         prot,
@@ -89,13 +141,14 @@ pub unsafe fn iomap(
 }
 
 fn map_committed(
-    kernel_aspace: &AddrSpace<impl AddrSpaceOps>,
+    aspace: &AddrSpace<impl AddrSpaceOps>,
     slice: &SliceHandle,
+    start: Option<VirtPageNum>,
     page_count: usize,
     object: Arc<dyn VmObject>,
     prot: Protection,
 ) -> Result<MappingHandle> {
-    let mapping = kernel_aspace.map(slice, None, page_count, 0, object, prot)?;
-    kernel_aspace.commit(&mapping, 0, page_count)?;
+    let mapping = aspace.map(slice, start, page_count, 0, object, prot)?;
+    aspace.commit(&mapping, 0, page_count)?;
     Ok(mapping)
 }
