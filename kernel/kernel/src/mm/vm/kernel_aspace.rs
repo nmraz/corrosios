@@ -39,7 +39,7 @@ pub(super) fn init() {
 
     aspace
         .create_subslice(
-            &root_slice,
+            root_slice,
             "physmap",
             Some(PHYS_MAP_BASE),
             PHYS_MAP_MAX_PAGES,
@@ -48,8 +48,8 @@ pub(super) fn init() {
 
     aspace
         .create_subslice(
-            &root_slice,
-            "kimage",
+            root_slice,
+            "kernel image",
             Some(kimage::virt_base()),
             kimage::total_pages(),
         )
