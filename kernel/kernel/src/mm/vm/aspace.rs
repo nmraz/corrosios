@@ -83,7 +83,7 @@ pub unsafe trait AddrSpaceOps {
 pub struct AddrSpace<O> {
     // TODO: probably don't want a spinlock here
     inner: SpinLock<AddrSpaceInner>,
-    root_slice: Arc<Slice>,
+    root_slice: SliceHandle,
     ops: O,
 }
 
@@ -102,13 +102,17 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         assert!(range.end >= range.start);
 
         let owner = QCellOwner::new();
-        let root_slice = Slice::new(
-            owner.id(),
-            None,
-            "root",
-            range.start,
-            range.end - range.start,
-        )?;
+
+        let root_slice = {
+            let slice = Slice::new(
+                owner.id(),
+                None,
+                "root",
+                range.start,
+                range.end - range.start,
+            )?;
+            SliceHandle { slice }
+        };
 
         Ok(AddrSpace {
             inner: SpinLock::new(AddrSpaceInner { owner }),
@@ -123,10 +127,8 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     }
 
     /// Retrieves a handle to the root slice of this address space.
-    pub fn root_slice(&self) -> SliceHandle {
-        SliceHandle {
-            slice: Arc::clone(&self.root_slice),
-        }
+    pub fn root_slice(&self) -> &SliceHandle {
+        &self.root_slice
     }
 
     /// Handles a page fault accessing `vpn` with access type `access_type`.
@@ -154,7 +156,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             where
                 'a: 'b,
             {
-                let mapping = addr_space.root_slice.get_mapping(owner, self.vpn)?;
+                let mapping = addr_space.root_slice.slice.get_mapping(owner, self.vpn)?;
                 if !access_allowed(self.access_type, mapping.prot(owner)?) {
                     return Err(Error::NO_PERMS);
                 }
@@ -467,7 +469,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
 impl<O> Drop for AddrSpace<O> {
     fn drop(&mut self) {
         let owner = &mut self.inner.get_mut().owner;
-        self.root_slice.detach_children(owner);
+        self.root_slice.slice.detach_children(owner);
     }
 }
 

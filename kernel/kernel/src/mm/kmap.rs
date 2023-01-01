@@ -52,7 +52,7 @@ pub fn kmap(object: Arc<dyn VmObject>, prot: Protection) -> Result<KernelMapping
     let kernel_aspace = kernel_aspace::get();
     let mapping = map_committed(
         kernel_aspace,
-        &kernel_aspace.root_slice(),
+        kernel_aspace.root_slice(),
         page_count,
         object,
         prot,
