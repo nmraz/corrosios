@@ -9,6 +9,8 @@ use crate::err::{Error, Result};
 use crate::mm::types::{Protection, VirtPageNum};
 use crate::mm::vm::object::VmObject;
 
+use super::MapBase;
+
 /// A child of an address space slice, containing either another slice or a mapping.
 pub enum SliceChild {
     Subslice(Arc<Slice>),
@@ -123,17 +125,19 @@ impl Slice {
     pub fn alloc_spot<C: Into<SliceChild> + Clone>(
         &self,
         owner: &mut QCellOwner,
-        start: Option<VirtPageNum>,
+        base: MapBase,
         page_count: usize,
         f: impl FnOnce(VirtPageNum) -> Result<C>,
     ) -> Result<C> {
-        match start {
-            Some(start) => {
+        match base {
+            MapBase::Fixed(start) => {
                 let child = f(start)?;
                 self.alloc_spot_fixed(owner, start, page_count, child.clone().into())?;
                 Ok(child)
             }
-            None => self.alloc_spot_dynamic(owner, page_count, f),
+            MapBase::Aligned { align_order } => {
+                self.alloc_spot_dynamic(owner, align_order, page_count, f)
+            }
         }
     }
 
@@ -198,13 +202,20 @@ impl Slice {
     fn alloc_spot_dynamic<C: Into<SliceChild> + Clone>(
         &self,
         owner: &mut QCellOwner,
+        align_order: usize,
         page_count: usize,
         f: impl FnOnce(VirtPageNum) -> Result<C>,
     ) -> Result<C> {
+        let align = 1usize << align_order;
+
         let gap_start = self
             .iter_gaps_mut(owner, |gap_start, gap_page_count| {
-                if gap_page_count > page_count {
-                    ControlFlow::Break(gap_start)
+                let aligned_gap_start = gap_start.align_up(align);
+                let gap_padding = aligned_gap_start - gap_start;
+                let aligned_page_count = gap_page_count - gap_padding;
+
+                if aligned_page_count > page_count {
+                    ControlFlow::Break(aligned_gap_start)
                 } else {
                     ControlFlow::Continue(())
                 }

@@ -3,9 +3,9 @@ use alloc::sync::Arc;
 use crate::arch::mmu::PAGE_SIZE;
 use crate::err::Result;
 
-use super::types::{CacheMode, PhysAddr, Protection, VirtAddr, VirtPageNum};
+use super::types::{CacheMode, PhysAddr, Protection, VirtAddr};
 use super::utils::to_page_count;
-use super::vm::aspace::{AddrSpace, AddrSpaceOps, MappingHandle, SliceHandle};
+use super::vm::aspace::{AddrSpace, AddrSpaceOps, MapBase, MappingHandle, SliceHandle};
 use super::vm::kernel_aspace;
 use super::vm::object::{EagerVmObject, PhysVmObject, VmObject};
 
@@ -61,7 +61,7 @@ impl KernelStack {
         let slice = kernel_aspace.create_subslice(
             kernel_aspace.root_slice(),
             "kernel stack",
-            None,
+            MapBase::any(),
             STACK_PAGES + 1,
         )?;
 
@@ -71,7 +71,7 @@ impl KernelStack {
         map_committed(
             kernel_aspace,
             &stack.slice,
-            Some(stack.slice.start() + 1),
+            MapBase::Fixed(stack.slice.start() + 1),
             STACK_PAGES,
             stack_obj,
             Protection::READ | Protection::WRITE,
@@ -104,7 +104,7 @@ pub fn kmap(object: Arc<dyn VmObject>, prot: Protection) -> Result<KernelMapping
     let mapping = map_committed(
         kernel_aspace,
         kernel_aspace.root_slice(),
-        None,
+        MapBase::any(),
         page_count,
         object,
         prot,
@@ -143,12 +143,12 @@ pub unsafe fn iomap(
 fn map_committed(
     aspace: &AddrSpace<impl AddrSpaceOps>,
     slice: &SliceHandle,
-    start: Option<VirtPageNum>,
+    base: MapBase,
     page_count: usize,
     object: Arc<dyn VmObject>,
     prot: Protection,
 ) -> Result<MappingHandle> {
-    let mapping = aspace.map(slice, start, page_count, 0, object, prot)?;
+    let mapping = aspace.map(slice, base, page_count, 0, object, prot)?;
     aspace.commit(&mapping, 0, page_count)?;
     Ok(mapping)
 }

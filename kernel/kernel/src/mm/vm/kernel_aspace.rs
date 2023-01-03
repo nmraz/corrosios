@@ -11,7 +11,7 @@ use crate::mm::physmap::PhysmapPfnTranslator;
 use crate::mm::pt::{MappingPointer, NoopGather, PageTable};
 use crate::mm::types::{PageTablePerms, PhysFrameNum};
 
-use super::aspace::{AddrSpace, AddrSpaceOps, TlbFlush};
+use super::aspace::{AddrSpace, AddrSpaceOps, MapBase, TlbFlush};
 
 /// Retrieves the global kernel address space.
 ///
@@ -41,7 +41,7 @@ pub(super) fn init() {
         .create_subslice(
             root_slice,
             "physmap",
-            Some(PHYS_MAP_BASE),
+            MapBase::Fixed(PHYS_MAP_BASE),
             PHYS_MAP_MAX_PAGES,
         )
         .expect("failed to reserve physmap virtual address space");
@@ -50,7 +50,7 @@ pub(super) fn init() {
         .create_subslice(
             root_slice,
             "kernel image",
-            Some(kimage::virt_base()),
+            MapBase::Fixed(kimage::virt_base()),
             kimage::total_pages(),
         )
         .expect("failed to reserve kernel image virtual address space");

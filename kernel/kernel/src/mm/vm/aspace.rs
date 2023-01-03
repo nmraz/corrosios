@@ -29,6 +29,22 @@ pub enum TlbFlush<'a> {
     All,
 }
 
+/// Constraints placed on the base address when creating a subslice or mapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MapBase {
+    /// The mapping must be allocated at the specified virtual page.
+    Fixed(VirtPageNum),
+    /// The mapping must be allocated at a virtual page aligned to `1 << align_order`.
+    Aligned { align_order: usize },
+}
+
+impl MapBase {
+    /// Returns a `MapBase` that places no constraints on the allocated address.
+    pub const fn any() -> Self {
+        Self::Aligned { align_order: 0 }
+    }
+}
+
 /// Encapsulates the necessary low-level page table interactions required for higher-level address
 /// spaces.
 ///
@@ -198,13 +214,13 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         &self,
         slice: &SliceHandle,
         name: &str,
-        start: Option<VirtPageNum>,
+        base: MapBase,
         page_count: usize,
     ) -> Result<SliceHandle> {
         let slice = self.with_owner(|owner| {
             let id = owner.id();
 
-            slice.slice.alloc_spot(owner, start, page_count, |start| {
+            slice.slice.alloc_spot(owner, base, page_count, |start| {
                 Slice::new(id, Some(Arc::clone(&slice.slice)), name, start, page_count)
             })
         })?;
@@ -268,7 +284,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     pub fn map(
         &self,
         slice: &SliceHandle,
-        start: Option<VirtPageNum>,
+        base: MapBase,
         page_count: usize,
         object_offset: usize,
         object: Arc<dyn VmObject>,
@@ -284,7 +300,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             let id = owner.id();
             slice
                 .slice
-                .alloc_spot(owner, start, total_page_count, |start| {
+                .alloc_spot(owner, base, total_page_count, |start| {
                     Mapping::new(
                         id,
                         Arc::clone(&slice.slice),
