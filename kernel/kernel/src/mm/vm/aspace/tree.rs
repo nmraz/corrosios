@@ -397,8 +397,8 @@ impl SliceInner {
         self.children
             .range(..vpn)
             .next_back()
-            .filter(|(_, child)| vpn < child.end())
             .map(|(_, child)| child)
+            .filter(|child| vpn < child.end())
     }
 }
 
