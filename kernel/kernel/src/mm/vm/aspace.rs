@@ -13,7 +13,7 @@ use crate::mm::pt::{
 use crate::mm::types::{PageTablePerms, PhysFrameNum, Protection, VirtPageNum};
 use crate::sync::SpinLock;
 
-use self::tree::{Mapping, Slice, SliceChild};
+use self::tree::{Mapping, Slice};
 
 use super::object::{CommitType, VmObject};
 use super::AccessType;
@@ -205,11 +205,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             let id = owner.id();
 
             slice.slice.alloc_spot(owner, start, page_count, |start| {
-                let subslice =
-                    Slice::new(id, Some(Arc::clone(&slice.slice)), name, start, page_count)?;
-
-                let child = SliceChild::Subslice(Arc::clone(&subslice));
-                Ok((child, subslice))
+                Slice::new(id, Some(Arc::clone(&slice.slice)), name, start, page_count)
             })
         })?;
 
@@ -289,7 +285,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             slice
                 .slice
                 .alloc_spot(owner, start, total_page_count, |start| {
-                    let mapping = Mapping::new(
+                    Mapping::new(
                         id,
                         Arc::clone(&slice.slice),
                         start,
@@ -297,10 +293,7 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                         object,
                         object_offset,
                         prot,
-                    )?;
-
-                    let child = SliceChild::Mapping(Arc::clone(&mapping));
-                    Ok((child, mapping))
+                    )
                 })
         })?;
 

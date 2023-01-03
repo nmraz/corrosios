@@ -31,6 +31,18 @@ impl SliceChild {
     }
 }
 
+impl From<Arc<Mapping>> for SliceChild {
+    fn from(v: Arc<Mapping>) -> Self {
+        Self::Mapping(v)
+    }
+}
+
+impl From<Arc<Slice>> for SliceChild {
+    fn from(v: Arc<Slice>) -> Self {
+        Self::Subslice(v)
+    }
+}
+
 /// Represents a slice of an address space.
 pub struct Slice {
     name: Name,
@@ -108,15 +120,19 @@ impl Slice {
     ///
     /// If `start` is provided, the child will be created at the requested virtual page number.
     /// Otherwise, a sufficiently large available region will be found and used.
-    pub fn alloc_spot<R>(
+    pub fn alloc_spot<C: Into<SliceChild> + Clone>(
         &self,
         owner: &mut QCellOwner,
         start: Option<VirtPageNum>,
         page_count: usize,
-        f: impl FnOnce(VirtPageNum) -> Result<(SliceChild, R)>,
-    ) -> Result<R> {
+        f: impl FnOnce(VirtPageNum) -> Result<C>,
+    ) -> Result<C> {
         match start {
-            Some(start) => self.alloc_spot_fixed(owner, start, page_count, || f(start)),
+            Some(start) => {
+                let child = f(start)?;
+                self.alloc_spot_fixed(owner, start, page_count, child.clone().into())?;
+                Ok(child)
+            }
             None => self.alloc_spot_dynamic(owner, page_count, f),
         }
     }
@@ -179,12 +195,12 @@ impl Slice {
 
     /// Allocates a child of size `page_count` from within this slice, invoking `f` to construct it
     /// once a suitable area has been found.
-    fn alloc_spot_dynamic<R>(
+    fn alloc_spot_dynamic<C: Into<SliceChild> + Clone>(
         &self,
         owner: &mut QCellOwner,
         page_count: usize,
-        f: impl FnOnce(VirtPageNum) -> Result<(SliceChild, R)>,
-    ) -> Result<R> {
+        f: impl FnOnce(VirtPageNum) -> Result<C>,
+    ) -> Result<C> {
         let gap_start = self
             .iter_gaps_mut(owner, |gap_start, gap_page_count| {
                 if gap_page_count > page_count {
@@ -195,24 +211,24 @@ impl Slice {
             })?
             .ok_or(Error::OUT_OF_RESOURCES)?;
 
-        let (child, retval) = f(gap_start)?;
+        let child = f(gap_start)?;
         self.inner_mut(owner)
             .expect("slice should still be attached")
             .children
-            .insert(gap_start, child);
+            .insert(gap_start, child.clone().into());
 
-        Ok(retval)
+        Ok(child)
     }
 
     /// Allocates a child spanning `start..start + page_count` from within this slice, invoking `f`
     /// to construct it once a suitable area has been found.
-    fn alloc_spot_fixed<R>(
+    fn alloc_spot_fixed(
         &self,
         owner: &mut QCellOwner,
         start: VirtPageNum,
         page_count: usize,
-        f: impl FnOnce() -> Result<(SliceChild, R)>,
-    ) -> Result<R> {
+        child: SliceChild,
+    ) -> Result<()> {
         let end = start
             .checked_add(page_count)
             .ok_or(Error::INVALID_ARGUMENT)?;
@@ -235,9 +251,8 @@ impl Slice {
             }
         }
 
-        let (child, ret) = f()?;
         inner.children.insert(start, child);
-        Ok(ret)
+        Ok(())
     }
 
     /// Calls `f` on all gaps (unallocated regions) in this slice, passing each invocation the start
