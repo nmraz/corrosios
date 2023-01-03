@@ -1,9 +1,7 @@
 use core::ops::ControlFlow;
 
-use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
-use intrusive_collections::rbtree::CursorMut;
-use intrusive_collections::{intrusive_adapter, Bound, KeyAdapter, RBTree, RBTreeAtomicLink};
 use object_name::Name;
 use qcell::{QCell, QCellOwner, QCellOwnerID};
 
@@ -15,6 +13,22 @@ use crate::mm::vm::object::VmObject;
 pub enum SliceChild {
     Subslice(Arc<Slice>),
     Mapping(Arc<Mapping>),
+}
+
+impl SliceChild {
+    fn start(&self) -> VirtPageNum {
+        match self {
+            SliceChild::Subslice(subslice) => subslice.start(),
+            SliceChild::Mapping(mapping) => mapping.start(),
+        }
+    }
+
+    fn end(&self) -> VirtPageNum {
+        match self {
+            SliceChild::Subslice(subslice) => subslice.end(),
+            SliceChild::Mapping(mapping) => mapping.end(),
+        }
+    }
 }
 
 /// Represents a slice of an address space.
@@ -41,7 +55,7 @@ impl Slice {
                 owner,
                 Some(SliceInner {
                     parent,
-                    children: RBTree::new(SliceChildAdapter::new()),
+                    children: BTreeMap::new(),
                 }),
             ),
         })?;
@@ -113,8 +127,10 @@ impl Slice {
     ///
     /// Panics if `self` does not have a child starting at `start`.
     pub fn remove_child(&self, owner: &mut QCellOwner, start: VirtPageNum) -> Result<()> {
-        let mut child = self.inner_mut(owner)?.children.find_mut(&start);
-        child.remove().expect("no child for provided start address");
+        self.inner_mut(owner)?
+            .children
+            .remove(&start)
+            .expect("no child for provided start address");
         Ok(())
     }
 
@@ -133,11 +149,10 @@ impl Slice {
                 .inner_mut(owner)
                 .expect("current slice should still be attached")
                 .children
-                .front_mut()
-                .remove();
+                .pop_first();
 
-            if let Some(child) = first_child {
-                match child.data {
+            if let Some((_, child)) = first_child {
+                match child {
                     SliceChild::Subslice(subslice) => {
                         cur = subslice;
                     }
@@ -170,17 +185,23 @@ impl Slice {
         page_count: usize,
         f: impl FnOnce(VirtPageNum) -> Result<(SliceChild, R)>,
     ) -> Result<R> {
-        let mut f = Some(f);
+        let gap_start = self
+            .iter_gaps_mut(owner, |gap_start, gap_page_count| {
+                if gap_page_count > page_count {
+                    ControlFlow::Break(gap_start)
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })?
+            .ok_or(Error::OUT_OF_RESOURCES)?;
 
-        self.iter_gaps_mut(owner, |gap_start, gap_page_count, prev_cursor| {
-            if gap_page_count > page_count {
-                let f = f.take().expect("did not break after finding spot");
-                ControlFlow::Break(finish_insert_after(prev_cursor, || f(gap_start)))
-            } else {
-                ControlFlow::Continue(())
-            }
-        })
-        .and_then(|res| res.unwrap_or(Err(Error::OUT_OF_RESOURCES)))
+        let (child, retval) = f(gap_start)?;
+        self.inner_mut(owner)
+            .expect("slice should still be attached")
+            .children
+            .insert(gap_start, child);
+
+        Ok(retval)
     }
 
     /// Allocates a child spanning `start..start + page_count` from within this slice, invoking `f`
@@ -202,37 +223,39 @@ impl Slice {
 
         let inner = self.inner_mut(owner)?;
 
-        let mut prev = inner.children.upper_bound_mut(Bound::Included(&start));
-        if let Some(prev) = prev.get() {
+        if let Some((_, prev)) = inner.children.range(..start).next_back() {
             if prev.end() > start {
                 return Err(Error::RESOURCE_OVERLAP);
             }
         }
 
-        if let Some(next) = prev.peek_next().get() {
+        if let Some((_, next)) = inner.children.range(start..).next() {
             if end > next.start() {
                 return Err(Error::RESOURCE_OVERLAP);
             }
         }
 
-        finish_insert_after(&mut prev, f)
+        let (child, ret) = f()?;
+        inner.children.insert(start, child);
+        Ok(ret)
     }
 
     /// Calls `f` on all gaps (unallocated regions) in this slice, passing each invocation the start
-    /// of the gap, its page count, and a cursor pointing to the item in the tree before the gap.
+    /// of the gap and its page count.
     ///
     /// Iteration will stop early if `f` returns [`ControlFlow::Break`], and the break value will
     /// be returned.
     fn iter_gaps_mut<'a, B>(
         &'a self,
-        owner: &'a mut QCellOwner,
-        mut f: impl FnMut(VirtPageNum, usize, &mut CursorMut<'a, SliceChildAdapter>) -> ControlFlow<B>,
+        owner: &'a QCellOwner,
+        mut f: impl FnMut(VirtPageNum, usize) -> ControlFlow<B>,
     ) -> Result<Option<B>> {
-        let inner = self.inner_mut(owner)?;
+        let inner = self.inner(owner)?;
 
-        let mut cursor = inner.children.front_mut();
-        let Some(first) = cursor.get() else {
-            let retval = match f(self.start, self.page_count, &mut cursor) {
+        let mut iter = inner.children.iter();
+
+        let Some((&first_start, first)) = iter.next() else {
+            let retval = match f(self.start, self.page_count) {
                 ControlFlow::Break(val) => Some(val),
                 ControlFlow::Continue(_) => None,
             };
@@ -240,38 +263,25 @@ impl Slice {
             return Ok(retval);
         };
 
-        let first_start = first.start();
-
         if self.start < first_start {
-            if let ControlFlow::Break(val) = f(self.start, first_start - self.start, &mut cursor) {
+            if let ControlFlow::Break(val) = f(self.start, first_start - self.start) {
                 return Ok(Some(val));
             }
         }
 
-        while let Some(next) = cursor.peek_next().get() {
-            let cur = cursor
-                .get()
-                .expect("cursor null despite next being non-null");
+        let mut last_end = first.end();
 
-            let cur_end = cur.end();
-            let next_start = next.start();
-
-            if cur_end < next_start {
-                if let ControlFlow::Break(val) = f(cur_end, next_start - cur_end, &mut cursor) {
+        for (&cur_start, cur) in iter {
+            if last_end < cur_start {
+                if let ControlFlow::Break(val) = f(last_end, cur_start - last_end) {
                     return Ok(Some(val));
                 }
             }
-
-            cursor.move_next();
+            last_end = cur.end();
         }
 
-        let last_end = cursor
-            .get()
-            .expect("cursor should point to last node")
-            .end();
-        let slice_end = self.end();
-        if last_end < slice_end {
-            if let ControlFlow::Break(val) = f(last_end, slice_end - last_end, &mut cursor) {
+        if last_end < self.end() {
+            if let ControlFlow::Break(val) = f(last_end, self.end() - last_end) {
                 return Ok(Some(val));
             }
         }
@@ -357,51 +367,23 @@ impl Mapping {
     fn inner<'a>(&'a self, owner: &'a QCellOwner) -> Result<&'a MappingInner> {
         self.inner.ro(owner).as_ref().ok_or(Error::INVALID_STATE)
     }
-
-    fn inner_mut<'a>(&'a self, owner: &'a mut QCellOwner) -> Result<&'a mut MappingInner> {
-        self.inner.rw(owner).as_mut().ok_or(Error::INVALID_STATE)
-    }
-}
-
-fn finish_insert_after<R>(
-    prev: &mut CursorMut<'_, SliceChildAdapter>,
-    f: impl FnOnce() -> Result<(SliceChild, R)>,
-) -> Result<R> {
-    let new_child = Box::try_new_uninit()?;
-    let (data, ret) = f()?;
-    let new_child = Box::write(
-        new_child,
-        SliceChildNode {
-            link: RBTreeAtomicLink::new(),
-            data,
-        },
-    );
-    prev.insert_after(new_child);
-    Ok(ret)
 }
 
 struct SliceInner {
     // This apparent cycle is broken by calls to `detach_children`, which guarantee that this whole
     // inner structure is destroyed when appropriate.
     parent: Option<Arc<Slice>>,
-    children: RBTree<SliceChildAdapter>,
+    children: BTreeMap<VirtPageNum, SliceChild>,
 }
 
 impl SliceInner {
-    fn new(parent: Option<Arc<Slice>>) -> Self {
-        Self {
-            parent,
-            children: RBTree::default(),
-        }
-    }
-
     /// Retrives the direct child of `self` containing `vpn`, if one exists.
     fn get_child(&self, vpn: VirtPageNum) -> Option<&SliceChild> {
         self.children
-            .upper_bound(Bound::Included(&vpn))
-            .get()
-            .filter(|node| vpn < node.end())
-            .map(|node| &node.data)
+            .range(..vpn)
+            .next_back()
+            .filter(|(_, child)| vpn < child.end())
+            .map(|(_, child)| child)
     }
 }
 
@@ -410,44 +392,4 @@ struct MappingInner {
     // inner structure is destroyed when appropriate.
     parent: Arc<Slice>,
     prot: Protection,
-}
-
-impl MappingInner {
-    fn new(parent: Arc<Slice>, prot: Protection) -> Self {
-        Self { parent, prot }
-    }
-}
-
-struct SliceChildNode {
-    link: RBTreeAtomicLink,
-    data: SliceChild,
-}
-
-impl SliceChildNode {
-    fn start(&self) -> VirtPageNum {
-        match &self.data {
-            SliceChild::Subslice(slice) => slice.start,
-            SliceChild::Mapping(mapping) => mapping.start,
-        }
-    }
-
-    fn end(&self) -> VirtPageNum {
-        self.start() + self.page_count()
-    }
-
-    fn page_count(&self) -> usize {
-        match &self.data {
-            SliceChild::Subslice(slice) => slice.page_count,
-            SliceChild::Mapping(mapping) => mapping.page_count,
-        }
-    }
-}
-
-intrusive_adapter!(SliceChildAdapter = Box<SliceChildNode>: SliceChildNode { link: RBTreeAtomicLink });
-impl<'a> KeyAdapter<'a> for SliceChildAdapter {
-    type Key = VirtPageNum;
-
-    fn get_key(&self, value: &'a SliceChildNode) -> Self::Key {
-        value.start()
-    }
 }
