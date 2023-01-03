@@ -209,7 +209,7 @@ impl Slice {
         let align = 1usize << align_order;
 
         let gap_start = self
-            .iter_gaps_mut(owner, |gap_start, gap_page_count| {
+            .iter_gaps(owner, |gap_start, gap_page_count| {
                 let aligned_gap_start = gap_start.align_up(align);
                 let gap_padding = aligned_gap_start - gap_start;
                 let aligned_page_count = gap_page_count - gap_padding;
@@ -271,7 +271,7 @@ impl Slice {
     ///
     /// Iteration will stop early if `f` returns [`ControlFlow::Break`], and the break value will
     /// be returned.
-    fn iter_gaps_mut<'a, B>(
+    fn iter_gaps<'a, B>(
         &'a self,
         owner: &'a QCellOwner,
         mut f: impl FnMut(VirtPageNum, usize) -> ControlFlow<B>,
