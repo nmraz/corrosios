@@ -101,7 +101,7 @@ boot_main:
     // Present, writable, executable
     lea rax, [rip + boottext_pdpt + 0x3]
     boottext_pt_index rbx, 3
-    mov [KERNEL_PML4 + r9 + 8 * rbx], rax
+    mov [{KERNEL_PML4} + r9 + 8 * rbx], rax
 
     lea rax, [rip + boottext_pd + 0x3]
     boottext_pt_index rbx, 2
@@ -125,13 +125,13 @@ boot_main:
 
     // Initialize kernel mapping at -2GiB
 
-    lea rax, [KERNEL_PDPT + r9 + 0x3]
+    lea rax, [{KERNEL_PDPT} + r9 + 0x3]
     initial_kernel_pt_index rbx, 3
-    mov [KERNEL_PML4 + r9 + 8 * rbx], rax
+    mov [{KERNEL_PML4} + r9 + 8 * rbx], rax
 
-    lea rax, [KERNEL_PD + r9 + 0x3]
+    lea rax, [{KERNEL_PD} + r9 + 0x3]
     initial_kernel_pt_index rbx, 2
-    mov [KERNEL_PDPT + r9 + 8 * rbx], rax
+    mov [{KERNEL_PDPT} + r9 + 8 * rbx], rax
 
     // Compute number of aligned 2MiB ranges intersected by kernel
     lea rcx, [__virt_end + ({PAGE_SIZE} << {PT_LEVEL_SHIFT}) - 1]
@@ -140,10 +140,10 @@ boot_main:
     shr rax, {PT_LEVEL_SHIFT} + {PAGE_SHIFT}
     sub rcx, rax
 
-    lea rax, [KERNEL_PTS + r9 + 0x3]
+    lea rax, [{KERNEL_PTS} + r9 + 0x3]
 
     initial_kernel_pt_index rdx, 1
-    lea rbx, [KERNEL_PD + r9 + 8 * rdx]
+    lea rbx, [{KERNEL_PD} + r9 + 8 * rdx]
 
 .Lfill_kernel_pd:
     mov [rbx], rax
@@ -155,7 +155,7 @@ boot_main:
     lea rbx, [rip + __phys_end]
 
     initial_kernel_pt_index rdx, 0
-    lea rcx, [KERNEL_PTS + r9 + 8 * rdx]
+    lea rcx, [{KERNEL_PTS} + r9 + 8 * rdx]
 
 .Lfill_kernel_pts:
     mov [rcx], rax
@@ -164,7 +164,7 @@ boot_main:
     cmp rax, rbx
     jl .Lfill_kernel_pts
 
-    lea rax, [KERNEL_PML4 + r9]
+    lea rax, [{KERNEL_PML4} + r9]
     mov cr3, rax
 
     lea rax, [rip + early_gdt]
@@ -208,7 +208,7 @@ high_entry:
     mov gs, ax
 
     // Remove boot code mapping
-    mov qword ptr [KERNEL_PML4 + 8 * rcx], 0
+    mov qword ptr [{KERNEL_PML4} + 8 * rcx], 0
 
     // Flush TLB
     mov rax, cr3
@@ -219,5 +219,5 @@ high_entry:
     // NOTE: parameters 1, 2 and 3 carry over into `kernel_main`. We perform a
     // `call` here to ensure that `rsp - 8` is 16-byte aligned upon function
     // entry, as mandated by the ABI.
-    call kernel_main
+    call {kernel_main}
 .size high_entry, . - high_entry

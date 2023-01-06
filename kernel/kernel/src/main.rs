@@ -34,8 +34,29 @@ mod mp;
 mod panic;
 mod sync;
 
-#[no_mangle]
-extern "C" fn kernel_main(
+/// The main architecture-agnostic entry point.
+///
+/// This function is called by the early architecture-specific initialization code after the kernel
+/// has been mapped to its final virtual address and a preliminary stack has been set up. It expects
+/// the physical address of the kernel in `kernel_paddr` and the phyiscal address range of the
+/// bootinfo blob in `bootinfo_paddr` and `bootinfo_size`.
+///
+/// This function comprises the following stages:
+/// 1. Kernel image fixups (currently just stashing the physical base address, but could be extended
+///    to perform relocations if necessary).
+/// 2. Early processor initialization, including interrupt handlers, per-CPU pointer, and other
+///    architecture-specific state.
+/// 3. Mapping and parsing of the bootinfo.
+/// 4. Kernel subsystem initialization, including the memory manager.
+/// 5. Idle loop; this will eventually become the BSP's idle thread when the scheduler is
+///    implemented.
+///
+/// # Safety
+///
+/// This function should be called only once on the BSP, with the correct argument values.
+/// It expects the following processor state:
+/// * Interrupts disabled - they will be enabled once the early initialization is complete.
+unsafe extern "C" fn kernel_main(
     kernel_paddr: PhysAddr,
     bootinfo_paddr: PhysAddr,
     bootinfo_size: usize,

@@ -61,17 +61,11 @@ const PADDR_MASK: u64 = (1u64 << 52) - 1;
 const KERNEL_MAX: usize = 8 * MB;
 const KERNEL_PT_COUNT: usize = KERNEL_MAX / PT_RANGE;
 
-#[no_mangle]
-static KERNEL_PML4: PageTableSpace = PageTableSpace::NEW;
-
-#[no_mangle]
-static KERNEL_PDPT: PageTableSpace = PageTableSpace::NEW;
-
-#[no_mangle]
-static KERNEL_PD: PageTableSpace = PageTableSpace::NEW;
-
-#[no_mangle]
-static KERNEL_PTS: [PageTableSpace; KERNEL_PT_COUNT] = [PageTableSpace::NEW; KERNEL_PT_COUNT];
+pub(super) static KERNEL_PML4: PageTableSpace = PageTableSpace::NEW;
+pub(super) static KERNEL_PDPT: PageTableSpace = PageTableSpace::NEW;
+pub(super) static KERNEL_PD: PageTableSpace = PageTableSpace::NEW;
+pub(super) static KERNEL_PTS: [PageTableSpace; KERNEL_PT_COUNT] =
+    [PageTableSpace::NEW; KERNEL_PT_COUNT];
 
 #[derive(Clone, Copy)]
 #[repr(transparent)]
