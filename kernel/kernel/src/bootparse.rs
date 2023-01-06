@@ -111,7 +111,7 @@ impl BootinfoData {
     pub unsafe fn parse(paddr: PhysAddr, size: usize) -> Self {
         let mut memory_map = None;
         let mut efi_system_table = None;
-        let mut framebuffer_info: Option<&FramebufferInfo> = None;
+        let mut framebuffer_info = None;
         let mut command_line = None;
 
         // Safety: function contract
