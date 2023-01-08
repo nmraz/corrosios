@@ -197,6 +197,10 @@ pub mod entry_points {
                 extern "C" {
                     pub fn [<interrupt_vector_ $vector>]();
                 }
+
+                // Note: the number of items pushed here also contributes to the stack alignment in
+                // `interrupt_entry_common`. If the number of pushes changes here, the stack may
+                // need to be realigned before calling Rust code.
                 global_asm!(
                     "
                 .global interrupt_vector_{vector}

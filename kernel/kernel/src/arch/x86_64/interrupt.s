@@ -19,6 +19,11 @@ interrupt_entry_common:
     push rax
 
     mov rdi, rsp
+
+    // Note: our stack is now exactly 16-byte aligned: 6 qwords pushed by the CPU (including error
+    // code which may be pushed manually), another qword for vector number and 15 qwords for saved
+    // registers, totalling 22 qwords. If the number of pushes changes, the stack may have to be
+    // realigned to a 16-byte boundary here before calling `handle_interrupt`, as per ABI.
     call handle_interrupt
 
     pop rax
