@@ -99,11 +99,6 @@ unsafe extern "C" fn kernel_main(
     }
     info!("memory manager initialized");
 
-    debug!("triggering IRQ 55");
-    unsafe {
-        core::arch::asm!("int 55");
-    }
-
     if let Some(efi_system_table) = bootinfo.efi_system_table() {
         debug!("EFI system table: {}", efi_system_table);
     }
