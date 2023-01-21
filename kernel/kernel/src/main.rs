@@ -32,6 +32,7 @@ mod logging;
 mod mm;
 mod mp;
 mod panic;
+mod sched;
 mod sync;
 
 /// The main architecture-agnostic entry point.

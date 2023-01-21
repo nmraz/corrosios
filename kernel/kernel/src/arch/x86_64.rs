@@ -1,3 +1,4 @@
+pub mod context;
 pub mod cpu;
 pub mod mm;
 pub mod mmu;

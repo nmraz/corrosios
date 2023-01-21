@@ -2,14 +2,26 @@ use core::marker::PhantomData;
 
 use spin_once::TakeOnce;
 
-use crate::arch;
 use crate::mm::vm;
 use crate::sync::irq::IrqDisabled;
+use crate::{arch, sched};
 
 pub struct PerCpu {
     pub cpu_num: u32,
     pub vm: vm::PerCpu,
+    pub sched: sched::CpuState,
     _not_send_sync: PhantomData<*const ()>,
+}
+
+impl PerCpu {
+    fn new(cpu_num: u32) -> Self {
+        Self {
+            cpu_num,
+            vm: vm::PerCpu::new(),
+            sched: sched::CpuState::new(),
+            _not_send_sync: PhantomData,
+        }
+    }
 }
 
 /// Retrieves the per-CPU structure for the current processor.
@@ -29,11 +41,7 @@ pub fn current_percpu(irq_disabled: &IrqDisabled) -> &PerCpu {
 pub unsafe fn init_bsp_early(irq_disabled: &IrqDisabled) {
     static BSP_PERCPU: TakeOnce<PerCpu> = TakeOnce::new();
     let percpu = BSP_PERCPU
-        .take_init(PerCpu {
-            cpu_num: 0,
-            vm: vm::PerCpu::new(),
-            _not_send_sync: PhantomData,
-        })
+        .take_init(PerCpu::new(0))
         .expect("BSP percpu already initialized");
 
     unsafe {
