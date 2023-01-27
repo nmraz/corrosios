@@ -26,7 +26,6 @@ mod console;
 mod arch;
 mod bootparse;
 mod err;
-mod global_alloc;
 mod kimage;
 mod logging;
 mod mm;

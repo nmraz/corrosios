@@ -1,4 +1,4 @@
-use core::alloc::Layout;
+use core::alloc::{GlobalAlloc, Layout};
 use core::cell::Cell;
 use core::ptr::NonNull;
 use core::{cmp, mem};
@@ -13,6 +13,41 @@ use super::types::VirtAddr;
 use super::utils::to_page_count;
 use crate::arch::mmu::PAGE_SIZE;
 use crate::sync::SpinLock;
+
+#[global_allocator]
+static RUST_ALLOCATOR: KernelHeapAlloc = KernelHeapAlloc;
+
+#[alloc_error_handler]
+fn handle_alloc_error(layout: Layout) -> ! {
+    panic!("allocation for layout {:x?} failed", layout);
+}
+
+struct KernelHeapAlloc;
+
+unsafe impl GlobalAlloc for KernelHeapAlloc {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        allocate(layout).map_or(core::ptr::null_mut(), |ptr| ptr.as_ptr().cast())
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe {
+            let ptr = NonNull::new_unchecked(ptr);
+            deallocate(ptr, layout);
+        }
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        unsafe {
+            let ptr = NonNull::new_unchecked(ptr);
+            let new_layout = match Layout::from_size_align(new_size, layout.align()) {
+                Ok(layout) => layout,
+                Err(_) => return core::ptr::null_mut(),
+            };
+
+            resize(ptr, layout, new_layout).map_or(core::ptr::null_mut(), |ptr| ptr.as_ptr().cast())
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct HeapAllocError;
