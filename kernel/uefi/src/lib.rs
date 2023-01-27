@@ -1,4 +1,3 @@
-#![feature(abi_efiapi)]
 #![feature(allocator_api)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]

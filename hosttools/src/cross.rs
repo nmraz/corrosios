@@ -72,7 +72,7 @@ fn cross_run(
 ) -> Result<()> {
     freestanding_cross_cmd(sh, subcommand, package_name, target, additional_args)
         .run()
-        .with_context(|| format!("`cargo {}` failed", subcommand))
+        .with_context(|| format!("`cargo {subcommand}` failed"))
 }
 
 fn freestanding_cross_cmd<'a>(

@@ -209,13 +209,13 @@ impl PhysManager {
         debug!("free blocks by order:");
         debug!(
             "order: {}",
-            (0..ORDER_COUNT).format_with(" ", |order, f| f(&format_args!("{:4}", order)))
+            (0..ORDER_COUNT).format_with(" ", |order, f| f(&format_args!("{order:4}")))
         );
         debug!(
             "count: {}",
             (0..ORDER_COUNT)
                 .map(|order| self.levels[order].free_blocks)
-                .format_with(" ", |free, f| f(&format_args!("{:4}", free)))
+                .format_with(" ", |free, f| f(&format_args!("{free:4}")))
         );
     }
 

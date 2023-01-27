@@ -28,7 +28,7 @@ pub fn init(cmdline: CommandLine<'_>) {
 pub fn writeln_fmt(args: Arguments<'_>) {
     CONSOLE.with(|console, _| {
         if let Some(console) = console {
-            let _ = writeln!(console, "{}", args);
+            let _ = writeln!(console, "{args}");
         }
     })
 }

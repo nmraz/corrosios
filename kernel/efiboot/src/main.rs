@@ -1,4 +1,3 @@
-#![feature(abi_efiapi)]
 #![feature(alloc_error_handler, allocator_api, new_uninit)]
 #![warn(rust_2018_idioms)]
 #![deny(unsafe_op_in_unsafe_fn)]
