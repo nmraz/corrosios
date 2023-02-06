@@ -2,7 +2,7 @@ use core::cell::{RefCell, UnsafeCell};
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
-use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink};
+use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink, UnsafeRef};
 use object_name::Name;
 
 use crate::arch::context::{self, ThreadContext};
@@ -12,6 +12,7 @@ use crate::mp::current_percpu;
 use crate::sync::irq::{self, IrqDisabled};
 
 pub struct Thread {
+    sched_ownwer_link: LinkedListLink,
     run_queue_link: LinkedListLink,
     stack: KernelStack,
     // Only ever touched during context switches
@@ -37,6 +38,7 @@ impl Thread {
         let arch_context = unsafe { ThreadContext::new(stack.top(), thread_entry::<F>, arg) };
 
         Ok(Arc::try_new(Thread {
+            sched_ownwer_link: LinkedListLink::new(),
             run_queue_link: LinkedListLink::new(),
             stack,
             arch_context: UnsafeCell::new(arch_context),
@@ -51,9 +53,10 @@ impl Thread {
 
 unsafe impl Sync for Thread {}
 
-intrusive_adapter!(ThreadRunQueueAdapter = Arc<Thread>: Thread { run_queue_link: LinkedListLink });
+intrusive_adapter!(ThreadSchedOwnerAdapter = Arc<Thread>: Thread { sched_ownwer_link: LinkedListLink });
+intrusive_adapter!(ThreadRunQueueAdapter = UnsafeRef<Thread>: Thread { run_queue_link: LinkedListLink });
 
-unsafe fn switch_to_thread(new_thead: Arc<Thread>) {
+unsafe fn switch_to_thread(new_thead: UnsafeRef<Thread>) {
     assert!(
         !irq::enabled(),
         "attempted to perform context switch with interrupts enabled"
@@ -124,7 +127,7 @@ impl CpuState {
 }
 
 struct CpuStateInner {
-    current_thread: Option<Arc<Thread>>,
+    current_thread: Option<UnsafeRef<Thread>>,
     run_queue: LinkedList<ThreadRunQueueAdapter>,
     in_handoff: bool,
 }
