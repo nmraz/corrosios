@@ -11,11 +11,31 @@ pub struct IrqDisabled {
 }
 
 impl IrqDisabled {
+    /// Creates a new instance of the type, asserting that interrupts are actually disabled.
+    ///
+    /// # Safety
+    ///
+    /// Interrupts must remain disabled for the duration of the returned object's lifetime.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if interrupts are enabled when it is called.
+    #[track_caller]
+    pub unsafe fn new() -> Self {
+        assert!(
+            !enabled(),
+            "attempted to construct `IrqDisabled` with interrupts enabled"
+        );
+        unsafe { Self::new_unchecked() }
+    }
+
+    /// Creates a new instance of the type without checking whether interrupts are enabled.
+    ///
     /// # Safety
     ///
     /// Interrupts must actually be disabled when this function is called and must remain disabled
     /// for the duration of the returned object's lifetime.
-    pub unsafe fn new() -> Self {
+    pub unsafe fn new_unchecked() -> Self {
         Self {
             _not_send_sync: PhantomData,
         }
@@ -53,7 +73,7 @@ pub fn disable_with<R>(f: impl FnOnce(&IrqDisabled) -> R) -> R {
         let prev_state = enabled();
         disable();
 
-        let ret = f(&IrqDisabled::new());
+        let ret = f(&IrqDisabled::new_unchecked());
 
         if prev_state {
             enable();
