@@ -78,7 +78,6 @@ unsafe fn switch_to_thread(new_thead: UnsafeRef<Thread>) {
 }
 
 fn begin_context_switch_handoff() {
-    assert!(!irq::enabled());
     let irq_disabled = unsafe { IrqDisabled::new() };
     with_cpu_state(&irq_disabled, |cpu_state| {
         assert!(
@@ -90,16 +89,14 @@ fn begin_context_switch_handoff() {
 }
 
 fn complete_context_switch_handoff() {
-    {
-        let irq_disabled = unsafe { IrqDisabled::new() };
-        with_cpu_state(&irq_disabled, |cpu_state| {
-            assert!(
-                cpu_state.in_handoff,
-                "attempted to complete nonexistent handoff"
-            );
-            cpu_state.in_handoff = false;
-        });
-    }
+    let irq_disabled = unsafe { IrqDisabled::new() };
+    with_cpu_state(&irq_disabled, |cpu_state| {
+        assert!(
+            cpu_state.in_handoff,
+            "attempted to complete nonexistent handoff"
+        );
+        cpu_state.in_handoff = false;
+    });
 }
 
 pub struct CpuState {
