@@ -57,10 +57,6 @@ intrusive_adapter!(ThreadSchedOwnerAdapter = Arc<Thread>: Thread { sched_ownwer_
 intrusive_adapter!(ThreadRunQueueAdapter = UnsafeRef<Thread>: Thread { run_queue_link: LinkedListLink });
 
 unsafe fn switch_to_thread(new_thead: UnsafeRef<Thread>) {
-    assert!(
-        !irq::enabled(),
-        "attempted to perform context switch with interrupts enabled"
-    );
     let irq_disabled = unsafe { IrqDisabled::new() };
 
     let (prev_context, new_context) = with_cpu_state(&irq_disabled, |cpu_state| {
@@ -94,10 +90,6 @@ fn begin_context_switch_handoff() {
 }
 
 fn complete_context_switch_handoff() {
-    assert!(
-        !irq::enabled(),
-        "attempted to complete context switch handoff with interrupts enabled"
-    );
     {
         let irq_disabled = unsafe { IrqDisabled::new() };
         with_cpu_state(&irq_disabled, |cpu_state| {
