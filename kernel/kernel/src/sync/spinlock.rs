@@ -1,43 +1,49 @@
 use core::cell::UnsafeCell;
 use core::hint;
+use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use super::irq::{self, IrqDisabled};
 
+/// A lock that protects shared data by spinning until it is available.
+///
+/// These locks may only be held when interrupts are disabled, to avoid various starvation and
+/// latency issues.
 pub struct SpinLock<T> {
     data: UnsafeCell<T>,
-    locked: AtomicBool,
+    raw: RawSpinLock,
 }
 
 impl<T> SpinLock<T> {
+    /// Creates a new unlocked spinlock holding `value`.
     pub const fn new(value: T) -> Self {
         Self {
             data: UnsafeCell::new(value),
-            locked: AtomicBool::new(false),
+            raw: RawSpinLock::new(),
         }
     }
 
+    /// Returns a mutable reference to the protected data, without taking the lock.
     pub fn get_mut(&mut self) -> &mut T {
         self.data.get_mut()
     }
 
-    pub fn with<R>(&self, f: impl FnOnce(&mut T, &IrqDisabled) -> R) -> R {
-        irq::disable_with(|irq_disabled| {
-            self.with_noirq(irq_disabled, |data| f(data, irq_disabled))
-        })
+    /// Acquires the lock, spinning until it is ready if necessary.
+    ///
+    /// The returned [`SpinLockGuard`] can be used to access the protected data, and will
+    /// automatically unlock the spinlock when it exits scope. If this function is called on a core
+    /// already holding the lock, it will deadlock.
+    ///
+    /// The lock may only be held as long as interrupts are disabled, as indicated by the
+    /// [`IrqDisabled`] parameter.
+    pub fn lock<'a>(&'a self, _irq_disabled: &'a IrqDisabled) -> SpinLockGuard<'a, T> {
+        self.raw.lock();
+        SpinLockGuard { lock: self }
     }
 
-    pub fn with_noirq<R>(&self, _irq_disabled: &IrqDisabled, f: impl FnOnce(&mut T) -> R) -> R {
-        while self.locked.swap(true, Ordering::Acquire) {
-            hint::spin_loop();
-        }
-
-        // Safety: we have exclusive access now that the lock is locked
-        let ret = unsafe { f(&mut *self.data.get()) };
-
-        self.locked.store(false, Ordering::Release);
-
-        ret
+    /// Disables interrupts, locks the lock and invokes `f` on the protected data.
+    pub fn with<R>(&self, f: impl FnOnce(&mut T, &IrqDisabled) -> R) -> R {
+        irq::disable_with(|irq_disabled| f(&mut self.lock(irq_disabled), irq_disabled))
     }
 }
 
@@ -47,3 +53,67 @@ impl<T> SpinLock<T> {
 unsafe impl<T: Send> Sync for SpinLock<T> {}
 
 unsafe impl<T: Send> Send for SpinLock<T> {}
+
+/// An RAII guard for a locked [`SpinLock`].
+///
+/// This guard enables access to the protected value and will automatically unlock the spinlock when
+/// it goes out of scope.
+pub struct SpinLockGuard<'a, T> {
+    lock: &'a SpinLock<T>,
+}
+
+impl<'a, T> Drop for SpinLockGuard<'a, T> {
+    fn drop(&mut self) {
+        self.lock.raw.unlock()
+    }
+}
+
+impl<'a, T> Deref for SpinLockGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        // Safety: we have exclusive access whenever the lock is locked.
+        unsafe { &*self.lock.data.get() }
+    }
+}
+
+impl<'a, T> DerefMut for SpinLockGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        // Safety: we have exclusive access whenever the lock is locked.
+        unsafe { &mut *self.lock.data.get() }
+    }
+}
+
+/// A "raw" spinlock primitive around which higher-level abstractions can be built.
+///
+/// This structure provides direct `lock()` and `unlock()` methods for interacting with the lock.
+/// In general, the higher-level [`SpinLock`] should be used instead.
+pub struct RawSpinLock {
+    locked: AtomicBool,
+}
+
+impl RawSpinLock {
+    /// Creates a new, unlocked spinlock.
+    pub const fn new() -> Self {
+        Self {
+            locked: AtomicBool::new(false),
+        }
+    }
+
+    /// Locks the spinlock, spinning (busy waiting) if it is already locked.
+    ///
+    /// This function will deadlock if the lock is already held by the current core when called.
+    pub fn lock(&self) {
+        while self.locked.swap(true, Ordering::Acquire) {
+            hint::spin_loop();
+        }
+    }
+
+    /// Unlocks the spinlock.
+    ///
+    /// This function should only be called if the spinlock has previously been acquired by the
+    /// current core via a call to `lock()`, though it is not unsafe to do otherwise.
+    pub fn unlock(&self) {
+        self.locked.store(false, Ordering::Release);
+    }
+}

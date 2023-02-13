@@ -13,7 +13,7 @@ use crate::err::{Error, Result};
 use crate::mm::physmap::{paddr_to_physmap, physmap_to_pfn};
 use crate::mm::types::PhysFrameNum;
 use crate::mm::utils::display_byte_size;
-use crate::sync::irq::IrqDisabled;
+use crate::sync::irq::{self, IrqDisabled};
 use crate::sync::SpinLock;
 
 use super::early::BootHeap;
@@ -56,13 +56,11 @@ impl<const ORDER: usize> Drop for FrameBox<ORDER> {
 ///
 /// Panics if this function is called more than once.
 pub unsafe fn init(max_pfn: PhysFrameNum, bootheap: &mut BootHeap, irq_disabled: &IrqDisabled) {
-    PHYS_MANAGER.with_noirq(irq_disabled, |manager_ref| {
-        assert!(manager_ref.is_none(), "pmm already initialized");
-
-        debug!("reserving bitmaps up to frame {}", max_pfn);
-        let manager = PhysManager::new(max_pfn, bootheap);
-        *manager_ref = Some(manager);
-    });
+    let mut manager_ref = PHYS_MANAGER.lock(irq_disabled);
+    assert!(manager_ref.is_none(), "pmm already initialized");
+    debug!("reserving bitmaps up to frame {}", max_pfn);
+    let manager = PhysManager::new(max_pfn, bootheap);
+    *manager_ref = Some(manager);
 }
 
 /// Allocates a block of physical pages of size and alignment `2 ** order`, returning the base
@@ -100,12 +98,14 @@ pub fn dump_usage() {
 }
 
 fn with_noirq<R>(irq_disabled: &IrqDisabled, f: impl FnOnce(&mut PhysManager) -> R) -> R {
-    PHYS_MANAGER.with_noirq(irq_disabled, |pmm| {
-        f(pmm.as_mut().expect("pmm not initialized"))
-    })
+    f(PHYS_MANAGER
+        .lock(irq_disabled)
+        .as_mut()
+        .expect("pmm not initialized"))
 }
+
 fn with<R>(f: impl FnOnce(&mut PhysManager) -> R) -> R {
-    PHYS_MANAGER.with(|pmm, _| f(pmm.as_mut().expect("pmm not initialized")))
+    irq::disable_with(|irq_disabled| with_noirq(irq_disabled, f))
 }
 
 struct PhysManager {
