@@ -9,7 +9,7 @@ use crate::arch::context::{self, ThreadContext};
 use crate::err::Result;
 use crate::mm::kmap::KernelStack;
 use crate::mp::current_percpu;
-use crate::sync::irq::{self, IrqDisabled};
+use crate::sync::irq::IrqDisabled;
 
 pub struct Thread {
     sched_ownwer_link: LinkedListLink,
