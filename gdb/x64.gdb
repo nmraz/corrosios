@@ -1,4 +1,4 @@
 set disassembly-flavor intel
-thbreak kernel_main
+thbreak kernel::kernel_main
 c
-b panic_fmt
+b rust_begin_unwind
