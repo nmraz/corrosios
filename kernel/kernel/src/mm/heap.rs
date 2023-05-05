@@ -317,6 +317,12 @@ impl SizeClassInner {
             // If the slab is empty, don't bother updating the metadata or bitmap - just return it
             // to the PMM as-is.
             unsafe {
+                if meta.objects_per_slab > 1 {
+                    assert!(header.link.is_linked());
+                    self.partial_slabs
+                        .cursor_mut_from_ptr(slab.as_ptr())
+                        .remove();
+                }
                 free_virt_pages(slab.cast(), meta.slab_order);
             }
             return;
