@@ -10,6 +10,8 @@ do_context_switch:
     push rbx
 
     mov [rdi], rsp
+.type do_context_set, @function
+do_context_set:
     mov rsp, rsi
 
     pop rbx
@@ -20,6 +22,7 @@ do_context_switch:
     pop r15
 
     ret
+.size do_context_set, . - do_context_set
 .size do_context_switch, . - do_context_switch
 
 .type early_thread_start, @function

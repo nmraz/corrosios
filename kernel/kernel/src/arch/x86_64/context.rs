@@ -90,10 +90,30 @@ impl ThreadContext {
 pub unsafe fn switch(old: *mut ThreadContext, new: *const ThreadContext) {
     unsafe {
         // Safe by function contract.
-        let irq_disabled = IrqDisabled::new();
-        (*percpu::current_x64(&irq_disabled).tss.get()).set_rsp0((*new).stack_top);
-
+        set_common(&*new);
         do_context_switch(addr_of_mut!((*old).sp), (*new).sp);
+    }
+}
+
+/// Switches to the kernel-mode stack pointer and register context specified by `new`.
+///
+/// # Safety
+///
+/// * `new` must point to a valid [`ThreadContext`] instance that has been previously initialized by
+///   a call to `ThreadContext::new`.
+/// * Interrupts must be disabled. This function does not explicitly take an `IrqDisabled`
+///   parameter as it would leave the instance alive much longer than intended.
+pub unsafe fn set(new: *const ThreadContext) -> ! {
+    unsafe {
+        set_common(&*new);
+        do_context_set((*new).sp);
+    }
+}
+
+fn set_common(new: &ThreadContext) {
+    unsafe {
+        let irq_disabled = IrqDisabled::new();
+        (*percpu::current_x64(&irq_disabled).tss.get()).set_rsp0(new.stack_top);
     }
 }
 
@@ -108,6 +128,7 @@ unsafe fn push_data<T: ?Sized>(sp: &mut VirtAddr, val: &T, align: usize) {
 
 extern "C" {
     fn do_context_switch(old_sp: *mut VirtAddr, new_sp: VirtAddr);
+    fn do_context_set(new_sp: VirtAddr) -> !;
     fn early_thread_start();
 }
 
