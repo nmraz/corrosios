@@ -14,11 +14,11 @@ use core::{mem, slice};
 
 use log::{debug, info};
 
-use crate::arch::cpu;
 use crate::bootparse::BootinfoData;
 use crate::mm::kmap::iomap;
 use crate::mm::types::{CacheMode, PhysAddr, Protection};
-use crate::sync::irq::IrqDisabled;
+use crate::sched::Thread;
+use crate::sync::irq::{self, IrqDisabled};
 
 #[macro_use]
 mod console;
@@ -145,14 +145,13 @@ unsafe extern "C" fn kernel_main(
 
     mm::pmm::dump_usage();
 
-    info!("attempting to write to kernel code");
-    unsafe {
-        extern "C" {
-            static mut __code_start: u8;
-        }
+    Thread::new("bootstrap", bootstrap)
+        .expect("failed to create bootstrap thread")
+        .start();
+    sched::start();
+}
 
-        __code_start = 0xab;
-    }
-
-    cpu::halt();
+fn bootstrap() {
+    info!("in bootstrap thread");
+    assert!(irq::enabled());
 }

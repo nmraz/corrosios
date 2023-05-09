@@ -51,8 +51,6 @@ impl Thread {
         let arg = entry_fn_data as usize;
         let stack = KernelStack::new()?;
 
-        debug!("a");
-
         extern "C" fn thread_entry<F: FnOnce()>(data: usize) -> ! {
             unsafe {
                 complete_context_switch_handoff_and_enable();
@@ -64,8 +62,6 @@ impl Thread {
         }
 
         let arch_context = unsafe { ThreadContext::new(stack.top(), thread_entry::<F>, arg) };
-
-        debug!("b");
 
         Ok(Arc::try_new(Thread {
             sched_ownwer_link: LinkedListLink::new(),
