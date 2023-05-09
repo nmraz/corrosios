@@ -11,7 +11,7 @@
             "miDebuggerServerAddress": "localhost:1234",
             "preLaunchTask": "Make image",
             "debugServerPath": "${workspaceFolder}/scripts/run_cargo.sh",
-            "debugServerArgs": "qemu --gdbserver --headless",
+            "debugServerArgs": "qemu --gdbserver --headless -k loglevel=debug",
             "postRemoteConnectCommands": [
                 {
                     "text": "set disassembly-flavor intel",
