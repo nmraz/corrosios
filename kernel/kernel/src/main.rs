@@ -99,6 +99,18 @@ unsafe extern "C" fn kernel_main(
     }
     info!("memory manager initialized");
 
+    mm::pmm::dump_usage();
+
+    Thread::new("bootstrap", move || bootstrap(&bootinfo))
+        .expect("failed to create bootstrap thread")
+        .start();
+    sched::start();
+}
+
+fn bootstrap(bootinfo: &BootinfoData) {
+    info!("in bootstrap thread");
+    assert!(irq::enabled());
+
     if let Some(efi_system_table) = bootinfo.efi_system_table() {
         debug!("EFI system table: {}", efi_system_table);
     }
@@ -142,16 +154,4 @@ unsafe extern "C" fn kernel_main(
             }
         }
     }
-
-    mm::pmm::dump_usage();
-
-    Thread::new("bootstrap", bootstrap)
-        .expect("failed to create bootstrap thread")
-        .start();
-    sched::start();
-}
-
-fn bootstrap() {
-    info!("in bootstrap thread");
-    assert!(irq::enabled());
 }
