@@ -45,7 +45,7 @@ impl Thread {
         })
     }
 
-    pub fn new<F: FnOnce() + Send>(name: &str, entry_fn: F) -> Result<Arc<Self>> {
+    pub fn new<F: FnOnce() + Send + 'static>(name: &str, entry_fn: F) -> Result<Arc<Self>> {
         let entry_fn_data = Box::into_raw(Box::try_new(entry_fn)?);
 
         let arg = entry_fn_data as usize;
