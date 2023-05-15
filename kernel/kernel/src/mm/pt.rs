@@ -401,7 +401,11 @@ impl<T: TranslatePhys> PageTableInner<T> {
             let next_level = level - 1;
 
             if level > 1 {
+                // If we may have child *tables* (not just pages), recurse into them.
                 self.cull_tables(cull, pointer, next, next_level);
+            } else {
+                // Otherwise, we're responsible for advancing the cursor.
+                pointer.advance_clamped(level_page_count(level));
             }
 
             if cull.can_cull(next, next_level)
