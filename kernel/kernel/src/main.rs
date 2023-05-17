@@ -74,7 +74,7 @@ unsafe extern "C" fn kernel_main(
     let mm_init_ctx = unsafe { mm::init_early(bootinfo_paddr, bootinfo_size, &irq_disabled) };
 
     // Safety: we have just set up the physmap and trust the loader.
-    let bootinfo = unsafe { BootinfoData::parse(bootinfo_paddr, bootinfo_size) };
+    let bootinfo = unsafe { BootinfoData::parse_phys(bootinfo_paddr, bootinfo_size) };
 
     console::init(bootinfo.command_line());
     logging::init(bootinfo.command_line());
@@ -107,7 +107,7 @@ unsafe extern "C" fn kernel_main(
     sched::start();
 }
 
-fn bootstrap(bootinfo: &BootinfoData) {
+fn bootstrap(bootinfo: &BootinfoData<'_>) {
     info!("in bootstrap thread");
     assert!(irq::enabled());
 

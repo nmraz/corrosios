@@ -91,14 +91,14 @@ impl fmt::Display for CommandLine<'_> {
 }
 
 /// Encapsulates data from a parsed bootinfo view created by the loader.
-pub struct BootinfoData {
-    memory_map: &'static [MemoryRange],
+pub struct BootinfoData<'a> {
+    memory_map: &'a [MemoryRange],
     efi_system_table: Option<PhysAddr>,
-    framebuffer_info: Option<&'static FramebufferInfo>,
-    command_line: CommandLine<'static>,
+    framebuffer_info: Option<&'a FramebufferInfo>,
+    command_line: CommandLine<'a>,
 }
 
-impl BootinfoData {
+impl<'a> BootinfoData<'a> {
     /// Parses the physical memory range `paddr..paddr + size` as a bootinfo structure and returns
     /// a parsed view representing it.
     ///
@@ -108,14 +108,19 @@ impl BootinfoData {
     /// * The physmap must be initialized and cover the specified range
     /// * The caller must guarantee that the physical memory range will remian valid and not be
     ///   repurposed for the duration of the lifetime of the returned object
-    pub unsafe fn parse(paddr: PhysAddr, size: usize) -> Self {
+    pub unsafe fn parse_phys(paddr: PhysAddr, size: usize) -> Self {
+        let buffer = unsafe { slice::from_raw_parts(paddr_to_physmap(paddr).as_ptr(), size) };
+        Self::parse(buffer)
+    }
+
+    /// Parses the data in `buffer` as a bootinfo structure and returns a parsed view representing
+    /// it.
+    pub fn parse(buffer: &'a [u8]) -> Self {
         let mut memory_map = None;
         let mut efi_system_table = None;
         let mut framebuffer_info = None;
         let mut command_line = None;
 
-        // Safety: function contract
-        let buffer = unsafe { slice::from_raw_parts(paddr_to_physmap(paddr).as_ptr(), size) };
         let view = View::new(buffer).expect("invalid bootinfo");
 
         for item in view.items() {
