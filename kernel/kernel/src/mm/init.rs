@@ -110,7 +110,11 @@ pub unsafe fn init_early(
 /// # Panics
 ///
 /// Panics if this function is called more than once.
-pub unsafe fn init_late(context: InitContext, bootinfo: &BootinfoData, irq_disabled: &IrqDisabled) {
+pub unsafe fn init_late(
+    context: InitContext,
+    bootinfo: &BootinfoData<'_>,
+    irq_disabled: &IrqDisabled,
+) {
     let InitContext {
         mut bootheap,
         mut reserved_ranges,
