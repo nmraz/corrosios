@@ -10,6 +10,7 @@ const IA32_GS_BASE: u32 = 0xc0000101;
 const IA32_EFER: u32 = 0xc0000080;
 
 bitflags! {
+    #[derive(Debug, Clone, Copy)]
     #[repr(transparent)]
     pub struct Rflags: u64 {
         const CF = 1 << 0;
@@ -34,6 +35,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy)]
     #[repr(transparent)]
     pub struct Cr0: u64 {
         /// Protection enable
@@ -72,6 +74,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy)]
     #[repr(transparent)]
     pub struct Cr4: u64 {
         const VME = 1 << 0;
@@ -95,6 +98,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy)]
     #[repr(transparent)]
     pub struct Ia32Efer: u64 {
         /// Syscall enable
@@ -194,7 +198,7 @@ pub fn get_rflags() -> Rflags {
     let rflags: u64;
     unsafe {
         asm!("pushf; pop {}", out(reg) rflags);
-        Rflags::from_bits_unchecked(rflags)
+        Rflags::from_bits_retain(rflags)
     }
 }
 
@@ -203,7 +207,7 @@ pub fn read_cr0() -> Cr0 {
     let cr0: u64;
     unsafe {
         asm!("mov {}, cr0", out(reg) cr0, options(nostack));
-        Cr0::from_bits_unchecked(cr0)
+        Cr0::from_bits_retain(cr0)
     }
 }
 
@@ -236,7 +240,7 @@ pub fn read_cr4() -> Cr4 {
     let cr4: u64;
     unsafe {
         asm!("mov {}, cr4", out(reg) cr4, options(nostack));
-        Cr4::from_bits_unchecked(cr4)
+        Cr4::from_bits_retain(cr4)
     }
 }
 
@@ -259,7 +263,7 @@ pub fn read_cr2() -> VirtAddr {
 
 #[inline]
 pub fn read_ia32_efer() -> Ia32Efer {
-    unsafe { Ia32Efer::from_bits_unchecked(rdmsr(IA32_EFER)) }
+    unsafe { Ia32Efer::from_bits_retain(rdmsr(IA32_EFER)) }
 }
 
 #[inline]

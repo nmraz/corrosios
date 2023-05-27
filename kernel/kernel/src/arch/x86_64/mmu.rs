@@ -98,7 +98,7 @@ bitflags! {
         const USER_MODE = 1 << 2;
         const GLOBAL = 1 << 8;
 
-        const PERMS_MASK = Self::WRITABLE.bits | Self::USER_MODE.bits | Self::NO_EXEC.bits;
+        const PERMS_MASK = Self::WRITABLE.bits() | Self::USER_MODE.bits() | Self::NO_EXEC.bits();
 
         const ACCESSED = 1 << 5;
         const DIRTY = 1 << 6;

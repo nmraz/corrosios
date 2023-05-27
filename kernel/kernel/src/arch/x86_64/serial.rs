@@ -108,7 +108,7 @@ impl Serial {
     }
 
     fn get_line_status(&mut self) -> LineStatus {
-        unsafe { LineStatus::from_bits_unchecked(self.read_reg(LSR_OFF)) }
+        unsafe { LineStatus::from_bits_retain(self.read_reg(LSR_OFF)) }
     }
 
     unsafe fn write_reg(&mut self, off: u16, val: u8) {

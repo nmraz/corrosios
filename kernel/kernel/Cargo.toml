@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 arrayvec = { version = "0.7.2", default-features = false }
 atomic_ref = "0.2.1"
-bitflags = "1.3.2"
+bitflags = "2.3.0"
 intrusive-collections = { version = "0.9.4", default-features = false, features = ["nightly", "alloc"] }
 itertools = { version = "0.10.5", default-features = false }
 paste = "1.0.9"

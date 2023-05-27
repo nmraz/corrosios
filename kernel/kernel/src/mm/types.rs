@@ -7,6 +7,7 @@ use crate::arch::mmu::{PAGE_SHIFT, PAGE_SIZE, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
 
 bitflags! {
     /// Protection that can be applied to a VM object.
+    #[derive(Clone, Copy)]
     pub struct Protection: u8 {
         const READ = 1 << 0;
         const WRITE = 1 << 1;
@@ -52,6 +53,7 @@ pub enum AccessMode {
 
 bitflags! {
     /// Low-level page table permissions.
+    #[derive(Debug, Clone, Copy)]
     pub struct PageTablePerms: u8 {
         const READ = 1 << 0;
         const WRITE = 1 << 1;

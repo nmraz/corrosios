@@ -46,6 +46,7 @@ impl SimpleFileSystem {
 pub struct File<'a>(*mut FileAbi, PhantomData<&'a ()>);
 
 bitflags! {
+    #[derive(Debug, Clone, Copy)]
     pub struct OpenMode: u64 {
         const READ = 1;
         const WRITE = 2;

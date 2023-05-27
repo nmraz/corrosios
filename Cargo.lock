@@ -59,6 +59,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "bitflags"
+version = "2.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6776fc96284a0bb647b615056fc496d1fe1644a7ab01829818a6d91cae888b84"
+
+[[package]]
 name = "bitmap"
 version = "0.1.0"
 dependencies = [
@@ -151,7 +157,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0a1af219c3e254a8b4649d6ddaef886b2015089f35f2ac5e1db31410c0566ab8"
 dependencies = [
  "atty",
- "bitflags",
+ "bitflags 1.3.2",
  "clap_derive",
  "clap_lex",
  "once_cell",
@@ -248,7 +254,7 @@ version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e18f80a87439240dac45d927fd8f8081b6f1e34c03e97271189fa8a8c2e96c8f"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "byteorder",
  "chrono",
  "log",
@@ -280,7 +286,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5dd7365d734a70ac5dd7be791b0c96083852188df015b8c665bb2dadb108a743"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "crc",
  "log",
  "uuid",
@@ -366,7 +372,7 @@ version = "0.1.0"
 dependencies = [
  "arrayvec",
  "atomic_ref",
- "bitflags",
+ "bitflags 2.3.1",
  "bitmap",
  "bootinfo",
  "intrusive-collections",
@@ -614,7 +620,7 @@ dependencies = [
 name = "uefi"
 version = "0.1.0"
 dependencies = [
- "bitflags",
+ "bitflags 2.3.1",
  "never-say-never",
  "struct-enum",
  "ucs2",
