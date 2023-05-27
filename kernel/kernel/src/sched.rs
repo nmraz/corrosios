@@ -1,3 +1,4 @@
+use core::arch::asm;
 use core::cell::{RefCell, UnsafeCell};
 use core::hint;
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -5,7 +6,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink, UnsafeRef};
-use log::debug;
+use log::{debug, trace};
 use object_name::Name;
 
 use crate::arch::context::{self, ThreadContext};
@@ -88,10 +89,8 @@ impl Thread {
         debug!("starting thread '{}'", self.name());
 
         irq::disable_with(|irq_disabled| {
-            SCHED_THREAD_OWNERS
-                .lock(irq_disabled)
-                .push_back(Arc::clone(&self));
-            let self_ref = unsafe { UnsafeRef::from_raw(Arc::into_raw(self)) };
+            let self_ref = unsafe { UnsafeRef::from_raw(Arc::as_ptr(&self)) };
+            SCHED_THREAD_OWNERS.lock(irq_disabled).push_back(self);
             with_cpu_state(irq_disabled, |cpu_state| {
                 cpu_state.run_queue.push_back(self_ref)
             });
@@ -114,6 +113,19 @@ pub fn start() -> ! {
         let new_thread = cpu_state.take_ready_thread();
         new_thread.state.store(STATE_RUNNING, Ordering::Relaxed);
         new_thread
+    });
+
+    with_cpu_state(&irq_disabled, |cpu_state| {
+        // TODO: we probably don't need all of the setup `Thread::new` performs
+        let idle_thread = Thread::new("idle", || loop {
+            unsafe {
+                trace!("entering halt state");
+                // TODO: must be opcode after `sti` to avoid race
+                asm!("hlt", options(nostack, nomem));
+            }
+        })
+        .expect("failed to create idle thread");
+        cpu_state.idle_thread = Some(unsafe { UnsafeRef::from_raw(Arc::into_raw(idle_thread)) });
     });
 
     let new_context = new_thread.arch_context.get();
@@ -186,6 +198,7 @@ unsafe fn complete_context_switch_handoff_and_enable() {
 
 fn begin_context_switch_handoff(handoff_state: HandoffState) {
     let irq_disabled = unsafe { IrqDisabled::new() };
+    trace!("switching to thread '{}'", handoff_state.new_thread.name());
     with_cpu_state(&irq_disabled, |cpu_state| {
         assert!(
             cpu_state.handoff_state.is_none(),
@@ -203,18 +216,30 @@ fn complete_context_switch_handoff() {
             .take()
             .expect("attempted to complete nonexistent handoff");
 
-        cpu_state.current_thread = Some(handoff_state.new_thread);
+        cpu_state.current_thread = Some(handoff_state.new_thread.clone());
 
         // TODO: is dropping the thread with IRQs disabled safe? Make sure to consider dropping the
         // kernel stack, which could end up calling into the memory manager.
         if let Some(to_free) = handoff_state.thread_to_free {
-            unsafe {
+            let thread = unsafe {
                 SCHED_THREAD_OWNERS
                     .lock(&irq_disabled)
                     .cursor_mut_from_ptr(UnsafeRef::into_raw(to_free))
-                    .remove();
+                    .remove()
+                    .unwrap()
             };
+
+            debug!(
+                "dropping sched owner for thread '{}', strong count {}",
+                thread.name(),
+                Arc::strong_count(&thread)
+            );
         }
+
+        trace!(
+            "finished switching to '{}'",
+            handoff_state.new_thread.name()
+        );
     });
 }
 
