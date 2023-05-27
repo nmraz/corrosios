@@ -1,9 +1,12 @@
+use core::fmt::Write;
 use core::{fmt, ops};
 
 use bitflags::bitflags;
 use num_utils::{align_down, align_up};
 
 use crate::arch::mmu::{PAGE_SHIFT, PAGE_SIZE, PT_LEVEL_MASK, PT_LEVEL_SHIFT};
+
+use super::utils::write_flag;
 
 bitflags! {
     /// Protection that can be applied to a VM object.
@@ -53,13 +56,25 @@ pub enum AccessMode {
 
 bitflags! {
     /// Low-level page table permissions.
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Clone, Copy)]
     pub struct PageTablePerms: u8 {
         const READ = 1 << 0;
         const WRITE = 1 << 1;
         const EXECUTE = 1 << 2;
         const USER = 1 << 3;
         const GLOBAL = 1 << 4;
+    }
+}
+
+impl fmt::Debug for PageTablePerms {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_flag(f, self.contains(Self::GLOBAL), 'g')?;
+        write_flag(f, self.contains(Self::READ), 'r')?;
+        write_flag(f, self.contains(Self::WRITE), 'w')?;
+        write_flag(f, self.contains(Self::EXECUTE), 'x')?;
+        write_flag(f, self.contains(Self::USER), 'u')?;
+
+        Ok(())
     }
 }
 

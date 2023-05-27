@@ -5,6 +5,8 @@
 
 use core::{cmp, result};
 
+use log::trace;
+
 use crate::arch::mmu::{
     self, get_pte_frame, make_empty_pte, make_intermediate_pte, make_terminal_pte, pte_is_present,
     pte_is_terminal, update_pte_perms, PageTableEntry, PT_ENTRY_COUNT, PT_LEVEL_COUNT,
@@ -223,7 +225,10 @@ impl<T: TranslatePhys> PageTable<T> {
         self.inner.walk_update(
             gather,
             pointer,
-            &mut |_pte, _level| make_empty_pte(),
+            &mut |vpn, _pte, level| {
+                trace!("unmapping pages {}-{}", vpn, vpn + level_page_count(level));
+                make_empty_pte()
+            },
             self.root,
             PT_LEVEL_COUNT - 1,
         )
@@ -262,7 +267,14 @@ impl<T: TranslatePhys> PageTable<T> {
         self.inner.walk_update(
             gather,
             pointer,
-            &mut |pte, level| update_pte_perms(pte, level, perms),
+            &mut |vpn, pte, level| {
+                trace!(
+                    "re-protecting pages {}-{} as {perms:?}",
+                    vpn,
+                    vpn + level_page_count(level)
+                );
+                update_pte_perms(pte, level, perms)
+            },
             self.root,
             PT_LEVEL_COUNT - 1,
         )
@@ -348,7 +360,7 @@ impl<T: TranslatePhys> PageTableInner<T> {
         &mut self,
         gather: &mut impl GatherInvalidations,
         pointer: &mut MappingPointer,
-        update: &mut impl FnMut(PageTableEntry, usize) -> PageTableEntry,
+        update: &mut impl FnMut(VirtPageNum, PageTableEntry, usize) -> PageTableEntry,
         table: PhysFrameNum,
         level: usize,
     ) -> Result<()> {
@@ -468,16 +480,28 @@ impl<T: TranslatePhys> PageTableInner<T> {
         perms: PageTablePerms,
         cache_mode: CacheMode,
     ) -> Result<()> {
-        let index = pointer.virt().pt_index(level);
+        let virt = pointer.virt();
+        let index = virt.pt_index(level);
 
         if pte_is_present(self.get(table, index), level) {
             return Err(Error::RESOURCE_OVERLAP);
         }
 
+        let pfn = phys_base + pointer.offset();
+
+        let page_count = level_page_count(level);
+        trace!(
+            "mapping pages {}-{} to {}-{} as {perms:?}",
+            virt,
+            virt + page_count,
+            pfn,
+            pfn + page_count
+        );
+
         self.set(
             table,
             index,
-            make_terminal_pte(level, phys_base + pointer.offset(), perms, cache_mode),
+            make_terminal_pte(level, pfn, perms, cache_mode),
         );
 
         pointer.advance(level_page_count(level));
@@ -489,12 +513,13 @@ impl<T: TranslatePhys> PageTableInner<T> {
         &mut self,
         gather: &mut impl GatherInvalidations,
         pointer: &mut MappingPointer,
-        update: &mut impl FnMut(PageTableEntry, usize) -> PageTableEntry,
+        update: &mut impl FnMut(VirtPageNum, PageTableEntry, usize) -> PageTableEntry,
         table: PhysFrameNum,
         level: usize,
     ) {
-        let index = pointer.virt().pt_index(level);
-        self.set(table, index, update(self.get(table, index), level));
+        let virt = pointer.virt();
+        let index = virt.pt_index(level);
+        self.set(table, index, update(virt, self.get(table, index), level));
         gather.add_tlb_flush(pointer.virt());
         pointer.advance(level_page_count(level));
     }

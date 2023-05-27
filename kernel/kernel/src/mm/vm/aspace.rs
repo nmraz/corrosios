@@ -1,5 +1,6 @@
 use alloc::sync::Arc;
 use core::ops::Range;
+use log::trace;
 
 use arrayvec::ArrayVec;
 use qcell::QCellOwner;
@@ -217,15 +218,21 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         base: MapBase,
         page_count: usize,
     ) -> Result<SliceHandle> {
-        let slice = self.with_owner(|owner| {
+        let subslice = self.with_owner(|owner| {
             let id = owner.id();
 
             slice.slice.alloc_spot(owner, base, page_count, |start| {
+                trace!(
+                    "allocating slice '{name}' at pages {}-{} in '{}'",
+                    start,
+                    start + page_count,
+                    slice.slice.name()
+                );
                 Slice::new(id, Some(Arc::clone(&slice.slice)), name, start, page_count)
             })
         })?;
 
-        Ok(SliceHandle { slice })
+        Ok(SliceHandle { slice: subslice })
     }
 
     /// Unmaps `slice` from this address space, recursively unmapping all nested mappings and
@@ -249,6 +256,14 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     pub unsafe fn unmap_slice(&self, slice: &SliceHandle) -> Result<()> {
         self.with_owner(|owner| {
             let parent = slice.slice.parent(owner)?.ok_or(Error::INVALID_ARGUMENT)?;
+
+            trace!(
+                "unmapping slice '{}' at pages {}-{} from '{}'",
+                slice.slice.name(),
+                slice.start(),
+                slice.start() + slice.page_count(),
+                parent.name()
+            );
 
             parent.remove_child(owner, slice.start())?;
             slice.slice.detach_children(owner);
@@ -301,6 +316,12 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             slice
                 .slice
                 .alloc_spot(owner, base, total_page_count, |start| {
+                    trace!(
+                        "creating mapping at pages {}-{} in '{}'",
+                        start,
+                        start + page_count,
+                        slice.slice.name()
+                    );
                     Mapping::new(
                         id,
                         Arc::clone(&slice.slice),
@@ -336,6 +357,13 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         self.with_owner(|owner| {
             let parent = mapping.mapping.parent(owner)?;
             parent.remove_child(owner, mapping.start())?;
+
+            trace!(
+                "unmapping mapping at pages {}-{} from '{}'",
+                mapping.start(),
+                mapping.start() + mapping.page_count(),
+                parent.name()
+            );
 
             unsafe {
                 self.do_unmap(mapping.start(), mapping.page_count());
@@ -412,6 +440,15 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
             let object = mapping.object().as_ref();
             let cache_mode = object.cache_mode();
             let commit_type = range.commit_type;
+
+            let start_offset = range.offset;
+            let end_offset = start_offset + range.page_count;
+
+            trace!(
+                "committing page range {}-{} for type {commit_type:?}",
+                mapping.start() + start_offset,
+                mapping.start() + end_offset
+            );
 
             // TODO: refactor this and find some way for `provide_page` to block outside the
             // critical section

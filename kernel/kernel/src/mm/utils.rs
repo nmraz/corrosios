@@ -1,4 +1,4 @@
-use core::fmt;
+use core::fmt::{self, Write};
 use core::ops::Range;
 
 use bootinfo::item::MemoryKind;
@@ -29,6 +29,10 @@ pub fn display_byte_size(bytes: usize) -> impl fmt::Display {
 
 pub fn to_page_count(bytes: usize) -> usize {
     div_ceil(bytes, PAGE_SIZE)
+}
+
+pub(super) fn write_flag(f: &mut fmt::Formatter<'_>, flag: bool, name: char) -> fmt::Result {
+    f.write_char(if flag { name } else { '-' })
 }
 
 pub(super) fn is_usable(kind: MemoryKind) -> bool {

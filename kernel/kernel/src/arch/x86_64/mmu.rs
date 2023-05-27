@@ -3,6 +3,7 @@ use core::cell::UnsafeCell;
 use core::slice;
 
 use bitflags::bitflags;
+use log::trace;
 
 use crate::arch::x86_64::x64_cpu::write_pat;
 use crate::kimage;
@@ -211,6 +212,7 @@ pub unsafe fn set_low_root_pt(pt: Option<PhysFrameNum>) {
 
 /// Flushes the specified page from the kernel TLB.
 pub fn flush_kernel_tlb_page(vpn: VirtPageNum) {
+    trace!("flushing TLB page {vpn}");
     unsafe {
         asm!("invlpg [{}]", in(reg) vpn.addr().as_usize());
     }
@@ -218,6 +220,8 @@ pub fn flush_kernel_tlb_page(vpn: VirtPageNum) {
 
 /// Flushes the entire kernel TLB.
 pub fn flush_kernel_tlb() {
+    trace!("flushing kernel TLB");
+
     unsafe {
         let cr4 = read_cr4();
         assert!(
@@ -238,6 +242,7 @@ pub fn flush_low_tlb_page(vpn: VirtPageNum) {
 
 /// Flushes the entire lower-half TLB.
 pub fn flush_low_tlb() {
+    trace!("flushing low TLB");
     // We currently don't use PCIDs at all.
     unsafe {
         write_cr3(read_cr3());
