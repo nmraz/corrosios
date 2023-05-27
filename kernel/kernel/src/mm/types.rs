@@ -1,4 +1,3 @@
-use core::fmt::Write;
 use core::{fmt, ops};
 
 use bitflags::bitflags;
@@ -19,7 +18,7 @@ bitflags! {
 }
 
 /// Caching modes that can be applied to a range of memory.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CacheMode {
     /// "Full" cache operation: reads are cached, writes update the cache and can be written back
     /// later.
@@ -37,6 +36,17 @@ pub enum CacheMode {
 
     /// Neither reads nor writes use the cache; all operations access memory directly.
     Uncached,
+}
+
+impl fmt::Debug for CacheMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Cached => write!(f, "C"),
+            Self::WriteThrough => write!(f, "WT"),
+            Self::WriteCombining => write!(f, "WC"),
+            Self::Uncached => write!(f, "UC"),
+        }
+    }
 }
 
 /// The types of memory accesses that can cause a page fault.

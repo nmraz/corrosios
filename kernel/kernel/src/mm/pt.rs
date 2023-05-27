@@ -182,6 +182,14 @@ impl<T: TranslatePhys> PageTable<T> {
         perms: PageTablePerms,
         cache_mode: CacheMode,
     ) -> Result<()> {
+        trace!(
+            "mapping pages {}-{} to {}-{} as {perms:?}, cache mode {cache_mode:?}",
+            pointer.virt(),
+            pointer.virt() + pointer.remaining_pages(),
+            phys_base,
+            phys_base + pointer.remaining_pages()
+        );
+
         self.inner.map(
             alloc,
             pointer,
@@ -222,13 +230,15 @@ impl<T: TranslatePhys> PageTable<T> {
         gather: &mut impl GatherInvalidations,
         pointer: &mut MappingPointer,
     ) -> Result<()> {
+        trace!(
+            "unmapping page range {}-{}",
+            pointer.virt(),
+            pointer.virt() + pointer.remaining_pages()
+        );
         self.inner.walk_update(
             gather,
             pointer,
-            &mut |vpn, _pte, level| {
-                trace!("unmapping pages {}-{}", vpn, vpn + level_page_count(level));
-                make_empty_pte()
-            },
+            &mut |_vpn, _pte, _level| make_empty_pte(),
             self.root,
             PT_LEVEL_COUNT - 1,
         )
@@ -264,17 +274,16 @@ impl<T: TranslatePhys> PageTable<T> {
         pointer: &mut MappingPointer,
         perms: PageTablePerms,
     ) -> Result<()> {
+        trace!(
+            "re-protecting page range {}-{} as {:?}",
+            pointer.virt(),
+            pointer.virt() + pointer.remaining_pages(),
+            perms
+        );
         self.inner.walk_update(
             gather,
             pointer,
-            &mut |vpn, pte, level| {
-                trace!(
-                    "re-protecting pages {}-{} as {perms:?}",
-                    vpn,
-                    vpn + level_page_count(level)
-                );
-                update_pte_perms(pte, level, perms)
-            },
+            &mut |_vpn, pte, level| update_pte_perms(pte, level, perms),
             self.root,
             PT_LEVEL_COUNT - 1,
         )
@@ -480,28 +489,16 @@ impl<T: TranslatePhys> PageTableInner<T> {
         perms: PageTablePerms,
         cache_mode: CacheMode,
     ) -> Result<()> {
-        let virt = pointer.virt();
-        let index = virt.pt_index(level);
+        let index = pointer.virt().pt_index(level);
 
         if pte_is_present(self.get(table, index), level) {
             return Err(Error::RESOURCE_OVERLAP);
         }
 
-        let pfn = phys_base + pointer.offset();
-
-        let page_count = level_page_count(level);
-        trace!(
-            "mapping pages {}-{} to {}-{} as {perms:?}",
-            virt,
-            virt + page_count,
-            pfn,
-            pfn + page_count
-        );
-
         self.set(
             table,
             index,
-            make_terminal_pte(level, pfn, perms, cache_mode),
+            make_terminal_pte(level, phys_base + pointer.offset(), perms, cache_mode),
         );
 
         pointer.advance(level_page_count(level));
