@@ -431,6 +431,12 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
     }
 
     fn do_commit<'a>(&'a self, g: impl GetCommitRange<'a>) -> Result<()> {
+        struct MappingRun {
+            base_off: usize,
+            base_pfn: PhysFrameNum,
+            size: usize,
+        }
+
         // TODO: be more careful about this lock when `provide_page` can sleep.
         self.with_owner(|owner| {
             let range = g.get_range(self, owner)?;
@@ -450,24 +456,49 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
                 mapping.start() + end_offset
             );
 
-            // TODO: refactor this and find some way for `provide_page` to block outside the
-            // critical section
-            for offset in range.offset..range.offset + range.page_count {
-                let object_offset = offset + mapping.object_offset();
-
-                let pfn = object.provide_page(object_offset, commit_type)?;
-
+            let do_map = |run: &MappingRun| {
                 // Safety: we're holding the page table lock, and our translator and allocator perform
                 // correctly.
                 unsafe {
                     self.pt().map(
                         &mut AspacePageTableAlloc,
-                        &mut MappingPointer::new(mapping.start() + offset, 1),
-                        pfn,
+                        &mut MappingPointer::new(mapping.start() + run.base_off, run.size),
+                        run.base_pfn,
                         self.perms_for_prot(prot),
                         cache_mode,
-                    )?;
-                };
+                    )
+                }
+            };
+
+            let mut cur_run: Option<MappingRun> = None;
+
+            // TODO: refactor this and find some way for `provide_page` to block outside the
+            // critical section
+            for offset in range.offset..range.offset + range.page_count {
+                let pfn = object.provide_page(offset + mapping.object_offset(), commit_type)?;
+
+                if let Some(run) = &mut cur_run {
+                    if run.base_pfn.checked_add(run.size) == Some(pfn) {
+                        // The newly-provided frame can be added to the current run, so don't update
+                        // the page tables just yet.
+                        run.size += 1;
+                        continue;
+                    }
+
+                    do_map(run)?;
+                }
+
+                // This frame can't be added into the existing run, so start tracking a new one.
+                cur_run = Some(MappingRun {
+                    base_off: offset,
+                    base_pfn: pfn,
+                    size: 1,
+                });
+            }
+
+            // Map in the run left over by the last iteration if there is one.
+            if let Some(run) = &cur_run {
+                do_map(run)?;
             }
 
             Ok(())
