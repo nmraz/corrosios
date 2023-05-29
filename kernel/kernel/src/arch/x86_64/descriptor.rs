@@ -132,7 +132,7 @@ fn make_gdt_tss_descriptor(base: u64) -> (u64, u64) {
     let limit_16_19 = (limit >> 16) & 0xf;
 
     (
-        flags.bits() | limit_0_15 | (base_0_23 << 16) | limit_16_19 | base_24_31,
+        flags.bits() | limit_0_15 | (base_0_23 << 16) | limit_16_19 | (base_24_31 << 56),
         base_32_63,
     )
 }
