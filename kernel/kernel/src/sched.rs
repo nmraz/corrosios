@@ -33,15 +33,16 @@ pub struct Thread {
 }
 
 impl Thread {
-    pub fn current() -> Arc<Self> {
+    pub fn current() -> Option<Arc<Self>> {
         irq::disable_with(|irq_disabled| {
             with_cpu_state(irq_disabled, |cpu_state| {
-                let current_thread = cpu_state.current_thread.clone().expect("no current thread");
-                let current_thread = UnsafeRef::into_raw(current_thread);
-                unsafe {
-                    Arc::increment_strong_count(current_thread);
-                    Arc::from_raw(current_thread)
-                }
+                cpu_state.current_thread.clone().map(|current_thread| {
+                    let current_thread = UnsafeRef::into_raw(current_thread);
+                    unsafe {
+                        Arc::increment_strong_count(current_thread);
+                        Arc::from_raw(current_thread)
+                    }
+                })
             })
         })
     }
@@ -99,6 +100,10 @@ impl Thread {
 
     pub fn name(&self) -> &str {
         self.name.as_ref()
+    }
+
+    pub fn stack(&self) -> &KernelStack {
+        &self.stack
     }
 }
 

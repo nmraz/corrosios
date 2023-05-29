@@ -154,4 +154,13 @@ fn bootstrap(bootinfo: &BootinfoData<'_>) {
             }
         }
     }
+
+    debug!("triggering kernel stack overflow");
+    stack_overflow();
+}
+
+#[inline(never)]
+fn stack_overflow() {
+    let big = [0u8; 0x8000];
+    core::hint::black_box(&big);
 }

@@ -3,8 +3,9 @@ use core::fmt;
 use log::debug;
 
 use crate::arch::x86_64::x64_cpu::read_cr2;
-use crate::mm::types::{AccessMode, AccessType};
+use crate::mm::types::{AccessMode, AccessType, VirtAddr};
 use crate::mm::vm;
+use crate::sched::Thread;
 
 use super::interrupt_vectors::{
     VECTOR_ALIGNMENT_CHECK, VECTOR_BOUND, VECTOR_BREAKPOINT, VECTOR_DEBUG, VECTOR_DEVICE_NOT_AVAIL,
@@ -92,13 +93,27 @@ impl fmt::Display for InterruptFrame {
 
 unsafe fn handle_exception(frame: &mut InterruptFrame) {
     match frame.vector {
+        VECTOR_DOUBLE_FAULT => handle_double_fault(frame),
         VECTOR_PAGE_FAULT => handle_page_fault(frame),
-        _ => panic!(
-            "fatal exception: {}\n\n{}",
-            exception_vector_to_str(frame.vector),
-            frame
-        ),
+        _ => report_fatal_exception(frame),
     };
+}
+
+fn handle_double_fault(frame: &InterruptFrame) {
+    if let Some(cur_thread) = Thread::current() {
+        if cur_thread
+            .stack()
+            .guard_page_contains(VirtAddr::new(frame.rsp as usize))
+        {
+            panic!(
+                "kernel stack overflow in thread '{}'\n\n{}",
+                cur_thread.name(),
+                frame
+            );
+        }
+    }
+
+    report_fatal_exception(frame);
 }
 
 fn handle_page_fault(frame: &InterruptFrame) {
@@ -138,6 +153,14 @@ fn handle_page_fault(frame: &InterruptFrame) {
             mode_str, access_str, addr, err, frame
         );
     }
+}
+
+fn report_fatal_exception(frame: &InterruptFrame) -> ! {
+    panic!(
+        "fatal exception: {}\n\n{}",
+        exception_vector_to_str(frame.vector),
+        frame
+    )
 }
 
 fn exception_vector_to_str(vector: u64) -> &'static str {
