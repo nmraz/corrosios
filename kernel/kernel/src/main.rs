@@ -155,8 +155,14 @@ fn bootstrap(bootinfo: &BootinfoData<'_>) {
         }
     }
 
-    debug!("triggering kernel stack overflow");
-    stack_overflow();
+    if bootinfo
+        .command_line()
+        .get_arg_value("stackoverflow")
+        .is_some()
+    {
+        info!("triggering kernel stack overflow");
+        stack_overflow();
+    }
 }
 
 #[inline(never)]
