@@ -12,6 +12,7 @@ use object_name::Name;
 use crate::arch::context::{self, ThreadContext};
 use crate::err::Result;
 use crate::mm::kmap::KernelStack;
+use crate::mm::types::VirtAddr;
 use crate::mp::current_percpu;
 use crate::sync::irq::{self, IrqDisabled};
 use crate::sync::SpinLock;
@@ -172,8 +173,10 @@ fn schedule_common(
             .current_thread
             .clone()
             .expect("no thread to switch out");
-        let thread_to_free = old_thread_handler(cpu_state, current_thread.clone());
 
+        check_current_thread_stack(&current_thread);
+
+        let thread_to_free = old_thread_handler(cpu_state, current_thread.clone());
         let new_thread = cpu_state.take_ready_thread();
         new_thread.state.store(STATE_RUNNING, Ordering::Relaxed);
 
@@ -191,6 +194,17 @@ fn schedule_common(
         begin_context_switch_handoff(handoff_state);
         context::switch(prev_context, new_context);
         complete_context_switch_handoff();
+    }
+}
+
+fn check_current_thread_stack(current_thread: &Thread) {
+    let on_stack = 0;
+    let stack_addr = VirtAddr::from_ptr(&on_stack);
+
+    let stack_top = current_thread.stack().top();
+    let stack_bottom = current_thread.stack().bottom();
+    if !(stack_bottom..stack_top).contains(&stack_addr) {
+        panic!("attempted to switch out thread '{}' on wrong stack: found pointer {stack_addr}, expected range {stack_bottom}-{stack_top}", current_thread.name());
     }
 }
 

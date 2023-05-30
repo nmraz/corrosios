@@ -84,6 +84,10 @@ impl KernelStack {
         self.slice.end().addr()
     }
 
+    pub fn bottom(&self) -> VirtAddr {
+        self.slice.start().addr()
+    }
+
     pub fn guard_page_contains(&self, addr: VirtAddr) -> bool {
         let bottom = self.slice.start();
         (bottom.addr()..(bottom + 1).addr()).contains(&addr)
