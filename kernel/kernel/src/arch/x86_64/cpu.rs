@@ -19,6 +19,12 @@ pub fn halt() -> ! {
     }
 }
 
+pub fn idle_loop() -> ! {
+    loop {
+        hlt();
+    }
+}
+
 pub fn irq_enabled() -> bool {
     get_rflags().contains(Rflags::IF)
 }

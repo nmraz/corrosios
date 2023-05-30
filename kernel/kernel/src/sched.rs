@@ -10,6 +10,7 @@ use log::{debug, trace};
 use object_name::Name;
 
 use crate::arch::context::{self, ThreadContext};
+use crate::arch::cpu;
 use crate::err::Result;
 use crate::mm::kmap::KernelStack;
 use crate::mm::types::VirtAddr;
@@ -122,15 +123,8 @@ pub fn start() -> ! {
     });
 
     with_cpu_state(&irq_disabled, |cpu_state| {
-        // TODO: we probably don't need all of the setup `Thread::new` performs
-        let idle_thread = Thread::new("idle", || loop {
-            unsafe {
-                trace!("entering halt state");
-                // TODO: must be opcode after `sti` to avoid race
-                asm!("hlt", options(nostack, nomem));
-            }
-        })
-        .expect("failed to create idle thread");
+        let idle_thread =
+            Thread::new("idle", || cpu::idle_loop()).expect("failed to create idle thread");
         cpu_state.idle_thread = Some(unsafe { UnsafeRef::from_raw(Arc::into_raw(idle_thread)) });
     });
 
