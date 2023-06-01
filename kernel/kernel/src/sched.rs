@@ -1,4 +1,3 @@
-use core::arch::asm;
 use core::cell::{RefCell, UnsafeCell};
 use core::hint;
 use core::sync::atomic::{AtomicU32, Ordering};
