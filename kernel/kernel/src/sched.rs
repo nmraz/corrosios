@@ -59,9 +59,13 @@ impl Thread {
             unsafe {
                 complete_context_switch_handoff_and_enable();
             }
-            let entry_fn = unsafe { Box::from_raw(data as *mut F) };
-            // Todo: exiting the thread early will probably leak this?
-            entry_fn();
+
+            // Make sure we drop `entry_fn` before abruptly exiting the thread.
+            {
+                let entry_fn = *unsafe { Box::from_raw(data as *mut F) };
+                entry_fn();
+            }
+
             exit_current();
         }
 
