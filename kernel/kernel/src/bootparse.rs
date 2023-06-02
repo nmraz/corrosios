@@ -130,16 +130,13 @@ impl<'a> BootinfoData<'a> {
                         Some(unsafe { item.get_slice() }.expect("invalid bootinfo memory map"));
                 }
                 ItemKind::EFI_SYSTEM_TABLE => {
-                    efi_system_table =
-                        Some(unsafe { item.read() }.expect("invalid bootinfo EFI system table"));
+                    efi_system_table = unsafe { item.read() }.ok();
                 }
                 ItemKind::FRAMEBUFFER => {
-                    framebuffer_info =
-                        Some(unsafe { item.get() }.expect("invalid bootinfo framebuffer"));
+                    framebuffer_info = unsafe { item.get() }.ok();
                 }
                 ItemKind::COMMAND_LINE => {
-                    command_line =
-                        Some(unsafe { item.get_slice() }.expect("invalid bootinfo command line"));
+                    command_line = unsafe { item.get_slice() }.ok();
                 }
                 _ => {}
             }
