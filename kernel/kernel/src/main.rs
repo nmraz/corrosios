@@ -104,7 +104,7 @@ unsafe extern "C" fn kernel_main(
     Thread::new("bootstrap", move || bootstrap(&bootinfo))
         .expect("failed to create bootstrap thread")
         .start();
-    sched::start();
+    unsafe { sched::start() };
 }
 
 fn bootstrap(bootinfo: &BootinfoData<'_>) {

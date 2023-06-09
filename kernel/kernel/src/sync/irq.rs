@@ -2,12 +2,15 @@ use core::marker::PhantomData;
 
 use crate::arch;
 
-/// A type-level assertion that interrupts are disabled
+use super::resched::ReschedDisabled;
+
+/// A type-level assertion that interrupts are disabled on the current core.
 ///
 /// Whenever an instance of this structure is alive, users can safely assume that interrupts are
 /// disbled.
 pub struct IrqDisabled {
     _not_send_sync: PhantomData<*const ()>,
+    resched_disabled: ReschedDisabled,
 }
 
 impl IrqDisabled {
@@ -38,7 +41,12 @@ impl IrqDisabled {
     pub unsafe fn new_unchecked() -> Self {
         Self {
             _not_send_sync: PhantomData,
+            resched_disabled: unsafe { ReschedDisabled::new_unchecked() },
         }
+    }
+
+    pub fn resched_disabled(&self) -> &ReschedDisabled {
+        &self.resched_disabled
     }
 }
 

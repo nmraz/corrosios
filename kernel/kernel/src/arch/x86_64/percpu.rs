@@ -1,4 +1,4 @@
-use core::cell::UnsafeCell;
+use core::cell::{Cell, UnsafeCell};
 use core::mem::MaybeUninit;
 use core::ptr::{addr_of, addr_of_mut};
 
@@ -8,7 +8,7 @@ use crate::mm::types::VirtAddr;
 use crate::sync::irq::IrqDisabled;
 
 use super::descriptor::{Gdt, Tss};
-use super::x64_cpu::{read_gs_qword, wrgsbase};
+use super::x64_cpu::{read_gs_dword, read_gs_qword, wrgsbase, xadd_gs_dword};
 
 const INTERRUPT_STACK_SIZE: usize = 0x2000;
 
@@ -29,24 +29,42 @@ struct X64PerCpuWrapper {
     ptr: *const X64PerCpuWrapper,
     /// Pointer to the common (architecture-independent) per-cpu structure.
     common_ptr: *const (),
+    preempt_blocks: Cell<u32>,
     inner: X64PerCpu,
 }
 
 const PERCPU_PTR_OFFSET: usize = 0;
 const PERCPU_COMMON_PTR_OFFSET: usize = 8;
+const PERCPU_RESCHED_BLOCKS_OFFSET: usize = 0x10;
 
 #[inline]
 pub fn current_x64(_irq_disabled: &IrqDisabled) -> &X64PerCpu {
+    unsafe { &(*current_wrapper()).inner }
+}
+
+#[inline]
+pub fn current_common() -> *const () {
+    unsafe { read_gs_qword::<PERCPU_COMMON_PTR_OFFSET>() as *const _ }
+}
+
+#[inline]
+pub fn disable_resched() {
+    // This operation doesn't need to be atomic (it is for this core only), but it does need to be
+    // a single instruction so that it doesn't get broken up by potential rescheduling interrupts.
     unsafe {
-        // Note: offset 0 is guaranteed to be the `ptr` field of `X64PerCpuWrapper`
-        let ptr = read_gs_qword::<PERCPU_PTR_OFFSET>() as *const X64PerCpuWrapper;
-        &(*ptr).inner
+        xadd_gs_dword::<PERCPU_RESCHED_BLOCKS_OFFSET>(1);
     }
 }
 
 #[inline]
-pub fn current_common(_irq_disabled: &IrqDisabled) -> *const () {
-    unsafe { read_gs_qword::<PERCPU_COMMON_PTR_OFFSET>() as *const _ }
+#[must_use]
+pub unsafe fn enable_resched() -> u32 {
+    unsafe { xadd_gs_dword::<PERCPU_RESCHED_BLOCKS_OFFSET>(-1i32 as u32) - 1 }
+}
+
+#[inline]
+pub fn resched_disable_count() -> u32 {
+    unsafe { read_gs_dword::<PERCPU_RESCHED_BLOCKS_OFFSET>() }
 }
 
 pub unsafe fn init_bsp(common_percpu: *const (), irq_disabled: &IrqDisabled) -> &X64PerCpu {
@@ -82,4 +100,8 @@ unsafe fn init_current_with(
 
         wrgsbase(VirtAddr::from_ptr(wrapper));
     }
+}
+
+unsafe fn current_wrapper() -> *const X64PerCpuWrapper {
+    unsafe { read_gs_qword::<PERCPU_PTR_OFFSET>() as *const X64PerCpuWrapper }
 }

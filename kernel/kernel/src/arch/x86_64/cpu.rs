@@ -9,6 +9,8 @@ use super::x64_cpu::{
     cli, get_rflags, hlt, lgdt, lidt, lldt, ltr, sti, DescriptorRegister, Rflags,
 };
 
+pub use percpu::{disable_resched, enable_resched, resched_disable_count};
+
 #[inline]
 pub fn halt() -> ! {
     unsafe {
@@ -43,8 +45,8 @@ pub unsafe fn enable_irq() {
     }
 }
 
-pub fn current_percpu(irq_disabled: &IrqDisabled) -> *const () {
-    percpu::current_common(irq_disabled)
+pub fn current_percpu() -> *const () {
+    percpu::current_common()
 }
 
 pub unsafe fn init_bsp_early(common_percpu: *const (), irq_disabled: &IrqDisabled) {

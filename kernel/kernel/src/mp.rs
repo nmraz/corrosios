@@ -4,6 +4,7 @@ use spin_once::TakeOnce;
 
 use crate::mm::vm;
 use crate::sync::irq::IrqDisabled;
+use crate::sync::resched::ReschedDisabled;
 use crate::{arch, sched};
 
 pub struct PerCpu {
@@ -25,8 +26,8 @@ impl PerCpu {
 }
 
 /// Retrieves the per-CPU structure for the current processor.
-pub fn current_percpu(irq_disabled: &IrqDisabled) -> &PerCpu {
-    unsafe { &*arch::cpu::current_percpu(irq_disabled).cast() }
+pub fn current_percpu(_resched_disabled: &ReschedDisabled) -> &PerCpu {
+    unsafe { &*arch::cpu::current_percpu().cast() }
 }
 
 /// Performs early initialization of the bootstrap processor (BSP), including early interrupt

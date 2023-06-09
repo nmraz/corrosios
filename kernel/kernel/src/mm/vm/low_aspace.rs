@@ -13,7 +13,7 @@ use crate::mm::pmm::FrameBox;
 use crate::mm::pt::clear_page_table;
 use crate::mm::types::{AccessMode, PageTablePerms, PhysFrameNum};
 use crate::mp::current_percpu;
-use crate::sync::irq::IrqDisabled;
+use crate::sync::resched::ReschedDisabled;
 
 use super::aspace::{AddrSpace, AddrSpaceOps, TlbFlush};
 
@@ -60,18 +60,18 @@ pub fn make_low_addr_space(allowed_access_mode: AccessMode) -> Result<Arc<LowAdd
 }
 
 /// Returns a new owning reference to the current active address space.
-pub fn current(irq_disabled: &IrqDisabled) -> Option<Arc<LowAddrSpace>> {
-    with_current(irq_disabled, |current| current.cloned())
+pub fn current(resched_disabled: &ReschedDisabled) -> Option<Arc<LowAddrSpace>> {
+    with_current(resched_disabled, |current| current.cloned())
 }
 
 /// Invokes `f` on the current low address space, returning its return value.
 ///
 /// Note that `f` must not call [`switch_to`]; doing so will panic at runtime.
 pub fn with_current<R>(
-    irq_disabled: &IrqDisabled,
+    resched_disabled: &ReschedDisabled,
     f: impl FnOnce(Option<&Arc<LowAddrSpace>>) -> R,
 ) -> R {
-    f(current_aspace(irq_disabled).borrow().as_ref())
+    f(current_aspace(resched_disabled).borrow().as_ref())
 }
 
 /// Temporarily enters `aspace` and invokes `f`, then restores the original active address space.
@@ -82,17 +82,17 @@ pub fn with_current<R>(
 /// different one. The caller must ensure that all accesses to low memory made by `f` are made in
 /// accordance with `aspace`.
 pub unsafe fn enter_with<R>(
-    irq_disabled: &IrqDisabled,
+    resched_disabled: &ReschedDisabled,
     aspace: Arc<LowAddrSpace>,
     f: impl FnOnce() -> R,
 ) -> R {
-    let orig_aspace = current(irq_disabled);
+    let orig_aspace = current(resched_disabled);
     unsafe {
-        switch_to(irq_disabled, Some(aspace));
+        switch_to(resched_disabled, Some(aspace));
     }
     let ret = f();
     unsafe {
-        switch_to(irq_disabled, orig_aspace);
+        switch_to(resched_disabled, orig_aspace);
     }
     ret
 }
@@ -112,8 +112,8 @@ pub unsafe fn enter_with<R>(
 /// This function is wildly unsafe, as it replaces the entire lower-half address space with a
 /// different one. The caller must ensure that all accesses to low memory are made in accordance
 /// with the new address space after the switch.
-pub unsafe fn switch_to(irq_disabled: &IrqDisabled, aspace: Option<Arc<LowAddrSpace>>) {
-    let mut active_aspace = current_aspace(irq_disabled).borrow_mut();
+pub unsafe fn switch_to(resched_disabled: &ReschedDisabled, aspace: Option<Arc<LowAddrSpace>>) {
+    let mut active_aspace = current_aspace(resched_disabled).borrow_mut();
     if raw_aspace_ptr(&aspace) == raw_aspace_ptr(&active_aspace) {
         // Address space is already active, nothing to update/flush.
         return;
@@ -131,8 +131,8 @@ fn raw_aspace_ptr(aspace: &Option<Arc<LowAddrSpace>>) -> *const LowAddrSpace {
     aspace.as_ref().map_or(core::ptr::null(), Arc::as_ptr)
 }
 
-fn current_aspace(irq_disabled: &IrqDisabled) -> &RefCell<Option<Arc<LowAddrSpace>>> {
-    &current_percpu(irq_disabled)
+fn current_aspace(resched_disabled: &ReschedDisabled) -> &RefCell<Option<Arc<LowAddrSpace>>> {
+    &current_percpu(resched_disabled)
         .vm
         .aspace_context
         .current_aspace

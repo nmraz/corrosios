@@ -310,6 +310,24 @@ pub unsafe fn read_gs_qword<const OFF: usize>() -> u64 {
 }
 
 #[inline]
+pub unsafe fn read_gs_dword<const OFF: usize>() -> u32 {
+    let ret: u32;
+    unsafe {
+        asm!("mov {:e}, gs:[{}]", out(reg) ret, const OFF, options(nostack, readonly, pure));
+    }
+    ret
+}
+
+#[inline]
+pub unsafe fn xadd_gs_dword<const OFF: usize>(addend: u32) -> u32 {
+    let retval;
+    unsafe {
+        asm!("xadd gs:[{}], {:e}", const OFF, inout(reg) addend => retval);
+    }
+    retval
+}
+
+#[inline]
 unsafe fn rdmsr(num: u32) -> u64 {
     let eax: u32;
     let edx: u32;

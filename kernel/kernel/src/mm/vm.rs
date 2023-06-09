@@ -3,6 +3,7 @@ use log::debug;
 use crate::arch::mm::{KERNEL_ASPACE_BASE, KERNEL_ASPACE_END, LOW_ASPACE_END};
 use crate::err::{Error, Result};
 use crate::sync::irq;
+use crate::sync::resched::ReschedGuard;
 
 use super::types::{AccessMode, AccessType, VirtAddr};
 
@@ -42,7 +43,7 @@ pub fn page_fault(addr: VirtAddr, access_type: AccessType, access_mode: AccessMo
         // Note: we snapshot the current low address space in preparation for the fact that the
         // handler will later run with preemption enabled.
         let current_low_aspace =
-            irq::disable_with(low_aspace::current).ok_or(Error::BAD_ADDRESS)?;
+            low_aspace::current(&ReschedGuard::new()).ok_or(Error::BAD_ADDRESS)?;
         current_low_aspace.fault(addr.containing_page(), access_type)
     } else {
         Err(Error::BAD_ADDRESS)
