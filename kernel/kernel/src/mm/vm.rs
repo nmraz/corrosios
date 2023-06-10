@@ -35,14 +35,20 @@ pub fn init() {
 
 /// Handles a page fault that occurred while accessing `addr` with the specified access type and
 /// mode.
-pub fn page_fault(addr: VirtAddr, access_type: AccessType, access_mode: AccessMode) -> Result<()> {
+pub fn page_fault(
+    resched_guard: ReschedGuard,
+    addr: VirtAddr,
+    access_type: AccessType,
+    access_mode: AccessMode,
+) -> Result<()> {
     if access_mode == AccessMode::Kernel && is_kernel_addr(addr) {
         kernel_aspace::get().fault(addr.containing_page(), access_type)
     } else if is_low_addr(addr) {
-        // Note: we snapshot the current low address space in preparation for the fact that the
-        // handler will later run with preemption enabled.
-        let current_low_aspace =
-            low_aspace::current(&ReschedGuard::new()).ok_or(Error::BAD_ADDRESS)?;
+        // Snapshot the current (original) address space, and then enable rescheduling for the fault
+        // itself.
+        let current_low_aspace = low_aspace::current(&resched_guard).ok_or(Error::BAD_ADDRESS)?;
+        drop(resched_guard);
+
         current_low_aspace.fault(addr.containing_page(), access_type)
     } else {
         Err(Error::BAD_ADDRESS)

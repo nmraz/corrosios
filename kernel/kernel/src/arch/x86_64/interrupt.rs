@@ -6,6 +6,8 @@ use crate::arch::x86_64::x64_cpu::read_cr2;
 use crate::mm::types::{AccessMode, AccessType, VirtAddr};
 use crate::mm::vm;
 use crate::sched::Thread;
+use crate::sync::irq;
+use crate::sync::resched::{self, ReschedGuard};
 
 use super::interrupt_vectors::{
     VECTOR_ALIGNMENT_CHECK, VECTOR_BOUND, VECTOR_BREAKPOINT, VECTOR_DEBUG, VECTOR_DEVICE_NOT_AVAIL,
@@ -131,18 +133,28 @@ fn handle_page_fault(frame: &InterruptFrame) {
         AccessType::Read
     };
 
+    if !resched::enabled_in_irq() || !frame.rflags.contains(Rflags::IF) {
+        panic!(
+            "page fault with rescheduling disabled: {} {}\n\n{}",
+            describe_access_type(access_type),
+            addr,
+            frame
+        );
+    }
+
+    // Atomically transition to a preempt-free but interrupt-enabled state. Rescheduling will be
+    // enabled within `vm::page_fault` once the current address space has been snapshotted.
+    let resched_guard = ReschedGuard::new();
+    unsafe {
+        irq::enable();
+    }
+
     let access_mode = match was_user {
         true => AccessMode::User,
         false => AccessMode::Kernel,
     };
 
-    if let Err(err) = vm::page_fault(addr, access_type, access_mode) {
-        let access_str = match access_type {
-            AccessType::Read => "read from",
-            AccessType::Write => "write to",
-            AccessType::Execute => "execute of",
-        };
-
+    if let Err(err) = vm::page_fault(resched_guard, addr, access_type, access_mode) {
         let mode_str = match access_mode {
             AccessMode::User => "user",
             AccessMode::Kernel => "kernel",
@@ -150,8 +162,23 @@ fn handle_page_fault(frame: &InterruptFrame) {
 
         panic!(
             "fatal page fault: {}-mode {} {}: {:?}\n\n{}",
-            mode_str, access_str, addr, err, frame
+            mode_str,
+            describe_access_type(access_type),
+            addr,
+            err,
+            frame
         );
+    }
+
+    // Disable interrupts again before executing the general interrupt-return path.
+    irq::disable();
+}
+
+fn describe_access_type(access_type: AccessType) -> &'static str {
+    match access_type {
+        AccessType::Read => "read from",
+        AccessType::Write => "write to",
+        AccessType::Execute => "execute of",
     }
 }
 
