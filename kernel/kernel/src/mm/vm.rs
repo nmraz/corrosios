@@ -2,7 +2,6 @@ use log::debug;
 
 use crate::arch::mm::{KERNEL_ASPACE_BASE, KERNEL_ASPACE_END, LOW_ASPACE_END};
 use crate::err::{Error, Result};
-use crate::sync::irq;
 use crate::sync::resched::ReschedGuard;
 
 use super::types::{AccessMode, AccessType, VirtAddr};

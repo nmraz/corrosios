@@ -1,7 +1,7 @@
-use core::cell::RefCell;
 use core::slice;
 
 use alloc::sync::Arc;
+use atomic_refcell::AtomicRefCell;
 
 use crate::arch::mm::{LOW_ASPACE_BASE, LOW_ASPACE_END};
 use crate::arch::mmu::{
@@ -25,7 +25,7 @@ pub struct LowAddrSpaceOps {
 pub type LowAddrSpace = AddrSpace<LowAddrSpaceOps>;
 
 pub(super) struct Context {
-    current_aspace: RefCell<Option<Arc<LowAddrSpace>>>,
+    current_aspace: AtomicRefCell<Option<Arc<LowAddrSpace>>>,
 }
 
 impl Context {
@@ -35,7 +35,7 @@ impl Context {
     /// up), so it must not allocate or take any locks.
     pub fn new() -> Self {
         Self {
-            current_aspace: RefCell::new(None),
+            current_aspace: AtomicRefCell::new(None),
         }
     }
 }
@@ -131,7 +131,7 @@ fn raw_aspace_ptr(aspace: &Option<Arc<LowAddrSpace>>) -> *const LowAddrSpace {
     aspace.as_ref().map_or(core::ptr::null(), Arc::as_ptr)
 }
 
-fn current_aspace(resched_disabled: &ReschedDisabled) -> &RefCell<Option<Arc<LowAddrSpace>>> {
+fn current_aspace(resched_disabled: &ReschedDisabled) -> &AtomicRefCell<Option<Arc<LowAddrSpace>>> {
     &current_percpu(resched_disabled)
         .vm
         .aspace_context

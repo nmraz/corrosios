@@ -1,5 +1,3 @@
-use core::marker::PhantomData;
-
 use spin_once::TakeOnce;
 
 use crate::mm::vm;
@@ -11,7 +9,6 @@ pub struct PerCpu {
     pub cpu_num: u32,
     pub vm: vm::PerCpu,
     pub sched: sched::CpuState,
-    _not_send_sync: PhantomData<*const ()>,
 }
 
 impl PerCpu {
@@ -20,7 +17,6 @@ impl PerCpu {
             cpu_num,
             vm: vm::PerCpu::new(),
             sched: sched::CpuState::new(),
-            _not_send_sync: PhantomData,
         }
     }
 }
@@ -48,4 +44,10 @@ pub unsafe fn init_bsp_early(irq_disabled: &IrqDisabled) {
     unsafe {
         arch::cpu::init_bsp_early(percpu as *const _ as *const (), irq_disabled);
     }
+}
+
+#[allow(dead_code)]
+fn percpu_must_be_sync(p: &PerCpu) {
+    fn requires_sync(_s: &impl Sync) {}
+    requires_sync(p)
 }

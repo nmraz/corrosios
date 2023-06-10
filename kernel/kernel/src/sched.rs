@@ -1,9 +1,10 @@
-use core::cell::{RefCell, UnsafeCell};
+use core::cell::UnsafeCell;
 use core::hint;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
+use atomic_refcell::AtomicRefCell;
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink, UnsafeRef};
 use log::{debug, trace};
 use object_name::Name;
@@ -268,13 +269,13 @@ fn complete_context_switch_handoff() {
 }
 
 pub struct CpuState {
-    inner: RefCell<CpuStateInner>,
+    inner: AtomicRefCell<CpuStateInner>,
 }
 
 impl CpuState {
     pub fn new() -> Self {
         Self {
-            inner: RefCell::new(CpuStateInner {
+            inner: AtomicRefCell::new(CpuStateInner {
                 current_thread: None,
                 idle_thread: None,
                 run_queue: LinkedList::new(ThreadRunQueueAdapter::new()),
