@@ -5,6 +5,7 @@ use crate::sync::irq::IrqDisabled;
 use crate::sync::resched::ReschedDisabled;
 use crate::{arch, sched};
 
+#[repr(align(64))]
 pub struct PerCpu {
     pub cpu_num: u32,
     pub vm: vm::PerCpu,
