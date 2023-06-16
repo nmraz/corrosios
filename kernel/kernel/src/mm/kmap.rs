@@ -5,7 +5,7 @@ use crate::err::Result;
 
 use super::types::{CacheMode, PhysAddr, Protection, VirtAddr};
 use super::utils::to_page_count;
-use super::vm::aspace::{AddrSpace, AddrSpaceOps, MapBase, MappingHandle, SliceHandle};
+use super::vm::aspace::{MapBase, MappingHandle, SliceHandle};
 use super::vm::kernel_aspace;
 use super::vm::object::{EagerVmObject, PhysVmObject, VmObject};
 
@@ -68,11 +68,11 @@ impl KernelStack {
         let stack = KernelStack { slice };
 
         // Leave a guard page at the bottom of the stack.
-        map_committed(
-            kernel_aspace,
+        kernel_aspace.map_committed(
             &stack.slice,
             MapBase::Fixed(stack.slice.start() + 1),
             STACK_PAGES,
+            0,
             stack_obj,
             Protection::READ | Protection::WRITE,
         )?;
@@ -110,11 +110,11 @@ pub fn kmap(object: Arc<dyn VmObject>, prot: Protection) -> Result<KernelMapping
     let page_count = object.page_count();
 
     let kernel_aspace = kernel_aspace::get();
-    let mapping = map_committed(
-        kernel_aspace,
+    let mapping = kernel_aspace.map_committed(
         kernel_aspace.root_slice(),
         MapBase::any(),
         page_count,
+        0,
         object,
         prot,
     )?;
@@ -147,17 +147,4 @@ pub unsafe fn iomap(
         page_offset,
         len,
     })
-}
-
-fn map_committed(
-    aspace: &AddrSpace<impl AddrSpaceOps>,
-    slice: &SliceHandle,
-    base: MapBase,
-    page_count: usize,
-    object: Arc<dyn VmObject>,
-    prot: Protection,
-) -> Result<MappingHandle> {
-    let mapping = aspace.map(slice, base, page_count, 0, object, prot)?;
-    aspace.commit(&mapping, 0, page_count)?;
-    Ok(mapping)
 }

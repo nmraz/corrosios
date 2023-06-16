@@ -337,6 +337,42 @@ impl<O: AddrSpaceOps> AddrSpace<O> {
         Ok(MappingHandle { mapping })
     }
 
+    /// Maps the range `object_offset..object_offset + page_count` of `object` into `slice`, and
+    /// then commits the result. If this function succeeds, accesses to the mapped address range
+    /// will be guaranteed not to fault.
+    ///
+    /// The mapping will be created with the permissions specified in `perms`.
+    ///
+    /// If `start` is provided, the mapping will be created at the requested virtual page number.
+    /// Otherwise, a sufficiently large available region will be found and used.
+    ///
+    /// # Errors
+    ///
+    /// * `INVALID_STATE` - This function was called on a [detached](SliceHandle#states) slice.
+    /// * `INVALID_ARGUMENT` - The requested address range is too large or does not lie in the
+    ///                        virtual address range managed by this slice, or the requested offset
+    ///                        range does not fit within the object.
+    /// * `OUT_OF_MEMORY` - Allocation of the new metadata failed.
+    /// * `RESOURCE_OVERLAP` - The requested range overlaps an existing subslice or mapping.
+    /// * `OUT_OF_RESOURCES` - No available regions of the requested size were found.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `slice` belongs to a different address space.
+    pub fn map_committed(
+        &self,
+        slice: &SliceHandle,
+        base: MapBase,
+        page_count: usize,
+        object_offset: usize,
+        object: Arc<dyn VmObject>,
+        prot: Protection,
+    ) -> Result<MappingHandle> {
+        let mapping = self.map(slice, base, page_count, object_offset, object, prot)?;
+        self.commit(&mapping, 0, page_count)?;
+        Ok(mapping)
+    }
+
     /// Unmaps `mapping` from this address space.
     ///
     /// When this function returns, `mapping` will be detached, and any address space operations on
