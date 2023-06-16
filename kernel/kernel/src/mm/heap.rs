@@ -220,7 +220,6 @@ impl SizeClass {
     }
 
     fn allocate(&self) -> Result<NonNull<u8>, HeapAllocError> {
-        // self.inner.lock().allocate(&self.meta)
         self.inner.with(|inner, _| inner.allocate(&self.meta))
     }
 
