@@ -72,7 +72,7 @@ pub unsafe fn resize(
     let new_usable_size = ALLOCATOR.usable_size(new_effective_size);
 
     if old_usable_size == new_usable_size {
-        Ok(nonnull_slice_from_raw_parts(ptr, old_usable_size))
+        Ok(NonNull::slice_from_raw_parts(ptr, old_usable_size))
     } else {
         let new_ptr = ALLOCATOR.allocate(new_effective_size)?;
         let copy_size = cmp::min(old_layout.size(), new_layout.size());
@@ -146,13 +146,13 @@ impl<const N: usize> Allocator<N> {
         match self.get_size_class(effective_size) {
             Some(size_class) => {
                 let ptr = size_class.allocate()?;
-                Ok(nonnull_slice_from_raw_parts(ptr, size_class.size()))
+                Ok(NonNull::slice_from_raw_parts(ptr, size_class.size()))
             }
             None => {
                 // Request too large for the slab allocator, get pages directly from the PMM
                 let order = raw_page_order(effective_size);
                 let ptr = alloc_virt_pages(order).ok_or(HeapAllocError)?;
-                Ok(nonnull_slice_from_raw_parts(ptr, PAGE_SIZE << order))
+                Ok(NonNull::slice_from_raw_parts(ptr, PAGE_SIZE << order))
             }
         }
     }
@@ -186,10 +186,6 @@ impl<const N: usize> Allocator<N> {
 
         self.size_classes.get(i)
     }
-}
-
-fn nonnull_slice_from_raw_parts<T>(data: NonNull<T>, len: usize) -> NonNull<[T]> {
-    unsafe { NonNull::new_unchecked(core::ptr::slice_from_raw_parts_mut(data.as_ptr(), len)) }
 }
 
 fn raw_page_order(bytes: usize) -> usize {
