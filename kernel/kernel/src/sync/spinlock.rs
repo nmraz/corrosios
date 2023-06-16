@@ -4,6 +4,7 @@ use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use super::irq::{self, IrqDisabled};
+use super::resched;
 
 /// A lock that protects shared data by spinning until it is available.
 ///
@@ -64,7 +65,8 @@ pub struct SpinLockGuard<'a, T> {
 
 impl<'a, T> Drop for SpinLockGuard<'a, T> {
     fn drop(&mut self) {
-        self.lock.raw.unlock()
+        // Safety: the raw lock was locked on this core when the object was constructed.
+        unsafe { self.lock.raw.unlock() }
     }
 }
 
@@ -104,6 +106,7 @@ impl RawSpinLock {
     ///
     /// This function will deadlock if the lock is already held by the current core when called.
     pub fn lock(&self) {
+        resched::disable();
         while self.locked.swap(true, Ordering::Acquire) {
             hint::spin_loop();
         }
@@ -111,9 +114,17 @@ impl RawSpinLock {
 
     /// Unlocks the spinlock.
     ///
+    /// # Safety
+    ///
     /// This function should only be called if the spinlock has previously been acquired by the
-    /// current core via a call to `lock()`, though it is not unsafe to do otherwise.
-    pub fn unlock(&self) {
+    /// current core via a call to `lock()`.
+    pub unsafe fn unlock(&self) {
         self.locked.store(false, Ordering::Release);
+
+        // Safety: by the function contract, this core has previously called `lock()`, which means
+        // that it has called `resched::disable()`.
+        unsafe {
+            resched::enable();
+        }
     }
 }
