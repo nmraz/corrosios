@@ -154,7 +154,7 @@ fn handle_page_fault(frame: &InterruptFrame) {
         false => AccessMode::Kernel,
     };
 
-    if let Err(err) = vm::page_fault(resched_guard, addr, access_type, access_mode) {
+    if let Err(err) = vm::page_fault(resched_guard, addr, access_type) {
         let mode_str = match access_mode {
             AccessMode::User => "user",
             AccessMode::Kernel => "kernel",

@@ -4,7 +4,7 @@ use crate::arch::mm::{KERNEL_ASPACE_BASE, KERNEL_ASPACE_END, LOW_ASPACE_END};
 use crate::err::{Error, Result};
 use crate::sync::resched::ReschedGuard;
 
-use super::types::{AccessMode, AccessType, VirtAddr};
+use super::types::{AccessType, VirtAddr};
 
 pub mod aspace;
 pub mod kernel_aspace;
@@ -39,11 +39,8 @@ pub fn page_fault(
     resched_guard: ReschedGuard,
     addr: VirtAddr,
     access_type: AccessType,
-    access_mode: AccessMode,
 ) -> Result<()> {
-    if access_mode == AccessMode::Kernel && is_kernel_addr(addr) {
-        kernel_aspace::get().fault(addr.containing_page(), access_type)
-    } else if is_low_addr(addr) {
+    if is_low_addr(addr) {
         // Snapshot the current (original) address space, and then enable rescheduling for the fault
         // itself.
         let current_low_aspace = low_aspace::current(&resched_guard).ok_or(Error::BAD_ADDRESS)?;
