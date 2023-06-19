@@ -16,7 +16,7 @@ use crate::mm::kmap::KernelStack;
 use crate::mm::types::VirtAddr;
 use crate::mp::current_percpu;
 use crate::sync::irq::{self, IrqDisabled};
-use crate::sync::resched::ReschedDisabled;
+use crate::sync::resched::{ReschedDisabled, ReschedGuard};
 use crate::sync::{resched, SpinLock};
 
 const STATE_INITIAL: u32 = 0;
@@ -37,15 +37,13 @@ pub struct Thread {
 
 impl Thread {
     pub fn current() -> Option<Arc<Self>> {
-        irq::disable_with(|irq_disabled| {
-            with_cpu_state_noirq(irq_disabled, |cpu_state| {
-                cpu_state.current_thread.clone().map(|current_thread| {
-                    let current_thread = UnsafeRef::into_raw(current_thread);
-                    unsafe {
-                        Arc::increment_strong_count(current_thread);
-                        Arc::from_raw(current_thread)
-                    }
-                })
+        with_cpu_state(&ReschedGuard::new(), |cpu_state| {
+            cpu_state.current_thread.clone().map(|current_thread| {
+                let current_thread = UnsafeRef::into_raw(current_thread);
+                unsafe {
+                    Arc::increment_strong_count(current_thread);
+                    Arc::from_raw(current_thread)
+                }
             })
         })
     }
@@ -99,7 +97,7 @@ impl Thread {
         irq::disable_with(|irq_disabled| {
             let self_ref = unsafe { UnsafeRef::from_raw(Arc::as_ptr(&self)) };
             SCHED_THREAD_OWNERS.lock(irq_disabled).push_back(self);
-            with_cpu_state_noirq(irq_disabled, |cpu_state| {
+            with_cpu_state_mut(irq_disabled, |cpu_state| {
                 cpu_state.run_queue.push_back(self_ref)
             });
         });
@@ -131,13 +129,13 @@ intrusive_adapter!(ThreadRunQueueAdapter = UnsafeRef<Thread>: Thread { run_queue
 /// interrupts.
 pub unsafe fn start() -> ! {
     let irq_disabled = unsafe { IrqDisabled::new() };
-    let new_thread = with_cpu_state_noirq(&irq_disabled, |cpu_state| {
+    let new_thread = with_cpu_state_mut(&irq_disabled, |cpu_state| {
         let new_thread = cpu_state.take_ready_thread();
         new_thread.state.store(STATE_RUNNING, Ordering::Relaxed);
         new_thread
     });
 
-    with_cpu_state_noirq(&irq_disabled, |cpu_state| {
+    with_cpu_state_mut(&irq_disabled, |cpu_state| {
         let idle_thread =
             Thread::new("idle", || cpu::idle_loop()).expect("failed to create idle thread");
         cpu_state.idle_thread = Some(unsafe { UnsafeRef::from_raw(Arc::into_raw(idle_thread)) });
@@ -174,7 +172,7 @@ fn schedule_common(
 ) {
     let irq_disabled = unsafe { IrqDisabled::new() };
     let (prev_context, new_context, handoff_state) =
-        with_cpu_state_noirq(&irq_disabled, |cpu_state| {
+        with_cpu_state_mut(&irq_disabled, |cpu_state| {
             let current_thread = cpu_state
                 .current_thread
                 .clone()
@@ -224,7 +222,7 @@ unsafe fn complete_context_switch_handoff_and_enable() {
 fn begin_context_switch_handoff(handoff_state: HandoffState) {
     let irq_disabled = unsafe { IrqDisabled::new() };
     trace!("switching to thread '{}'", handoff_state.new_thread.name());
-    with_cpu_state_noirq(&irq_disabled, |cpu_state| {
+    with_cpu_state_mut(&irq_disabled, |cpu_state| {
         assert!(
             cpu_state.handoff_state.is_none(),
             "attempted new context switch handoff with existing pending handoff"
@@ -235,7 +233,7 @@ fn begin_context_switch_handoff(handoff_state: HandoffState) {
 
 fn complete_context_switch_handoff() {
     let irq_disabled = unsafe { IrqDisabled::new() };
-    with_cpu_state_noirq(&irq_disabled, |cpu_state| {
+    with_cpu_state_mut(&irq_disabled, |cpu_state| {
         let handoff_state = cpu_state
             .handoff_state
             .take()
@@ -307,18 +305,20 @@ impl CpuStateInner {
     }
 }
 
-fn with_cpu_state_noirq<R>(
-    irq_disabled: &IrqDisabled,
-    f: impl FnOnce(&mut CpuStateInner) -> R,
-) -> R {
-    with_cpu_state(irq_disabled.resched_disabled(), f)
+fn with_cpu_state_mut<R>(irq_disabled: &IrqDisabled, f: impl FnOnce(&mut CpuStateInner) -> R) -> R {
+    assert!(
+        resched::enabled_in_irq(),
+        "attempted to mutate scheduler state with rescheduling disabled"
+    );
+
+    f(&mut current_percpu(irq_disabled.resched_disabled())
+        .sched
+        .inner
+        .borrow_mut())
 }
 
-fn with_cpu_state<R>(
-    resched_disabled: &ReschedDisabled,
-    f: impl FnOnce(&mut CpuStateInner) -> R,
-) -> R {
-    f(&mut current_percpu(resched_disabled).sched.inner.borrow_mut())
+fn with_cpu_state<R>(resched_disabled: &ReschedDisabled, f: impl FnOnce(&CpuStateInner) -> R) -> R {
+    f(&current_percpu(resched_disabled).sched.inner.borrow())
 }
 
 static SCHED_THREAD_OWNERS: SpinLock<LinkedList<ThreadSchedOwnerAdapter>> =
