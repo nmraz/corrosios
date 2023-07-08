@@ -19,7 +19,6 @@ use crate::sync::irq::{self, IrqDisabled};
 use crate::sync::resched::{ReschedDisabled, ReschedGuard};
 use crate::sync::{resched, SpinLock};
 
-const STATE_INITIAL: u32 = 0;
 const STATE_READY: u32 = 1;
 const STATE_RUNNING: u32 = 2;
 const STATE_PARKED: u32 = 3;
@@ -48,12 +47,36 @@ impl Thread {
         })
     }
 
-    pub fn new<F: FnOnce() + Send + 'static>(name: &str, entry_fn: F) -> Result<Arc<Self>> {
-        let entry_fn_data = Box::into_raw(Box::try_new(entry_fn)?);
+    pub fn spawn<F: FnOnce() + Send + 'static>(name: &str, entry_fn: F) -> Result<Arc<Self>> {
+        let thread = Self::new(name, entry_fn)?;
 
+        debug!("starting thread '{}'", name);
+
+        irq::disable_with(|irq_disabled| {
+            let thread_ref = unsafe { UnsafeRef::from_raw(Arc::as_ptr(&thread)) };
+            SCHED_THREAD_OWNERS
+                .lock(irq_disabled)
+                .push_back(thread.clone());
+            with_cpu_state_mut(irq_disabled, |cpu_state| {
+                cpu_state.run_queue.push_back(thread_ref)
+            });
+        });
+
+        Ok(thread)
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_ref()
+    }
+
+    pub fn stack(&self) -> &KernelStack {
+        &self.stack
+    }
+
+    fn new<F: FnOnce() + Send + 'static>(name: &str, entry_fn: F) -> Result<Arc<Self>> {
+        let entry_fn_data = Box::into_raw(Box::try_new(entry_fn)?);
         let arg = entry_fn_data as usize;
         let stack = KernelStack::new()?;
-
         extern "C" fn thread_entry<F: FnOnce()>(data: usize) -> ! {
             unsafe {
                 complete_context_switch_handoff_and_enable();
@@ -69,46 +92,16 @@ impl Thread {
         }
 
         let arch_context = unsafe { ThreadContext::new(stack.top(), thread_entry::<F>, arg) };
-
-        Ok(Arc::try_new(Thread {
+        let thread = Arc::try_new(Self {
             sched_ownwer_link: LinkedListLink::new(),
             run_queue_link: LinkedListLink::new(),
             stack,
-            state: AtomicU32::new(STATE_INITIAL),
+            state: AtomicU32::new(STATE_READY),
             arch_context: UnsafeCell::new(arch_context),
             name: Name::new(name),
-        })?)
-    }
+        })?;
 
-    pub fn start(self: Arc<Self>) {
-        let was_initial = self
-            .state
-            .compare_exchange(
-                STATE_INITIAL,
-                STATE_READY,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            )
-            .is_ok();
-        assert!(was_initial, "thread already started");
-
-        debug!("starting thread '{}'", self.name());
-
-        irq::disable_with(|irq_disabled| {
-            let self_ref = unsafe { UnsafeRef::from_raw(Arc::as_ptr(&self)) };
-            SCHED_THREAD_OWNERS.lock(irq_disabled).push_back(self);
-            with_cpu_state_mut(irq_disabled, |cpu_state| {
-                cpu_state.run_queue.push_back(self_ref)
-            });
-        });
-    }
-
-    pub fn name(&self) -> &str {
-        self.name.as_ref()
-    }
-
-    pub fn stack(&self) -> &KernelStack {
-        &self.stack
+        Ok(thread)
     }
 }
 
