@@ -1,7 +1,6 @@
-use core::slice;
+use core::{ptr, slice};
 
 use alloc::sync::Arc;
-use atomic_refcell::AtomicRefCell;
 
 use crate::arch::mm::{LOW_ASPACE_BASE, LOW_ASPACE_END};
 use crate::arch::mmu::{
@@ -12,7 +11,6 @@ use crate::mm::physmap::pfn_to_physmap;
 use crate::mm::pmm::FrameBox;
 use crate::mm::pt::clear_page_table;
 use crate::mm::types::{AccessMode, PageTablePerms, PhysFrameNum};
-use crate::mp::current_percpu;
 use crate::sync::resched::ReschedDisabled;
 
 use super::aspace::{AddrSpace, AddrSpaceOps, TlbFlush};
@@ -23,22 +21,6 @@ pub struct LowAddrSpaceOps {
 }
 
 pub type LowAddrSpace = AddrSpace<LowAddrSpaceOps>;
-
-pub(super) struct Context {
-    current_aspace: AtomicRefCell<Option<Arc<LowAddrSpace>>>,
-}
-
-impl Context {
-    /// Creates a new per-cpu address space context.
-    ///
-    /// Note: this function may be called very early during initialization (before anything is set
-    /// up), so it must not allocate or take any locks.
-    pub fn new() -> Self {
-        Self {
-            current_aspace: AtomicRefCell::new(None),
-        }
-    }
-}
 
 pub fn make_low_addr_space(allowed_access_mode: AccessMode) -> Result<Arc<LowAddrSpace>> {
     let root_pt = make_root_pt()?;
@@ -59,83 +41,41 @@ pub fn make_low_addr_space(allowed_access_mode: AccessMode) -> Result<Arc<LowAdd
     Ok(aspace)
 }
 
-/// Returns a new owning reference to the current active address space.
-pub fn current(resched_disabled: &ReschedDisabled) -> Option<Arc<LowAddrSpace>> {
-    with_current(resched_disabled, |current| current.cloned())
-}
-
-/// Invokes `f` on the current low address space, returning its return value.
+/// Switches the current low address space from `old_aspace` to `new_aspace`, performing any
+/// necessary flushes and architectural state updates.
 ///
-/// Note that `f` must not call [`switch_to`]; doing so will panic at runtime.
-pub fn with_current<R>(
-    resched_disabled: &ReschedDisabled,
-    f: impl FnOnce(Option<&Arc<LowAddrSpace>>) -> R,
-) -> R {
-    f(current_aspace(resched_disabled).borrow().as_ref())
-}
-
-/// Temporarily enters `aspace` and invokes `f`, then restores the original active address space.
+/// This is a very low-level function that should generally not be called directly (except by
+/// context-switching code).
 ///
-/// # Safety
-///
-/// This function is wildly unsafe, as it replaces the entire lower-half address space with a
-/// different one. The caller must ensure that all accesses to low memory made by `f` are made in
-/// accordance with `aspace`.
-pub unsafe fn enter_with<R>(
-    resched_disabled: &ReschedDisabled,
-    aspace: Arc<LowAddrSpace>,
-    f: impl FnOnce() -> R,
-) -> R {
-    let orig_aspace = current(resched_disabled);
-    unsafe {
-        switch_to(resched_disabled, Some(aspace));
-    }
-    let ret = f();
-    unsafe {
-        switch_to(resched_disabled, orig_aspace);
-    }
-    ret
-}
-
-/// Switches the current low address space to `aspace`, performing any necessary flushes and
-/// architectural state updates.
-///
-/// If `aspace` is `None`, the current low address space will be unmapped entirely, leaving only
+/// If `new_aspace` is `None`, the current low address space will be unmapped entirely, leaving only
 /// the high kernel address space mapped.
 ///
-/// # Panics
-///
-/// This function will panic if called from within a call to [`with_current`] on the current CPU.
-///
 /// # Safety
 ///
-/// This function is wildly unsafe, as it replaces the entire lower-half address space with a
-/// different one. The caller must ensure that all accesses to low memory are made in accordance
-/// with the new address space after the switch.
-pub unsafe fn switch_to(resched_disabled: &ReschedDisabled, aspace: Option<Arc<LowAddrSpace>>) {
-    let mut active_aspace = current_aspace(resched_disabled).borrow_mut();
-    if raw_aspace_ptr(&aspace) == raw_aspace_ptr(&active_aspace) {
+/// Callers must guarantee that `old_aspace` is the one that was currently active on the current
+/// CPU.
+///
+/// Beyond the fixed requirements, this function is wildly unsafe, as it replaces the entire
+/// lower-half address space with a different one. The caller must ensure that all accesses to low
+/// memory are made in accordance with the new address space after the switch.
+pub unsafe fn switch_to(
+    _resched_disabled: &ReschedDisabled,
+    old_aspace: Option<&LowAddrSpace>,
+    new_aspace: Option<&LowAddrSpace>,
+) {
+    if raw_aspace_ptr(new_aspace) == raw_aspace_ptr(old_aspace) {
         // Address space is already active, nothing to update/flush.
         return;
     }
 
-    let new_pt = aspace.as_ref().map(|aspace| aspace.ops().root_pt());
+    let new_pt = new_aspace.map(|aspace| aspace.ops().root_pt());
     unsafe {
         set_low_root_pt(new_pt);
     }
-
-    *active_aspace = aspace;
 }
 
-fn raw_aspace_ptr(aspace: &Option<Arc<LowAddrSpace>>) -> *const LowAddrSpace {
-    aspace.as_ref().map_or(core::ptr::null(), Arc::as_ptr)
-}
-
-fn current_aspace(resched_disabled: &ReschedDisabled) -> &AtomicRefCell<Option<Arc<LowAddrSpace>>> {
-    &current_percpu(resched_disabled)
-        .vm
-        .aspace_context
-        .current_aspace
+fn raw_aspace_ptr(aspace: Option<&LowAddrSpace>) -> *const LowAddrSpace {
+    aspace.map_or(ptr::null(), |p| p)
 }
 
 fn make_root_pt() -> Result<FrameBox> {

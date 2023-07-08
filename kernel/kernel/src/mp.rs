@@ -8,7 +8,6 @@ use crate::{arch, sched};
 #[repr(align(64))]
 pub struct PerCpu {
     pub cpu_num: u32,
-    pub vm: vm::PerCpu,
     pub sched: sched::CpuState,
 }
 
@@ -16,7 +15,6 @@ impl PerCpu {
     fn new(cpu_num: u32) -> Self {
         Self {
             cpu_num,
-            vm: vm::PerCpu::new(),
             sched: sched::CpuState::new(),
         }
     }

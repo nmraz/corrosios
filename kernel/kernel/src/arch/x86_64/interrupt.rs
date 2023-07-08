@@ -142,9 +142,8 @@ fn handle_page_fault(frame: &InterruptFrame) {
         );
     }
 
-    // Atomically transition to a preempt-free but interrupt-enabled state. Rescheduling will be
-    // enabled within `vm::page_fault` once the current address space has been snapshotted.
-    let resched_guard = ReschedGuard::new();
+    // Safety: the caller was running in a context where rescheduling was safe, and we were the ones
+    // who disabled interrupts upon entry.
     unsafe {
         irq::enable();
     }
@@ -154,7 +153,7 @@ fn handle_page_fault(frame: &InterruptFrame) {
         false => AccessMode::Kernel,
     };
 
-    if let Err(err) = vm::page_fault(resched_guard, addr, access_type) {
+    if let Err(err) = vm::page_fault(addr, access_type) {
         let mode_str = match access_mode {
             AccessMode::User => "user",
             AccessMode::Kernel => "kernel",

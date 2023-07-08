@@ -9,11 +9,12 @@ use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink, Unsaf
 use log::{debug, trace};
 use object_name::Name;
 
-use crate::arch::context::{self, ThreadContext};
-use crate::arch::cpu;
+use crate::arch::context::ThreadContext as ArchContext;
+use crate::arch::{self, cpu};
 use crate::err::Result;
 use crate::mm::kmap::KernelStack;
 use crate::mm::types::VirtAddr;
+use crate::mm::vm::low_aspace::{self, LowAddrSpace};
 use crate::mp::current_percpu;
 use crate::sync::irq::{self, IrqDisabled};
 use crate::sync::resched::{ReschedDisabled, ReschedGuard};
@@ -24,13 +25,18 @@ const STATE_RUNNING: u32 = 2;
 const STATE_PARKED: u32 = 3;
 const STATE_DEAD: u32 = 4;
 
+struct Context {
+    // Only ever touched during context switches
+    arch: UnsafeCell<ArchContext>,
+    addr_space: Option<Arc<LowAddrSpace>>,
+}
+
 pub struct Thread {
     sched_ownwer_link: LinkedListLink,
     run_queue_link: LinkedListLink,
-    stack: KernelStack,
     state: AtomicU32,
-    // Only ever touched during context switches
-    arch_context: UnsafeCell<ThreadContext>,
+    stack: KernelStack,
+    context: Context,
     name: Name,
 }
 
@@ -73,6 +79,10 @@ impl Thread {
         &self.stack
     }
 
+    pub fn addr_space(&self) -> Option<&Arc<LowAddrSpace>> {
+        self.context.addr_space.as_ref()
+    }
+
     fn new<F: FnOnce() + Send + 'static>(name: &str, entry_fn: F) -> Result<Arc<Self>> {
         let entry_fn_data = Box::into_raw(Box::try_new(entry_fn)?);
         let arg = entry_fn_data as usize;
@@ -91,13 +101,16 @@ impl Thread {
             exit_current();
         }
 
-        let arch_context = unsafe { ThreadContext::new(stack.top(), thread_entry::<F>, arg) };
+        let arch_context = unsafe { ArchContext::new(stack.top(), thread_entry::<F>, arg) };
         let thread = Arc::try_new(Self {
             sched_ownwer_link: LinkedListLink::new(),
             run_queue_link: LinkedListLink::new(),
-            stack,
             state: AtomicU32::new(STATE_READY),
-            arch_context: UnsafeCell::new(arch_context),
+            stack,
+            context: Context {
+                arch: UnsafeCell::new(arch_context),
+                addr_space: None,
+            },
             name: Name::new(name),
         })?;
 
@@ -134,13 +147,9 @@ pub unsafe fn start() -> ! {
         cpu_state.idle_thread = Some(unsafe { UnsafeRef::from_raw(Arc::into_raw(idle_thread)) });
     });
 
-    let new_context = new_thread.arch_context.get();
     unsafe {
-        begin_context_switch_handoff(HandoffState {
-            new_thread,
-            thread_to_free: None,
-        });
-        context::set(new_context);
+        begin_context_switch_handoff(new_thread.clone(), None);
+        set_context(&new_thread.context);
     }
 }
 
@@ -164,32 +173,24 @@ fn schedule_common(
     old_thread_handler: impl FnOnce(&mut CpuStateInner, UnsafeRef<Thread>) -> Option<UnsafeRef<Thread>>,
 ) {
     let irq_disabled = unsafe { IrqDisabled::new() };
-    let (prev_context, new_context, handoff_state) =
-        with_cpu_state_mut(&irq_disabled, |cpu_state| {
-            let current_thread = cpu_state
-                .current_thread
-                .clone()
-                .expect("no thread to switch out");
+    let (old_thread, new_thread, thread_to_free) = with_cpu_state_mut(&irq_disabled, |cpu_state| {
+        let current_thread = cpu_state
+            .current_thread
+            .clone()
+            .expect("no thread to switch out");
 
-            check_current_thread_stack(&current_thread);
+        check_current_thread_stack(&current_thread);
 
-            let thread_to_free = old_thread_handler(cpu_state, current_thread.clone());
-            let new_thread = cpu_state.take_ready_thread();
-            new_thread.state.store(STATE_RUNNING, Ordering::Relaxed);
+        let thread_to_free = old_thread_handler(cpu_state, current_thread.clone());
+        let new_thread = cpu_state.take_ready_thread();
+        new_thread.state.store(STATE_RUNNING, Ordering::Relaxed);
 
-            let prev_context = current_thread.arch_context.get();
-            let new_context = new_thread.arch_context.get();
-            let handoff_state = HandoffState {
-                new_thread,
-                thread_to_free,
-            };
-
-            (prev_context, new_context, handoff_state)
-        });
+        (current_thread, new_thread, thread_to_free)
+    });
 
     unsafe {
-        begin_context_switch_handoff(handoff_state);
-        context::switch(prev_context, new_context);
+        begin_context_switch_handoff(new_thread.clone(), thread_to_free);
+        switch_context(&old_thread.context, &new_thread.context);
         complete_context_switch_handoff();
     }
 }
@@ -205,6 +206,31 @@ fn check_current_thread_stack(current_thread: &Thread) {
     }
 }
 
+unsafe fn switch_context(old_context: &Context, new_context: &Context) {
+    unsafe {
+        set_common_context(Some(old_context), new_context);
+        arch::context::switch(old_context.arch.get(), new_context.arch.get());
+    }
+}
+
+unsafe fn set_context(context: &Context) -> ! {
+    unsafe {
+        set_common_context(None, context);
+        arch::context::set(context.arch.get())
+    }
+}
+
+unsafe fn set_common_context(old_context: Option<&Context>, new_context: &Context) {
+    unsafe {
+        let resched_disabled = ReschedDisabled::new_unchecked();
+        low_aspace::switch_to(
+            &resched_disabled,
+            old_context.and_then(|context| context.addr_space.as_deref()),
+            new_context.addr_space.as_deref(),
+        );
+    }
+}
+
 unsafe fn complete_context_switch_handoff_and_enable() {
     complete_context_switch_handoff();
     unsafe {
@@ -212,15 +238,21 @@ unsafe fn complete_context_switch_handoff_and_enable() {
     }
 }
 
-fn begin_context_switch_handoff(handoff_state: HandoffState) {
+fn begin_context_switch_handoff(
+    new_thread: UnsafeRef<Thread>,
+    thread_to_free: Option<UnsafeRef<Thread>>,
+) {
     let irq_disabled = unsafe { IrqDisabled::new() };
-    trace!("switching to thread '{}'", handoff_state.new_thread.name());
+    trace!("switching to thread '{}'", new_thread.name());
     with_cpu_state_mut(&irq_disabled, |cpu_state| {
         assert!(
             cpu_state.handoff_state.is_none(),
             "attempted new context switch handoff with existing pending handoff"
         );
-        cpu_state.handoff_state = Some(handoff_state);
+        cpu_state.handoff_state = Some(HandoffState {
+            new_thread,
+            thread_to_free,
+        });
     });
 }
 
