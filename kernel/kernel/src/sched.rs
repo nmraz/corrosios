@@ -53,8 +53,12 @@ impl Thread {
         })
     }
 
-    pub fn spawn<F: FnOnce() + Send + 'static>(name: &str, entry_fn: F) -> Result<Arc<Self>> {
-        let thread = Self::new(name, entry_fn)?;
+    pub fn spawn<F: FnOnce() + Send + 'static>(
+        name: &str,
+        entry_fn: F,
+        addr_space: Option<Arc<LowAddrSpace>>,
+    ) -> Result<Arc<Self>> {
+        let thread = Self::new(name, entry_fn, addr_space)?;
 
         debug!("starting thread '{}'", name);
 
@@ -83,7 +87,11 @@ impl Thread {
         self.context.addr_space.as_ref()
     }
 
-    fn new<F: FnOnce() + Send + 'static>(name: &str, entry_fn: F) -> Result<Arc<Self>> {
+    fn new<F: FnOnce() + Send + 'static>(
+        name: &str,
+        entry_fn: F,
+        addr_space: Option<Arc<LowAddrSpace>>,
+    ) -> Result<Arc<Self>> {
         let entry_fn_data = Box::into_raw(Box::try_new(entry_fn)?);
         let arg = entry_fn_data as usize;
         let stack = KernelStack::new()?;
@@ -109,7 +117,7 @@ impl Thread {
             stack,
             context: Context {
                 arch: UnsafeCell::new(arch_context),
-                addr_space: None,
+                addr_space,
             },
             name: Name::new(name),
         })?;
@@ -143,7 +151,7 @@ pub unsafe fn start() -> ! {
 
     with_cpu_state_mut(&irq_disabled, |cpu_state| {
         let idle_thread =
-            Thread::new("idle", || cpu::idle_loop()).expect("failed to create idle thread");
+            Thread::new("idle", || cpu::idle_loop(), None).expect("failed to create idle thread");
         cpu_state.idle_thread = Some(unsafe { UnsafeRef::from_raw(Arc::into_raw(idle_thread)) });
     });
 

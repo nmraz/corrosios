@@ -101,7 +101,7 @@ unsafe extern "C" fn kernel_main(
 
     mm::pmm::dump_usage();
 
-    Thread::spawn("bootstrap", move || bootstrap(&bootinfo))
+    Thread::spawn("bootstrap", move || bootstrap(&bootinfo), None)
         .expect("failed to create bootstrap thread");
     unsafe { sched::start() };
 }
