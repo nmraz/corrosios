@@ -1,6 +1,5 @@
 use spin_once::TakeOnce;
 
-use crate::mm::vm;
 use crate::sync::irq::IrqDisabled;
 use crate::sync::resched::ReschedDisabled;
 use crate::{arch, sched};

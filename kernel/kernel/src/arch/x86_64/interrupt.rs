@@ -7,7 +7,7 @@ use crate::mm::types::{AccessMode, AccessType, VirtAddr};
 use crate::mm::vm;
 use crate::sched::Thread;
 use crate::sync::irq;
-use crate::sync::resched::{self, ReschedGuard};
+use crate::sync::resched;
 
 use super::interrupt_vectors::{
     VECTOR_ALIGNMENT_CHECK, VECTOR_BOUND, VECTOR_BREAKPOINT, VECTOR_DEBUG, VECTOR_DEVICE_NOT_AVAIL,
