@@ -6,10 +6,14 @@ use crate::sched::Thread;
 
 use super::types::{AccessType, VirtAddr};
 
+pub use self::kernel_aspace::get as get_kernel_addr_space;
+pub use self::low_aspace::{make_low_addr_space, switch_to as switch_low_addr_space, LowAddrSpace};
+
 pub mod aspace;
-pub mod kernel_aspace;
-pub mod low_aspace;
 pub mod object;
+
+mod kernel_aspace;
+mod low_aspace;
 
 /// Initializes the VM subsystem, including the global kernel address space.
 pub fn init() {

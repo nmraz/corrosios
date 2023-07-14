@@ -5,8 +5,8 @@ use crate::err::Result;
 
 use super::types::{CacheMode, PhysAddr, Protection, VirtAddr};
 use super::utils::to_page_count;
+use super::vm;
 use super::vm::aspace::{MapBase, MappingHandle, SliceHandle};
-use super::vm::kernel_aspace;
 use super::vm::object::{EagerVmObject, PhysVmObject, VmObject};
 
 /// An owned pointer to a mapping of a VM object into the kernel address space.
@@ -23,7 +23,7 @@ impl Drop for KernelMapping {
     fn drop(&mut self) {
         // Safety: we have unique ownership of the mapping.
         unsafe {
-            kernel_aspace::get()
+            vm::get_kernel_addr_space()
                 .unmap(&self.0)
                 .expect("kernel mapping already detached");
         }
@@ -55,7 +55,7 @@ pub struct KernelStack {
 
 impl KernelStack {
     pub fn new() -> Result<Self> {
-        let kernel_aspace = kernel_aspace::get();
+        let kernel_aspace = vm::get_kernel_addr_space();
 
         let stack_obj = EagerVmObject::new(STACK_PAGES)?;
         let slice = kernel_aspace.create_subslice(
@@ -98,7 +98,7 @@ impl Drop for KernelStack {
     fn drop(&mut self) {
         // Safety: we have unique ownership of the stack slice.
         unsafe {
-            kernel_aspace::get()
+            vm::get_kernel_addr_space()
                 .unmap_slice(&self.slice)
                 .expect("failed to unmap kernel stack");
         }
@@ -109,7 +109,7 @@ impl Drop for KernelStack {
 pub fn kmap(object: Arc<dyn VmObject>, prot: Protection) -> Result<KernelMapping> {
     let page_count = object.page_count();
 
-    let kernel_aspace = kernel_aspace::get();
+    let kernel_aspace = vm::get_kernel_addr_space();
     let mapping = kernel_aspace.map_committed(
         kernel_aspace.root_slice(),
         MapBase::any(),

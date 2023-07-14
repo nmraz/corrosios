@@ -14,7 +14,7 @@ use crate::arch::{self, cpu};
 use crate::err::Result;
 use crate::mm::kmap::KernelStack;
 use crate::mm::types::VirtAddr;
-use crate::mm::vm::low_aspace::{self, LowAddrSpace};
+use crate::mm::vm::{self, LowAddrSpace};
 use crate::mp::current_percpu;
 use crate::sync::irq::{self, IrqDisabled};
 use crate::sync::resched::{ReschedDisabled, ReschedGuard};
@@ -231,7 +231,7 @@ unsafe fn set_context(context: &Context) -> ! {
 unsafe fn set_common_context(old_context: Option<&Context>, new_context: &Context) {
     unsafe {
         let resched_disabled = ReschedDisabled::new_unchecked();
-        low_aspace::switch_to(
+        vm::switch_low_addr_space(
             &resched_disabled,
             old_context.and_then(|context| context.addr_space.as_deref()),
             new_context.addr_space.as_deref(),
