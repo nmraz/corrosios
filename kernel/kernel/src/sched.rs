@@ -106,7 +106,9 @@ impl Thread {
                 entry_fn();
             }
 
-            exit_current();
+            unsafe {
+                exit_current();
+            }
         }
 
         let arch_context = unsafe { ArchContext::new(stack.top(), thread_entry::<F>, arg) };
@@ -161,7 +163,29 @@ pub unsafe fn start() -> ! {
     }
 }
 
-fn exit_current() -> ! {
+/// Abruptly exits the current thread, returning to the scheduler for another thread to be selected.
+///
+/// # Safety
+///
+/// This function interrupts the current flow of execution immediately without executing destructors
+/// or otherwise performing any other kind of "unwinding". While type implementations themselves
+/// cannot depend on the execution of destructors for soundness, abstractions can be built around
+/// them that do.
+///
+/// For example, the common pattern of:
+/// ```ignore
+/// fn call_in_context(callback: impl FnOnce()) {
+///     let _guard = SpecialStateGuard::enter();
+///     callback();
+/// }
+/// ```
+/// assumes that `_guard` will always be dropped and may depend on that assumption. This function
+/// breaks that assumption by enabling the guard not to be dropped, although the state may
+/// potentially be observed later.
+///
+/// The caller must therefore guarantee that no such observable inconsistencies leading to
+/// unsoundness will occur.
+pub unsafe fn exit_current() -> ! {
     assert!(
         resched::enabled(),
         "attempted to exit thread with rescheduling disabled"
