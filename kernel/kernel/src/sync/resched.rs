@@ -1,9 +1,11 @@
 use core::marker::PhantomData;
 use core::ops::Deref;
 
-use crate::arch;
+use crate::{arch, sched};
 
 use super::irq;
+
+pub use arch::cpu::resched_disable_count as disable_count;
 
 /// A type-level assertion that rescheduling is disabled on the current core.
 ///
@@ -62,9 +64,18 @@ pub fn disable() {
 }
 
 pub unsafe fn enable() {
-    // TODO: perform the rescheduling if possible and necessary.
     unsafe {
-        let _ = arch::cpu::enable_resched();
+        if disable_count() == 1 && irq::enabled() {
+            sched::resched_if_pending();
+        } else {
+            enable_no_resched();
+        }
+    }
+}
+
+pub unsafe fn enable_no_resched() {
+    unsafe {
+        arch::cpu::enable_resched();
     }
 }
 
@@ -73,5 +84,5 @@ pub fn enabled() -> bool {
 }
 
 pub fn enabled_in_irq() -> bool {
-    arch::cpu::resched_disable_count() == 0
+    disable_count() == 0
 }

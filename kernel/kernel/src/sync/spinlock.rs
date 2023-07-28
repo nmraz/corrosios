@@ -124,7 +124,9 @@ impl RawSpinLock {
         // Safety: by the function contract, this core has previously called `lock()`, which means
         // that it has called `resched::disable()`.
         unsafe {
-            resched::enable();
+            // Note: we intentionally do not want to call `enable()` here, as interrupts should be
+            // disabled anyway whenever spinlocks are held.
+            resched::enable_no_resched();
         }
     }
 }

@@ -1,6 +1,6 @@
 use core::cell::UnsafeCell;
 use core::hint;
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -201,10 +201,46 @@ pub unsafe fn exit_current() -> ! {
     }
 }
 
+pub unsafe fn resched_if_pending() {
+    assert!(resched::disable_count() == 1);
+
+    let resched_pending = current_percpu(&unsafe { ReschedDisabled::new_unchecked() })
+        .sched
+        .resched_pending
+        .load(Ordering::Relaxed);
+
+    if resched_pending {
+        irq::disable();
+        unsafe {
+            resched::enable_no_resched();
+        }
+        do_resched();
+    } else {
+        unsafe {
+            resched::enable_no_resched();
+        }
+    }
+}
+
+fn do_resched() {
+    schedule_common(|cpu_state, old_thread| {
+        assert!(old_thread.state.load(Ordering::Relaxed) == STATE_RUNNING);
+        old_thread.state.store(STATE_READY, Ordering::Relaxed);
+        cpu_state.run_queue.push_back(old_thread);
+        None
+    });
+}
+
 fn schedule_common(
     old_thread_handler: impl FnOnce(&mut CpuStateInner, UnsafeRef<Thread>) -> Option<UnsafeRef<Thread>>,
 ) {
     let irq_disabled = unsafe { IrqDisabled::new() };
+
+    current_percpu(irq_disabled.resched_disabled())
+        .sched
+        .resched_pending
+        .store(false, Ordering::Relaxed);
+
     let (old_thread, new_thread, thread_to_free) = with_cpu_state_mut(&irq_disabled, |cpu_state| {
         let current_thread = cpu_state
             .current_thread
@@ -324,12 +360,14 @@ fn complete_context_switch_handoff() {
 }
 
 pub struct CpuState {
+    resched_pending: AtomicBool,
     inner: AtomicRefCell<CpuStateInner>,
 }
 
 impl CpuState {
     pub fn new() -> Self {
         Self {
+            resched_pending: AtomicBool::new(false),
             inner: AtomicRefCell::new(CpuStateInner {
                 current_thread: None,
                 idle_thread: None,
@@ -362,6 +400,7 @@ impl CpuStateInner {
     }
 }
 
+#[track_caller]
 fn with_cpu_state_mut<R>(irq_disabled: &IrqDisabled, f: impl FnOnce(&mut CpuStateInner) -> R) -> R {
     assert!(
         resched::enabled_in_irq(),

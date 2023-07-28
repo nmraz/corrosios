@@ -57,7 +57,6 @@ pub fn disable_resched() {
 }
 
 #[inline]
-#[must_use]
 pub unsafe fn enable_resched() -> u32 {
     unsafe { xadd_gs_dword::<PERCPU_RESCHED_BLOCKS_OFFSET>(-1i32 as u32) - 1 }
 }
