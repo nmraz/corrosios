@@ -78,10 +78,10 @@ bitflags! {
 
 impl fmt::Debug for PageTablePerms {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_flag(f, self.contains(Self::GLOBAL), 'g')?;
         write_flag(f, self.contains(Self::READ), 'r')?;
         write_flag(f, self.contains(Self::WRITE), 'w')?;
         write_flag(f, self.contains(Self::EXECUTE), 'x')?;
+        write_flag(f, self.contains(Self::GLOBAL), 'g')?;
         write_flag(f, self.contains(Self::USER), 'u')?;
 
         Ok(())
