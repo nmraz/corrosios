@@ -7,7 +7,7 @@
     "code-model": "kernel",
     "relocation-model": "static",
     "relro-level": "full",
-    "needs-plt": true,
+    "plt-by-default": true,
     "features": "-mmx,-sse,+soft-float",
     "disable-redzone": true,
     "panic-strategy": "abort",
