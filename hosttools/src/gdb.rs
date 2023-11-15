@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use xshell::{cmd, Shell};
 
 use crate::config;
+use crate::utils::run_interactive;
 
 pub struct GdbOptions<'a> {
     pub kernel_binary: &'a Path,
@@ -17,10 +18,9 @@ pub fn run_gdb(sh: &Shell, opts: &GdbOptions<'_>) -> Result<()> {
     } = opts;
     let gdb_init_script = config::get_workspace_root()?.join(config::GDB_INIT_SCRIPT);
 
-    cmd!(
+    run_interactive(cmd!(
         sh,
         "rust-gdb {kernel_binary} -ex 'target remote '{server} -x {gdb_init_script}"
-    )
-    .run()
+    ))
     .context("failed to start rust-gdb")
 }

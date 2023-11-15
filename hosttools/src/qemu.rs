@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use xshell::{cmd, Shell, TempDir};
 
 use crate::config;
+use crate::utils::run_interactive;
 
 pub struct QemuOptions<'a> {
     pub image_path: &'a Path,
@@ -51,12 +52,10 @@ pub fn run_qemu(sh: &Shell, opts: &QemuOptions<'_>) -> Result<()> {
 
     let mem = opts.mem;
 
-    cmd!(
+    run_interactive(cmd!(
         sh,
         "qemu-system-x86_64 -m {mem} -drive {uefi_flash} -drive {uefi_vars} -drive {disk} {extra_args...}"
-    )
-    .run()
-    .context("failed to start QEMU")
+    )).context("failed to start QEMU")
 }
 
 struct FirmwarePaths {
