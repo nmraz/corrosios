@@ -69,11 +69,10 @@ Currently supported `cargo` subcommands:
 
 ## Directory Overview
 
-- `gdb/` - GDB configuration and scripts.
 - `hosttools/` - A binary implementing "scripts" and build utilities that run on the host system. It currently manages building the image and launching QEMU.
 - `kernel/` - Kernel, (UEFI) bootloader and their support libraries.
   - `efiboot/` - UEFI bootloader capable of loading the kernel and its command line from the ESP.
   - `kernel/` - The kernel itself.
 - `lib/` - General-purpose libraries usable across the kernel, userspace and hosttools.
 - `qemu/` - QEMU-related configuration/data (currently contains a vendored OVMF image to avoid platform inconsistencies).
-- `scripts/` - For things that have to be shell scripts. Most "script-like" behavior should go into `hosttools` instead.
+- `scripts/` - For things that have to be external scripts. Most "script-like" behavior should go into `hosttools` instead.
