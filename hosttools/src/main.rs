@@ -85,6 +85,10 @@ struct GdbSplitSubcommand {
     #[clap(short = 'k', long = "kernel-arg")]
     kernel_command_line: Vec<String>,
 
+    /// Build image in release mode
+    #[clap(long)]
+    release: bool,
+
     #[clap(flatten)]
     qemu: QemuArgs,
 }
@@ -161,7 +165,7 @@ fn main() -> Result<()> {
 
         Command::GdbSplit(gdb_split) => {
             let image_opts = ImageBuildOptions {
-                release: false,
+                release: gdb_split.release,
                 additional_build_args: &[],
             };
 
@@ -182,7 +186,11 @@ fn main() -> Result<()> {
             };
 
             let cargo = env!("CARGO");
-            let attach_command = format!("{cargo} gdb-attach");
+            let mut attach_command = format!("{cargo} gdb-attach");
+            if gdb_split.release {
+                attach_command += " --release";
+            }
+
             cmd!(sh, "tilix -a session-add-auto -x {attach_command}")
                 .quiet()
                 .run()?;
