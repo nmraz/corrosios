@@ -17,10 +17,12 @@ pub fn run_gdb(sh: &Shell, opts: &GdbOptions<'_>) -> Result<()> {
         server,
     } = opts;
     let gdb_init_script = config::get_workspace_root()?.join(config::GDB_INIT_SCRIPT);
+    let gdb_custom_command_script =
+        config::get_workspace_root()?.join(config::GDB_CUSTOM_COMMAND_SCRIPT);
 
     run_interactive(cmd!(
         sh,
-        "rust-gdb {kernel_binary} -ex 'target remote '{server} -x {gdb_init_script}"
+        "rust-gdb {kernel_binary} -ex 'target remote '{server} -x {gdb_init_script} -x {gdb_custom_command_script}"
     ))
     .context("failed to start rust-gdb")
 }
