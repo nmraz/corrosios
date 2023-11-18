@@ -183,7 +183,14 @@ impl PhysManager {
                 break;
             }
 
-            // Merge with our buddy and keep checking higher orders
+            // Our buddy is free, so let's merge with them now.
+            // Step 1: Remove the buddy from their current free list; we'll be adding the merged
+            // region to the appropriate free list later.
+            unsafe {
+                self.levels[order].remove_free(buddy_of(pfn, order));
+            }
+
+            // Step 2: Update our PFN and order to point to the merged region.
             pfn = parent_of(pfn, order);
             order += 1;
         }
@@ -303,6 +310,15 @@ impl BuddyLevel {
 
         self.free_list.push_front(link);
         self.free_blocks += 1;
+    }
+
+    unsafe fn remove_free(&mut self, pfn: PhysFrameNum) {
+        unsafe {
+            self.free_list
+                .cursor_mut_from_ptr(free_link_from_pfn(pfn))
+                .remove();
+        }
+        self.free_blocks -= 1;
     }
 
     fn pop_free(&mut self) -> Option<PhysFrameNum> {
